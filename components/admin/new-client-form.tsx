@@ -20,7 +20,7 @@ export function NewClientForm() {
   );
 
   return (
-    <form action={action} className="rounded-xl border border-zinc-200 bg-white divide-y divide-zinc-100">
+    <form action={action} className="rounded-xl border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800">
       <Section title="Company">
         <Field label="Company name" name="company_name" required placeholder="Acme Corp" />
         <Field label="Billing address" name="billing_address" placeholder="123 Main St, City, ST 00000" />
@@ -34,11 +34,11 @@ export function NewClientForm() {
 
       <Section title="Billing defaults">
         <div>
-          <label className="block text-sm font-medium text-zinc-700 mb-1">Currency</label>
+          <label className="block text-sm font-medium text-zinc-300 mb-1">Currency</label>
           <select
             name="currency"
             defaultValue="USD"
-            className="w-full rounded-lg border border-zinc-300 px-3 py-2.5 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none"
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none"
           >
             {CURRENCIES.map((c) => (
               <option key={c.code} value={c.code}>{c.code} — {c.label}</option>
@@ -51,31 +51,31 @@ export function NewClientForm() {
 
       <Section title="Notes">
         <div>
-          <label className="block text-sm font-medium text-zinc-700 mb-1">
-            Notes <span className="text-zinc-400 font-normal">(internal only)</span>
+          <label className="block text-sm font-medium text-zinc-300 mb-1">
+            Notes <span className="text-zinc-500 font-normal">(internal only)</span>
           </label>
           <textarea
             name="notes"
             rows={3}
             placeholder="Any notes about this client…"
-            className="w-full rounded-lg border border-zinc-300 px-3 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none resize-none"
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none resize-none"
           />
         </div>
       </Section>
 
       <div className="px-6 py-4 flex items-center justify-between">
-        {state.error && <p className="text-sm text-red-600">{state.error}</p>}
+        {state.error && <p className="text-sm text-red-400">{state.error}</p>}
         <div className="ml-auto flex gap-3">
           <a
             href="/clients"
-            className="rounded-lg border border-zinc-200 px-4 py-2.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 transition-colors"
+            className="rounded-lg border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-400 hover:bg-zinc-800 transition-colors"
           >
             Cancel
           </a>
           <button
             type="submit"
             disabled={pending}
-            className="rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-zinc-700 transition-colors disabled:opacity-50"
+            className="rounded-lg bg-zinc-100 px-4 py-2.5 text-sm font-medium text-zinc-900 hover:bg-white transition-colors disabled:opacity-50"
           >
             {pending ? "Saving…" : "Add client"}
           </button>
@@ -102,8 +102,8 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-zinc-700 mb-1">
-        {label} {required && <span className="text-red-500">*</span>}
+      <label className="block text-sm font-medium text-zinc-300 mb-1">
+        {label} {required && <span className="text-red-400">*</span>}
       </label>
       <input
         name={name}
@@ -112,7 +112,7 @@ function Field({
         placeholder={placeholder}
         defaultValue={defaultValue}
         step={step}
-        className="w-full rounded-lg border border-zinc-300 px-3 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none"
+        className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
       />
     </div>
   );

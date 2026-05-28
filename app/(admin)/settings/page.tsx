@@ -13,11 +13,11 @@ export default async function SettingsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-xl font-semibold text-zinc-900">Settings</h1>
+        <h1 className="text-xl font-semibold text-zinc-100">Settings</h1>
         <p className="mt-1 text-sm text-zinc-500">Company info, defaults, and preferences</p>
       </div>
 
-      <div className="rounded-xl border border-zinc-200 bg-white divide-y divide-zinc-100">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800">
         <SettingsSection title="Company">
           <SettingsRow label="Company name" value={settings?.company_name ?? "—"} />
           <SettingsRow label="Billing address" value={settings?.billing_address ?? "—"} />
@@ -32,7 +32,7 @@ export default async function SettingsPage() {
         </SettingsSection>
       </div>
 
-      <p className="text-xs text-zinc-400">
+      <p className="text-xs text-zinc-500">
         Full settings editing UI coming in a subsequent build. Database schema is live and RLS-enforced.
       </p>
     </div>
@@ -51,8 +51,8 @@ function SettingsSection({ title, children }: { title: string; children: React.R
 function SettingsRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between">
-      <dt className="text-sm text-zinc-600">{label}</dt>
-      <dd className="text-sm font-medium text-zinc-900">{value}</dd>
+      <dt className="text-sm text-zinc-400">{label}</dt>
+      <dd className="text-sm font-medium text-zinc-100">{value}</dd>
     </div>
   );
 }

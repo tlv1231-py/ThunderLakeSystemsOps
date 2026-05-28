@@ -20,53 +20,53 @@ export default async function ExpensesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-zinc-900">Expenses</h1>
+          <h1 className="text-xl font-semibold text-zinc-100">Expenses</h1>
           <p className="mt-1 text-sm text-zinc-500">
             {formatCurrency(totalUninvoiced)} uninvoiced billable expenses
           </p>
         </div>
-        <button className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 transition-colors">
+        <button className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-white transition-colors">
           Add expense
         </button>
       </div>
 
-      <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
         {!entries?.length ? (
-          <div className="px-6 py-12 text-center text-sm text-zinc-400">
+          <div className="px-6 py-12 text-center text-sm text-zinc-500">
             No expense entries yet.
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-zinc-100 bg-zinc-50">
-                <th className="px-4 py-3 text-left font-medium text-zinc-600">Date</th>
-                <th className="px-4 py-3 text-left font-medium text-zinc-600">Client</th>
-                <th className="px-4 py-3 text-left font-medium text-zinc-600">Project</th>
-                <th className="px-4 py-3 text-left font-medium text-zinc-600">Description</th>
-                <th className="px-4 py-3 text-right font-medium text-zinc-600">Amount</th>
-                <th className="px-4 py-3 text-left font-medium text-zinc-600">Status</th>
+              <tr className="border-b border-zinc-800 bg-zinc-800/50">
+                <th className="px-4 py-3 text-left font-medium text-zinc-400">Date</th>
+                <th className="px-4 py-3 text-left font-medium text-zinc-400">Client</th>
+                <th className="px-4 py-3 text-left font-medium text-zinc-400">Project</th>
+                <th className="px-4 py-3 text-left font-medium text-zinc-400">Description</th>
+                <th className="px-4 py-3 text-right font-medium text-zinc-400">Amount</th>
+                <th className="px-4 py-3 text-left font-medium text-zinc-400">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100">
+            <tbody className="divide-y divide-zinc-800">
               {entries.map((entry) => (
-                <tr key={entry.id} className="hover:bg-zinc-50">
-                  <td className="px-4 py-3 text-zinc-600 tabular-nums">
+                <tr key={entry.id} className="hover:bg-zinc-800/40">
+                  <td className="px-4 py-3 text-zinc-400 tabular-nums">
                     {formatDate(entry.date_incurred)}
                   </td>
-                  <td className="px-4 py-3 text-zinc-700">
+                  <td className="px-4 py-3 text-zinc-300">
                     {(entry.clients as { company_name: string } | null)?.company_name ?? "—"}
                   </td>
-                  <td className="px-4 py-3 text-zinc-600">
+                  <td className="px-4 py-3 text-zinc-400">
                     {(entry.projects as { name: string } | null)?.name ?? "—"}
                   </td>
-                  <td className="px-4 py-3 text-zinc-600 max-w-xs truncate">
+                  <td className="px-4 py-3 text-zinc-400 max-w-xs truncate">
                     {entry.description}
                   </td>
-                  <td className="px-4 py-3 text-right font-medium tabular-nums text-zinc-900">
+                  <td className="px-4 py-3 text-right font-medium tabular-nums text-zinc-100">
                     {formatCurrency(entry.amount, entry.currency)}
                   </td>
                   <td className="px-4 py-3">
-                    <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize bg-zinc-100 text-zinc-600">
+                    <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize bg-zinc-800 text-zinc-400">
                       {entry.status.replace("_", " ")}
                     </span>
                   </td>

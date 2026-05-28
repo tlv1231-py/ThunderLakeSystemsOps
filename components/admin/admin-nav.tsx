@@ -40,9 +40,9 @@ export function AdminNav() {
   }
 
   return (
-    <nav className="flex w-56 flex-col border-r border-zinc-200 bg-white px-3 py-6">
+    <nav className="flex w-56 flex-col border-r border-zinc-800 bg-zinc-950 px-3 py-6">
       <div className="mb-8 px-3">
-        <span className="text-sm font-semibold text-zinc-900">ThunderLake</span>
+        <span className="text-sm font-semibold text-zinc-100">ThunderLake</span>
       </div>
 
       <ul className="flex flex-1 flex-col gap-0.5">
@@ -55,8 +55,8 @@ export function AdminNav() {
                 className={cn(
                   "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors",
                   active
-                    ? "bg-zinc-100 font-medium text-zinc-900"
-                    : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-800"
+                    ? "bg-zinc-800 font-medium text-zinc-100"
+                    : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
                 )}
               >
                 <Icon className="h-4 w-4 flex-shrink-0" />
@@ -67,14 +67,14 @@ export function AdminNav() {
         })}
       </ul>
 
-      <div className="border-t border-zinc-100 pt-4 mt-4 space-y-0.5">
+      <div className="border-t border-zinc-800 pt-4 mt-4 space-y-0.5">
         <Link
           href="/settings"
           className={cn(
             "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors",
             pathname.startsWith("/settings")
-              ? "bg-zinc-100 font-medium text-zinc-900"
-              : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-800"
+              ? "bg-zinc-800 font-medium text-zinc-100"
+              : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
           )}
         >
           <Settings className="h-4 w-4 flex-shrink-0" />
@@ -82,7 +82,7 @@ export function AdminNav() {
         </Link>
         <button
           onClick={handleSignOut}
-          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
+          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
         >
           <LogOut className="h-4 w-4 flex-shrink-0" />
           Sign out

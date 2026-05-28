@@ -17,7 +17,7 @@ export default async function AdminLayout({
   }
 
   return (
-    <div className="flex h-screen bg-zinc-50">
+    <div className="flex h-screen bg-zinc-950">
       <AdminNav />
       <main className="flex-1 overflow-auto">
         <div className="mx-auto max-w-7xl px-8 py-8">{children}</div>
