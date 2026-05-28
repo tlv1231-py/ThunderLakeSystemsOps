@@ -19,7 +19,7 @@ file_size_limit = "50MiB"
 
 [auth]
 site_url = "https://thunder-lake-systems-ops.vercel.app"
-additional_redirect_urls = ["http://localhost:3000"]
+additional_redirect_urls = ["http://localhost:3000", "http://localhost:3000/auth/callback", "https://thunder-lake-systems-ops.vercel.app/auth/callback"]
 jwt_expiry = 3600
 enable_signup = true
 
