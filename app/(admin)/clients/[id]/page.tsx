@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
+import { ClientContacts } from "@/components/admin/client-contacts";
 
 export default async function ClientDetailPage({
   params,
@@ -12,7 +13,7 @@ export default async function ClientDetailPage({
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const [{ data: client }, { data: projects }, { data: invoices }, { data: timeEntries }] =
+  const [{ data: client }, { data: contacts }, { data: projects }, { data: invoices }, { data: timeEntries }] =
     await Promise.all([
       supabase
         .from("clients")
@@ -20,6 +21,11 @@ export default async function ClientDetailPage({
         .eq("id", id)
         .eq("user_id", user!.id)
         .single(),
+      supabase
+        .from("client_users")
+        .select("id, name, email, portal_access_enabled")
+        .eq("client_id", id)
+        .order("name"),
       supabase
         .from("projects")
         .select("*")
@@ -110,6 +116,7 @@ export default async function ClientDetailPage({
 
         {/* Right column */}
         <div className="col-span-2 space-y-6">
+          <ClientContacts clientId={client.id} contacts={contacts ?? []} />
           {/* Projects */}
           <div className="rounded-xl border border-zinc-200 bg-white overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100">
