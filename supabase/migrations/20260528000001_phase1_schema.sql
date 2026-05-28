@@ -2,10 +2,7 @@
 -- Phase 1: ThunderLake Systems Ops — Full Schema, RLS, Triggers, Functions
 -- =============================================================================
 
--- ---------------------------------------------------------------------------
--- Extensions
--- ---------------------------------------------------------------------------
-create extension if not exists "uuid-ossp";
+-- uuid-ossp not needed — gen_random_uuid() is built-in on Postgres 14+
 
 -- ---------------------------------------------------------------------------
 -- Enums
@@ -73,7 +70,7 @@ create trigger on_auth_user_created
 -- Table: reminder_schedules (defined before clients for FK reference)
 -- ---------------------------------------------------------------------------
 create table public.reminder_schedules (
-  id          uuid primary key default uuid_generate_v4(),
+  id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null references public.users(id) on delete cascade,
   name        text not null,
   is_default  boolean not null default false,
@@ -91,7 +88,7 @@ create trigger reminder_schedules_updated_at
 -- Table: clients
 -- ---------------------------------------------------------------------------
 create table public.clients (
-  id                      uuid primary key default uuid_generate_v4(),
+  id                      uuid primary key default gen_random_uuid(),
   user_id                 uuid not null references public.users(id) on delete cascade,
   company_name            text not null,
   contact_name            text,
@@ -120,7 +117,7 @@ create trigger clients_updated_at
 -- Table: client_users (portal access contacts)
 -- ---------------------------------------------------------------------------
 create table public.client_users (
-  id                      uuid primary key default uuid_generate_v4(),
+  id                      uuid primary key default gen_random_uuid(),
   client_id               uuid not null references public.clients(id) on delete cascade,
   name                    text not null,
   email                   text not null,
@@ -136,7 +133,7 @@ create index client_users_email_idx on public.client_users(email);
 -- Table: projects
 -- ---------------------------------------------------------------------------
 create table public.projects (
-  id                    uuid primary key default uuid_generate_v4(),
+  id                    uuid primary key default gen_random_uuid(),
   client_id             uuid not null references public.clients(id) on delete cascade,
   name                  text not null,
   description           text,
@@ -158,7 +155,7 @@ create trigger projects_updated_at
 -- Table: invoices (accounting snapshot — immutability enforced below)
 -- ---------------------------------------------------------------------------
 create table public.invoices (
-  id                uuid primary key default uuid_generate_v4(),
+  id                uuid primary key default gen_random_uuid(),
   user_id           uuid not null references public.users(id) on delete cascade,
   client_id         uuid not null references public.clients(id) on delete restrict,
   invoice_number    text not null,
@@ -252,7 +249,7 @@ $$;
 -- Table: invoice_line_items
 -- ---------------------------------------------------------------------------
 create table public.invoice_line_items (
-  id                  uuid primary key default uuid_generate_v4(),
+  id                  uuid primary key default gen_random_uuid(),
   invoice_id          uuid not null references public.invoices(id) on delete cascade,
   type                line_item_type not null,
   time_entry_id       uuid,
@@ -270,7 +267,7 @@ create index invoice_line_items_invoice_id_idx on public.invoice_line_items(invo
 -- Table: time_entries
 -- ---------------------------------------------------------------------------
 create table public.time_entries (
-  id            uuid primary key default uuid_generate_v4(),
+  id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null references public.users(id) on delete cascade,
   client_id     uuid not null references public.clients(id) on delete restrict,
   project_id    uuid references public.projects(id) on delete set null,
@@ -303,7 +300,7 @@ create trigger time_entries_updated_at
 -- Table: expense_entries
 -- ---------------------------------------------------------------------------
 create table public.expense_entries (
-  id            uuid primary key default uuid_generate_v4(),
+  id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null references public.users(id) on delete cascade,
   client_id     uuid not null references public.clients(id) on delete restrict,
   project_id    uuid references public.projects(id) on delete set null,
@@ -336,7 +333,7 @@ create trigger expense_entries_updated_at
 -- Table: payments
 -- ---------------------------------------------------------------------------
 create table public.payments (
-  id                uuid primary key default uuid_generate_v4(),
+  id                uuid primary key default gen_random_uuid(),
   invoice_id        uuid not null references public.invoices(id) on delete restrict,
   client_id         uuid not null references public.clients(id) on delete restrict,
   amount            numeric(12,2) not null,
@@ -354,7 +351,7 @@ create index payments_client_id_idx on public.payments(client_id);
 -- Table: taxes
 -- ---------------------------------------------------------------------------
 create table public.taxes (
-  id          uuid primary key default uuid_generate_v4(),
+  id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null references public.users(id) on delete cascade,
   name        text not null,
   rate        numeric(5,4) not null,
@@ -373,7 +370,7 @@ create trigger taxes_updated_at
 -- Table: email_templates (user_id nullable for system defaults)
 -- ---------------------------------------------------------------------------
 create table public.email_templates (
-  id                uuid primary key default uuid_generate_v4(),
+  id                uuid primary key default gen_random_uuid(),
   user_id           uuid references public.users(id) on delete cascade,
   name              text not null,
   type              email_template_type not null,
@@ -397,7 +394,7 @@ create trigger email_templates_updated_at
 insert into public.email_templates (id, user_id, name, type, subject_template, body_template, is_default)
 values
 (
-  uuid_generate_v4(),
+  gen_random_uuid(),
   null,
   'Default Invoice',
   'invoice_send',
@@ -415,7 +412,7 @@ Thank you for your business.
   true
 ),
 (
-  uuid_generate_v4(),
+  gen_random_uuid(),
   null,
   'Default Payment Reminder',
   'reminder',
@@ -434,7 +431,7 @@ Thank you,
   true
 ),
 (
-  uuid_generate_v4(),
+  gen_random_uuid(),
   null,
   'Default Overdue Notice',
   'overdue',
@@ -456,7 +453,7 @@ If you have questions about this invoice or need to discuss payment arrangements
 -- Table: reminder_schedule_rules
 -- ---------------------------------------------------------------------------
 create table public.reminder_schedule_rules (
-  id                      uuid primary key default uuid_generate_v4(),
+  id                      uuid primary key default gen_random_uuid(),
   reminder_schedule_id    uuid not null references public.reminder_schedules(id) on delete cascade,
   days_after_due          integer not null,
   email_template_id       uuid references public.email_templates(id) on delete set null,
@@ -469,7 +466,7 @@ create index reminder_schedule_rules_schedule_id_idx on public.reminder_schedule
 -- Table: email_logs
 -- ---------------------------------------------------------------------------
 create table public.email_logs (
-  id                    uuid primary key default uuid_generate_v4(),
+  id                    uuid primary key default gen_random_uuid(),
   client_id             uuid references public.clients(id) on delete set null,
   invoice_id            uuid references public.invoices(id) on delete set null,
   template_id           uuid references public.email_templates(id) on delete set null,
@@ -490,7 +487,7 @@ create index email_logs_status_idx on public.email_logs(status);
 -- Table: files
 -- ---------------------------------------------------------------------------
 create table public.files (
-  id            uuid primary key default uuid_generate_v4(),
+  id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null references public.users(id) on delete cascade,
   client_id     uuid references public.clients(id) on delete set null,
   project_id    uuid references public.projects(id) on delete set null,
@@ -511,7 +508,7 @@ create index files_visibility_idx on public.files(visibility);
 -- Table: activity_events
 -- ---------------------------------------------------------------------------
 create table public.activity_events (
-  id          uuid primary key default uuid_generate_v4(),
+  id          uuid primary key default gen_random_uuid(),
   user_id     uuid references public.users(id) on delete set null,
   client_id   uuid references public.clients(id) on delete set null,
   project_id  uuid references public.projects(id) on delete set null,
@@ -751,3 +748,4 @@ create policy "uploads_bucket_admin_all" on storage.objects
     bucket_id = 'uploads'
     and auth.role() = 'authenticated'
   );
+
