@@ -1,0 +1,8 @@
+# Supabase project config — used by CLI
+[api]
+project_id = "recjjjepzpfutaxzpgjx"
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
