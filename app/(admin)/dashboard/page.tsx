@@ -14,7 +14,13 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const now = new Date();
+  // Vercel runs in UTC. Compute today's date in Eastern time so month
+  // boundaries don't flip at 8 pm ET (= midnight UTC).
+  const _etDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date()); // "YYYY-MM-DD" in ET
+  const now = new Date(_etDate + "T12:00:00Z"); // noon UTC on the ET calendar date
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
     .toISOString().split("T")[0];
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
