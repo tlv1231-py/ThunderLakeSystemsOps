@@ -48,3 +48,14 @@ export function daysBetween(a: Date | string, b: Date | string): number {
 export function pluralize(count: number, singular: string, plural?: string): string {
   return count === 1 ? singular : (plural ?? singular + "s");
 }
+
+// ─── Project badge colors ──────────────────────────────────────────────────────
+// Deterministic hash: same name → same color slot across app + PDF.
+
+export function projectColorIndex(name: string): number {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  }
+  return hash % 8;
+}

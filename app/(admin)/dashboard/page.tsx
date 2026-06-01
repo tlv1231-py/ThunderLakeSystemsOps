@@ -1,6 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { formatCurrency } from "@/lib/utils";
-import { ActivityCalendar } from "@/components/admin/activity-calendar";
+import { CashflowTimeline } from "@/components/dashboard/CashflowTimeline";
+import { InvoiceCycleWidget, type DraftInvoice, type UnbilledClient, type MonthSummary, type HistoricalInvoice } from "@/components/admin/invoice-cycle-widget";
+import {
+  buildCashflowTimeline,
+  type CashflowInvoice,
+  type CashflowTimeEntry,
+} from "@/services/cashflow-service";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -9,41 +15,43 @@ export default async function DashboardPage() {
   } = await supabase.auth.getUser();
 
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
-  const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1).toISOString().split("T")[0];
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    .toISOString().split("T")[0];
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    .toISOString().split("T")[0];
 
   const [
     { data: invoices },
-    { data: uninvoicedTime },
-    { data: monthlyTime },
+    { data: draftInvoices },
+    { data: allUninvoicedTime },
     { data: monthlyExpenses },
-    { data: calendarTime },
-    { data: calendarEvents },
     { data: recentActivity },
   ] = await Promise.all([
+    // Non-draft, non-void invoices — for AR totals + cashflow + history
     supabase
       .from("invoices")
-      .select("id, status, balance_due, due_date, currency")
+      .select("id, invoice_number, status, issue_date, due_date, total_amount, balance_due, currency, client_id, clients(company_name)")
       .eq("user_id", user!.id)
       .neq("status", "void")
       .neq("status", "draft"),
-    // All uninvoiced billable hours (for KPI)
+
+    // Draft invoices — for the invoice cycle widget
+    supabase
+      .from("invoices")
+      .select("id, invoice_number, total_amount, client_id, clients(company_name)")
+      .eq("user_id", user!.id)
+      .eq("status", "draft"),
+
+    // All uninvoiced billable time — with client name for widget + rates for KPIs
     supabase
       .from("time_entries")
-      .select("hours_decimal")
+      .select(
+        "date_worked, hours_decimal, client_id, clients(company_name, default_hourly_rate), projects(hourly_rate_override)"
+      )
       .eq("user_id", user!.id)
       .eq("status", "uninvoiced")
       .eq("billable", true),
-    // This month's uninvoiced billable time × rate
-    supabase
-      .from("time_entries")
-      .select("hours_decimal, clients(default_hourly_rate), projects(hourly_rate_override)")
-      .eq("user_id", user!.id)
-      .eq("billable", true)
-      .eq("status", "uninvoiced")
-      .gte("date_worked", monthStart)
-      .lte("date_worked", monthEnd),
+
     // This month's uninvoiced billable expenses
     supabase
       .from("expense_entries")
@@ -53,19 +61,7 @@ export default async function DashboardPage() {
       .eq("status", "uninvoiced")
       .gte("date_incurred", monthStart)
       .lte("date_incurred", monthEnd),
-    // Calendar: billable time entries last 3 months
-    supabase
-      .from("time_entries")
-      .select("date_worked, hours_decimal")
-      .eq("user_id", user!.id)
-      .eq("billable", true)
-      .gte("date_worked", threeMonthsAgo),
-    // Calendar: activity events last 3 months
-    supabase
-      .from("activity_events")
-      .select("created_at, event_type")
-      .eq("user_id", user!.id)
-      .gte("created_at", threeMonthsAgo + "T00:00:00Z"),
+
     // Recent activity feed
     supabase
       .from("activity_events")
@@ -77,55 +73,146 @@ export default async function DashboardPage() {
 
   const today = now.toISOString().split("T")[0];
 
+  // ── AR totals ───────────────────────────────────────────────────────────────
   const outstanding = (invoices ?? []).reduce(
-    (sum, inv) => inv.status !== "paid" ? sum + (inv.balance_due ?? 0) : sum,
+    (sum, inv) => (inv.status !== "paid" ? sum + (inv.balance_due ?? 0) : sum),
     0
   );
-
   const overdue = (invoices ?? [])
     .filter((inv) => inv.status !== "paid" && inv.due_date < today)
     .reduce((sum, inv) => sum + (inv.balance_due ?? 0), 0);
 
-  // AR aging buckets
+  // ── AR aging ────────────────────────────────────────────────────────────────
   const buckets = { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90plus: 0 };
   for (const inv of invoices ?? []) {
     if (inv.status === "paid") continue;
-    const daysOverdue = Math.floor((Date.now() - new Date(inv.due_date).getTime()) / 86400000);
-    if (daysOverdue <= 0) buckets.current += inv.balance_due ?? 0;
-    else if (daysOverdue <= 30) buckets.d1_30 += inv.balance_due ?? 0;
-    else if (daysOverdue <= 60) buckets.d31_60 += inv.balance_due ?? 0;
-    else if (daysOverdue <= 90) buckets.d61_90 += inv.balance_due ?? 0;
-    else buckets.d90plus += inv.balance_due ?? 0;
+    const days = Math.floor((Date.now() - new Date(inv.due_date).getTime()) / 86400000);
+    if (days <= 0)       buckets.current += inv.balance_due ?? 0;
+    else if (days <= 30) buckets.d1_30   += inv.balance_due ?? 0;
+    else if (days <= 60) buckets.d31_60  += inv.balance_due ?? 0;
+    else if (days <= 90) buckets.d61_90  += inv.balance_due ?? 0;
+    else                 buckets.d90plus += inv.balance_due ?? 0;
   }
 
-  const uninvoicedHours = (uninvoicedTime ?? []).reduce((sum, e) => sum + e.hours_decimal, 0);
+  // ── KPI: uninvoiced hours ───────────────────────────────────────────────────
+  const uninvoicedHours = (allUninvoicedTime ?? []).reduce(
+    (sum, e) => sum + e.hours_decimal, 0
+  );
 
-  // This month's projected income
-  const monthlyTimeIncome = (monthlyTime ?? []).reduce((sum, e) => {
-    const rate =
-      (e.projects as { hourly_rate_override: number | null } | null)?.hourly_rate_override ??
-      (e.clients as { default_hourly_rate: number | null } | null)?.default_hourly_rate ??
-      0;
-    return sum + e.hours_decimal * rate;
-  }, 0);
-  const monthlyExpenseIncome = (monthlyExpenses ?? []).reduce((sum, e) => sum + e.amount, 0);
+  // ── KPI: this month's projected income ─────────────────────────────────────
+  const monthlyTimeIncome = (allUninvoicedTime ?? [])
+    .filter((e) => e.date_worked >= monthStart && e.date_worked <= monthEnd)
+    .reduce((sum, e) => {
+      const rate =
+        (e.projects as { hourly_rate_override: number | null } | null)?.hourly_rate_override ??
+        (e.clients  as { default_hourly_rate: number | null }  | null)?.default_hourly_rate ??
+        0;
+      return sum + e.hours_decimal * rate;
+    }, 0);
+  const monthlyExpenseIncome = (monthlyExpenses ?? []).reduce((s, e) => s + e.amount, 0);
   const projectedIncome = monthlyTimeIncome + monthlyExpenseIncome;
 
-  // Build calendar data structures
-  const hoursByDate: Record<string, number> = {};
-  for (const e of calendarTime ?? []) {
-    hoursByDate[e.date_worked] = (hoursByDate[e.date_worked] ?? 0) + e.hours_decimal;
+  // ── Invoice Cycle widget data ───────────────────────────────────────────────
+  const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const daysUntilMonthEnd = lastDayOfMonth.getDate() - now.getDate();
+  const monthEndLabel = lastDayOfMonth.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+  const monthLabel    = now.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+  const typedDrafts: DraftInvoice[] = (draftInvoices ?? []).map((inv) => ({
+    id:             inv.id,
+    invoice_number: inv.invoice_number,
+    total_amount:   inv.total_amount,
+    client_name:    (inv.clients as { company_name: string } | null)?.company_name ?? "—",
+  }));
+
+  // Aggregate unbilled time by client (all time, not just this month)
+  const unbilledMap = new Map<string, UnbilledClient>();
+  for (const e of allUninvoicedTime ?? []) {
+    const clientName = (e.clients as { company_name: string; default_hourly_rate: number | null } | null)?.company_name ?? "Unknown";
+    const rate =
+      (e.projects as { hourly_rate_override: number | null } | null)?.hourly_rate_override ??
+      (e.clients  as { default_hourly_rate: number | null }  | null)?.default_hourly_rate ??
+      0;
+    const existing = unbilledMap.get(e.client_id) ?? {
+      client_id: e.client_id,
+      client_name: clientName,
+      hours: 0,
+      amount: 0,
+    };
+    existing.hours  += e.hours_decimal;
+    existing.amount += e.hours_decimal * rate;
+    unbilledMap.set(e.client_id, existing);
+  }
+  const unbilledClients = Array.from(unbilledMap.values());
+
+  // ── Month history (last 12 months) ─────────────────────────────────────────
+  // Derived from already-loaded data — no extra queries needed.
+  const monthHistory: MonthSummary[] = [];
+  for (let i = 1; i <= 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const year  = d.getFullYear();
+    const month = d.getMonth();
+    const ms    = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+    const me    = new Date(year, month + 1, 0).toISOString().split("T")[0];
+    const label = d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+    // Non-draft, non-void invoices issued in this month
+    const histInvoices: HistoricalInvoice[] = (invoices ?? [])
+      .filter((inv) => inv.issue_date >= ms && inv.issue_date <= me)
+      .map((inv) => ({
+        id:             inv.id,
+        invoice_number: inv.invoice_number,
+        status:         inv.status,
+        total_amount:   inv.total_amount,
+        balance_due:    inv.balance_due ?? 0,
+        client_name:    (inv.clients as { company_name: string } | null)?.company_name ?? "—",
+      }));
+
+    // Still-uninvoiced billable time from this month, aggregated by client
+    const monthTimeMap = new Map<string, UnbilledClient>();
+    for (const e of (allUninvoicedTime ?? []).filter(
+      (e) => e.date_worked >= ms && e.date_worked <= me
+    )) {
+      const clientName =
+        (e.clients as { company_name: string; default_hourly_rate: number | null } | null)
+          ?.company_name ?? "Unknown";
+      const rate =
+        (e.projects as { hourly_rate_override: number | null } | null)?.hourly_rate_override ??
+        (e.clients  as { default_hourly_rate: number | null }  | null)?.default_hourly_rate ??
+        0;
+      const existing = monthTimeMap.get(e.client_id) ?? {
+        client_id: e.client_id, client_name: clientName, hours: 0, amount: 0,
+      };
+      existing.hours  += e.hours_decimal;
+      existing.amount += e.hours_decimal * rate;
+      monthTimeMap.set(e.client_id, existing);
+    }
+
+    monthHistory.push({
+      year, month, label,
+      invoices:       histInvoices,
+      unbilledClients: Array.from(monthTimeMap.values()),
+    });
   }
 
-  const eventsByDate: Record<string, string[]> = {};
-  for (const e of calendarEvents ?? []) {
-    const dateKey = e.created_at.split("T")[0];
-    if (!eventsByDate[dateKey]) eventsByDate[dateKey] = [];
-    eventsByDate[dateKey].push(formatEventLabel(e.event_type));
-  }
+  // ── Cashflow timeline ───────────────────────────────────────────────────────
+  // Include drafts in cashflow so they show as projected-ish (we use all invoices)
+  const allInvoicesForCashflow = [
+    ...(invoices ?? []),
+    ...(draftInvoices ?? []).map((d) => ({
+      ...d,
+      status: "draft", // will be filtered out by buildCashflowTimeline (only shows sent/paid/overdue)
+      due_date: today,
+    })),
+  ];
+
+  const cashflowWeeks = buildCashflowTimeline(
+    allInvoicesForCashflow as unknown as CashflowInvoice[],
+    (allUninvoicedTime ?? []) as CashflowTimeEntry[]
+  );
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-zinc-100">Dashboard</h1>
         <p className="mt-1 text-sm text-zinc-500">Accounts receivable overview</p>
@@ -138,14 +225,28 @@ export default async function DashboardPage() {
         <StatCard
           label={`Projected · ${now.toLocaleDateString("en-US", { month: "short" })}`}
           value={formatCurrency(projectedIncome)}
+          green
         />
-        <StatCard label="Uninvoiced Hours" value={`${uninvoicedHours.toFixed(1)} hrs`} />
+        <StatCard
+          label="Uninvoiced Hours"
+          value={`${uninvoicedHours.toFixed(1)} hrs`}
+        />
       </div>
 
-      {/* Calendar + AR Aging */}
+      {/* Invoice Cycle widget */}
+      <InvoiceCycleWidget
+        draftInvoices={typedDrafts}
+        unbilledClients={unbilledClients}
+        daysUntilMonthEnd={daysUntilMonthEnd}
+        monthEndLabel={monthEndLabel}
+        monthLabel={monthLabel}
+        monthHistory={monthHistory}
+      />
+
+      {/* Cashflow Timeline + AR Aging */}
       <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2">
-          <ActivityCalendar hoursByDate={hoursByDate} eventsByDate={eventsByDate} />
+          <CashflowTimeline weeks={cashflowWeeks} />
         </div>
 
         <div className="col-span-1">
@@ -155,11 +256,11 @@ export default async function DashboardPage() {
             </div>
             <div className="divide-y divide-zinc-800">
               {[
-                { label: "Current", value: buckets.current, red: false },
-                { label: "1–30 days", value: buckets.d1_30, red: true },
-                { label: "31–60 days", value: buckets.d31_60, red: true },
-                { label: "61–90 days", value: buckets.d61_90, red: true },
-                { label: "90+ days", value: buckets.d90plus, red: true },
+                { label: "Current",    value: buckets.current, red: false },
+                { label: "1–30 days",  value: buckets.d1_30,   red: true  },
+                { label: "31–60 days", value: buckets.d31_60,  red: true  },
+                { label: "61–90 days", value: buckets.d61_90,  red: true  },
+                { label: "90+ days",   value: buckets.d90plus, red: true  },
               ].map(({ label, value, red }) => (
                 <div key={label} className="flex items-center justify-between px-5 py-3">
                   <span className="text-sm text-zinc-400">{label}</span>
@@ -202,28 +303,22 @@ export default async function DashboardPage() {
   );
 }
 
+// ─── Sub-components ────────────────────────────────────────────────────────────
+
 function StatCard({
-  label,
-  value,
-  highlight = false,
+  label, value, highlight = false, green = false,
 }: {
-  label: string;
-  value: string;
-  highlight?: boolean;
+  label: string; value: string; highlight?: boolean; green?: boolean;
 }) {
+  const valueColor = highlight ? "text-red-400" : green ? "text-emerald-400" : "text-zinc-100";
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-4">
       <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">{label}</p>
-      <p className={`mt-2 text-2xl font-semibold ${highlight ? "text-red-400" : "text-zinc-100"}`}>
-        {value}
-      </p>
+      <p className={`mt-2 text-2xl font-semibold ${valueColor}`}>{value}</p>
     </div>
   );
 }
 
 function formatEventLabel(type: string): string {
-  return type
-    .split(".")
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-    .join(" ");
+  return type.split(".").map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(" ");
 }
