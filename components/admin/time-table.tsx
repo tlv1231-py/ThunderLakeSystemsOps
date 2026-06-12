@@ -588,7 +588,6 @@ function TimeEntryModal({
           </div>
 
           <div className="flex items-center gap-3">
-            <input type="hidden" name="billable" value="false" />
             <input
               id="billable"
               name="billable"
