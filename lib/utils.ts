@@ -21,7 +21,13 @@ export function formatDate(
   date: string | Date,
   locale = "en-US"
 ): string {
-  const d = typeof date === "string" ? new Date(date) : date;
+  // Date-only strings (YYYY-MM-DD) are parsed as midnight UTC by the JS engine,
+  // which shifts them back one day in negative-offset timezones (ET, CT, PT…).
+  // Appending T12:00:00 pins them to noon UTC — safe for any timezone on earth.
+  const d =
+    typeof date === "string"
+      ? new Date(date.length === 10 ? date + "T12:00:00" : date)
+      : date;
   return d.toLocaleDateString(locale, {
     year: "numeric",
     month: "short",
