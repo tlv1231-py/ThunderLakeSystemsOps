@@ -18,6 +18,7 @@ import {
   LogOut,
   ChevronsLeft,
   ChevronsRight,
+  Compass,
 } from "lucide-react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { createClient } from "@/lib/supabase/client";
@@ -31,6 +32,7 @@ const NAV_ITEMS = [
   { href: "/invoices",   label: "Invoices",  icon: FileText        },
   { href: "/payments",   label: "Payments",  icon: CreditCard      },
   { href: "/reports",    label: "Reports",   icon: BarChart3       },
+  { href: "/strategy",   label: "Strategy",  icon: Compass         },
 ];
 
 export function AdminNav() {
