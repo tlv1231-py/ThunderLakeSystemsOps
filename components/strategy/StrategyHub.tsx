@@ -95,8 +95,10 @@ function buildThemeCSS(prefs: StrategyPrefs): string {
   let css = "";
 
   if (light) {
+    // bg-zinc-950 is on the layout wrapper (outside sh-root), so target globally
     css += `
-      .sh-root .bg-zinc-950{background-color:#f1f5f9!important}
+      .bg-zinc-950{background-color:#f1f5f9!important}
+      .sh-root{background-color:#f1f5f9!important}
       .sh-root .bg-zinc-900{background-color:#ffffff!important}
       .sh-root .bg-zinc-800{background-color:#f1f5f9!important}
       .sh-root .bg-zinc-700{background-color:#e2e8f0!important}
@@ -125,7 +127,8 @@ function buildThemeCSS(prefs: StrategyPrefs): string {
   }
 
   if (bg) {
-    css += `.sh-root .bg-zinc-950{background-color:${bg}!important}`;
+    // Same pattern: target layout wrapper globally + sh-root itself
+    css += `.bg-zinc-950{background-color:${bg}!important}.sh-root{background-color:${bg}!important}`;
   }
 
   if (text) {
