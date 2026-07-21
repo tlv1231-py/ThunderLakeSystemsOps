@@ -710,7 +710,7 @@ function NoteEditor({
 }) {
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
-  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   function scheduleAutosave(updates: Partial<StrategyNote>) {
     clearTimeout(saveTimer.current);
