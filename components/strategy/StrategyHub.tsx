@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2, X, Palette } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -48,6 +48,67 @@ export type StrategyImage = {
   created_at: string;
 };
 
+export type StrategyPrefs = {
+  user_id: string;
+  theme: "dark" | "light";
+  bg_color: string | null;
+  text_color: string | null;
+};
+
+// ── Theme CSS injection ────────────────────────────────────────────────────────
+
+function buildThemeCSS(prefs: StrategyPrefs): string {
+  const light = prefs.theme === "light";
+  const bg    = prefs.bg_color;
+  const text  = prefs.text_color;
+  let css = "";
+
+  if (light) {
+    css += `
+      .sh-root .bg-zinc-950{background-color:#f1f5f9!important}
+      .sh-root .bg-zinc-900{background-color:#ffffff!important}
+      .sh-root .bg-zinc-800{background-color:#f1f5f9!important}
+      .sh-root .bg-zinc-700{background-color:#e2e8f0!important}
+      .sh-root .bg-zinc-100{background-color:#1e293b!important}
+      .sh-root .hover\\:bg-zinc-800:hover{background-color:#e2e8f0!important}
+      .sh-root .hover\\:bg-zinc-800\\/60:hover{background-color:rgba(226,232,240,.6)!important}
+      .sh-root .hover\\:bg-zinc-700:hover{background-color:#cbd5e1!important}
+      .sh-root .hover\\:bg-zinc-600:hover{background-color:#94a3b8!important}
+      .sh-root .bg-zinc-800\\/50{background-color:rgba(241,245,249,.5)!important}
+      .sh-root .bg-zinc-800\\/60{background-color:rgba(241,245,249,.6)!important}
+      .sh-root .text-zinc-100{color:#0f172a!important}
+      .sh-root .text-zinc-200{color:#0f172a!important}
+      .sh-root .text-zinc-300{color:#334155!important}
+      .sh-root .text-zinc-400{color:#475569!important}
+      .sh-root .text-zinc-500{color:#64748b!important}
+      .sh-root .text-zinc-600{color:#94a3b8!important}
+      .sh-root .text-zinc-700{color:#cbd5e1!important}
+      .sh-root .text-zinc-900{color:#f8fafc!important}
+      .sh-root .border-zinc-800{border-color:#e2e8f0!important}
+      .sh-root .border-zinc-700{border-color:#cbd5e1!important}
+      .sh-root .divide-zinc-800>*+*{border-color:#e2e8f0!important}
+      .sh-root .placeholder\\:text-zinc-600::placeholder{color:#94a3b8!important}
+      .sh-root textarea,.sh-root select,.sh-root input[type=text],.sh-root input[type=email]{color:#0f172a!important}
+      .sh-root select{background-color:#f1f5f9!important}
+    `;
+  }
+
+  if (bg) {
+    css += `.sh-root .bg-zinc-950{background-color:${bg}!important}`;
+  }
+
+  if (text) {
+    css += `
+      .sh-root .text-zinc-100{color:${text}!important}
+      .sh-root .text-zinc-200{color:${text}!important}
+      .sh-root .text-zinc-300{color:${text}cc!important}
+      .sh-root textarea,.sh-root input[type=text],.sh-root input[type=email]{color:${text}!important}
+    `;
+  }
+
+  return css;
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const CARD_CATEGORIES = [
@@ -82,26 +143,41 @@ function displayName(email: string) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
+const DEFAULT_PREFS: StrategyPrefs = { user_id: "", theme: "dark", bg_color: null, text_color: null };
+
 export function StrategyHub({
   initialCards,
   initialTasks,
   initialNotes,
   initialImages,
+  initialPrefs,
   userEmail,
+  userId,
 }: {
   initialCards: StrategyCard[];
   initialTasks: StrategyTask[];
   initialNotes: StrategyNote[];
   initialImages: StrategyImage[];
+  initialPrefs: StrategyPrefs | null;
   userEmail: string;
+  userId: string;
 }) {
   const [tab, setTab] = useState<"ideas" | "tasks" | "notes" | "moodboard">("ideas");
   const [cards, setCards] = useState<StrategyCard[]>(initialCards);
   const [tasks, setTasks] = useState<StrategyTask[]>(initialTasks);
   const [notes, setNotes] = useState<StrategyNote[]>(initialNotes);
   const [images, setImages] = useState<StrategyImage[]>(initialImages);
+  const [prefs, setPrefs] = useState<StrategyPrefs>(initialPrefs ?? { ...DEFAULT_PREFS, user_id: userId });
+  const [themeOpen, setThemeOpen] = useState(false);
   const supabase = createClient();
   const db = supabase as unknown as SupabaseClient;
+
+  const themeCSS = useMemo(() => buildThemeCSS(prefs), [prefs]);
+
+  const savePrefs = useCallback(async (next: StrategyPrefs) => {
+    setPrefs(next);
+    await db.from("strategy_preferences").upsert({ ...next, user_id: userId });
+  }, [db, userId]);
 
   // ── Real-time subscriptions ───────────────────────────────────────────────
   useEffect(() => {
@@ -209,11 +285,31 @@ export function StrategyHub({
   }
 
   return (
-    <div className="flex flex-col" style={{ minHeight: "calc(100vh - 10rem)" }}>
+    <div className="sh-root flex flex-col" style={{ minHeight: "calc(100vh - 10rem)" }}>
+      <style dangerouslySetInnerHTML={{ __html: themeCSS }} />
+
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-zinc-100">Strategy Hub</h1>
-        <p className="mt-1 text-sm text-zinc-500">Shared workspace · Thunder Lake</p>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-zinc-100">Strategy Hub</h1>
+          <p className="mt-1 text-sm text-zinc-500">Shared workspace · Thunder Lake</p>
+        </div>
+        <div className="relative">
+          <button
+            onClick={() => setThemeOpen((o) => !o)}
+            className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+            title="Customize theme"
+          >
+            <Palette className="h-4 w-4" />
+          </button>
+          {themeOpen && (
+            <ThemePanel
+              prefs={prefs}
+              onChange={savePrefs}
+              onClose={() => setThemeOpen(false)}
+            />
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -961,6 +1057,152 @@ function ImageCard({
           <p className="text-[10px] text-zinc-700 mt-0.5">{displayName(image.author_email)}</p>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Theme Panel ───────────────────────────────────────────────────────────────
+
+const BG_PRESETS = [
+  { label: "Default", value: null },
+  { label: "Midnight", value: "#0a0f1e" },
+  { label: "Forest",   value: "#0d1a0f" },
+  { label: "Plum",     value: "#1a0d2e" },
+  { label: "Slate",    value: "#0f172a" },
+  { label: "Sand",     value: "#faf7f2" },
+];
+
+const TEXT_PRESETS = [
+  { label: "Default", value: null },
+  { label: "White",   value: "#f8fafc" },
+  { label: "Cream",   value: "#fef9ef" },
+  { label: "Mint",    value: "#d1fae5" },
+  { label: "Sky",     value: "#bae6fd" },
+  { label: "Black",   value: "#0f172a" },
+];
+
+function ThemePanel({
+  prefs, onChange, onClose,
+}: {
+  prefs: StrategyPrefs;
+  onChange: (next: StrategyPrefs) => void;
+  onClose: () => void;
+}) {
+  function set(patch: Partial<StrategyPrefs>) {
+    onChange({ ...prefs, ...patch });
+  }
+
+  return (
+    <div className="absolute right-0 top-10 z-50 w-64 rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl p-4 space-y-5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Theme</span>
+        <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 transition-colors">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {/* Light / Dark */}
+      <div>
+        <p className="text-xs text-zinc-500 mb-2">Mode</p>
+        <div className="flex gap-2">
+          {(["dark", "light"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => set({ theme: t })}
+              className={cn(
+                "flex-1 py-1.5 rounded-lg text-xs font-medium capitalize transition-colors",
+                prefs.theme === t
+                  ? "bg-zinc-100 text-zinc-900"
+                  : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+              )}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Background color */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs text-zinc-500">Background</p>
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <span className="text-xs text-zinc-600">Custom</span>
+            <div
+              className="h-5 w-5 rounded border border-zinc-600 overflow-hidden"
+              style={{ backgroundColor: prefs.bg_color ?? "#09090b" }}
+            >
+              <input
+                type="color"
+                value={prefs.bg_color ?? "#09090b"}
+                onChange={(e) => set({ bg_color: e.target.value })}
+                className="opacity-0 w-full h-full cursor-pointer"
+              />
+            </div>
+          </label>
+        </div>
+        <div className="flex gap-1.5 flex-wrap">
+          {BG_PRESETS.map(({ label, value }) => (
+            <button
+              key={label}
+              onClick={() => set({ bg_color: value })}
+              title={label}
+              className={cn(
+                "h-6 w-6 rounded-md border transition-all",
+                prefs.bg_color === value
+                  ? "border-zinc-300 scale-110"
+                  : "border-zinc-700 hover:border-zinc-500"
+              )}
+              style={{ backgroundColor: value ?? "#09090b" }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Text color */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs text-zinc-500">Text</p>
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <span className="text-xs text-zinc-600">Custom</span>
+            <div
+              className="h-5 w-5 rounded border border-zinc-600 overflow-hidden"
+              style={{ backgroundColor: prefs.text_color ?? "#f4f4f5" }}
+            >
+              <input
+                type="color"
+                value={prefs.text_color ?? "#f4f4f5"}
+                onChange={(e) => set({ text_color: e.target.value })}
+                className="opacity-0 w-full h-full cursor-pointer"
+              />
+            </div>
+          </label>
+        </div>
+        <div className="flex gap-1.5 flex-wrap">
+          {TEXT_PRESETS.map(({ label, value }) => (
+            <button
+              key={label}
+              onClick={() => set({ text_color: value })}
+              title={label}
+              className={cn(
+                "h-6 w-6 rounded-md border transition-all",
+                prefs.text_color === value
+                  ? "border-zinc-300 scale-110"
+                  : "border-zinc-700 hover:border-zinc-500"
+              )}
+              style={{ backgroundColor: value ?? "#f4f4f5" }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Reset */}
+      <button
+        onClick={() => set({ theme: "dark", bg_color: null, text_color: null })}
+        className="w-full py-1.5 rounded-lg text-xs text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+      >
+        Reset to default
+      </button>
     </div>
   );
 }
