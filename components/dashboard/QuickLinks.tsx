@@ -1,103 +1,80 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Plus, X, ExternalLink, Link2, Key, Eye, EyeOff, Check } from "lucide-react";
+import { Plus, X, Check, Copy, ExternalLink } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
-type QuickLink = {
+type Item = {
   id: string;
-  url: string;
   label: string;
-  link_username: string | null;
-  link_password: string | null;
+  url: string;
   created_at: string;
 };
 
-type Form = { url: string; label: string; link_username: string; link_password: string };
-const BLANK: Form = { url: "", label: "", link_username: "", link_password: "" };
-
-function hostOf(raw: string) {
-  try { return new URL(raw).hostname.replace(/^www\./, ""); } catch { return raw; }
+function looksLikeUrl(s: string) {
+  return /^https?:\/\//i.test(s) || /^www\./i.test(s);
 }
-function normalize(url: string) {
-  return /^https?:\/\//.test(url) ? url : `https://${url}`;
+function toHref(s: string) {
+  return /^https?:\/\//i.test(s) ? s : `https://${s}`;
 }
 
 export function QuickLinks({ userId }: { userId: string }) {
-  const [links, setLinks]         = useState<QuickLink[]>([]);
-  const [adding, setAdding]       = useState(false);
-  const [form, setForm]           = useState<Form>(BLANK);
-  const [showAddPw, setShowAddPw] = useState(false);
-  const [editId, setEditId]       = useState<string | null>(null);
-  const [editForm, setEditForm]   = useState<Form>(BLANK);
-  const [showEditPw, setShowEditPw] = useState(false);
-  const [copied, setCopied]       = useState<string | null>(null);
-  const urlRef = useRef<HTMLInputElement>(null);
+  const [items, setItems]       = useState<Item[]>([]);
+  const [adding, setAdding]     = useState(false);
+  const [newName, setNewName]   = useState("");
+  const [newValue, setNewValue] = useState("");
+  const [editId, setEditId]     = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editValue, setEditValue] = useState("");
+  const [copied, setCopied]     = useState<string | null>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
   const db = supabase as any;
 
-  // ── Load + realtime ────────────────────────────────────────────────────────
   useEffect(() => {
     db.from("dashboard_links")
-      .select("*")
+      .select("id, label, url, created_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
-      .then(({ data }: any) => { if (data) setLinks(data); });
+      .then(({ data }: any) => { if (data) setItems(data); });
 
-    const ch = (supabase as any)
+    const ch = db
       .channel("dashboard-links")
       .on("postgres_changes", {
         event: "*", schema: "public", table: "dashboard_links",
         filter: `user_id=eq.${userId}`,
       }, (p: any) => {
-        if (p.eventType === "INSERT")      setLinks((s) => s.find((l) => l.id === p.new.id) ? s : [p.new, ...s]);
-        else if (p.eventType === "UPDATE") setLinks((s) => s.map((l) => l.id === p.new.id ? p.new : l));
-        else if (p.eventType === "DELETE") setLinks((s) => s.filter((l) => l.id !== p.old.id));
+        if (p.eventType === "INSERT")      setItems((s) => s.find((i) => i.id === p.new.id) ? s : [p.new, ...s]);
+        else if (p.eventType === "UPDATE") setItems((s) => s.map((i) => i.id === p.new.id ? p.new : i));
+        else if (p.eventType === "DELETE") setItems((s) => s.filter((i) => i.id !== p.old.id));
       })
       .subscribe();
 
-    return () => { (supabase as any).removeChannel(ch); };
+    return () => { db.removeChannel(ch); };
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── CRUD ───────────────────────────────────────────────────────────────────
   async function add() {
-    const raw = form.url.trim();
-    if (!raw) return;
-    const url   = normalize(raw);
-    const label = form.label.trim() || hostOf(url);
-    const id    = crypto.randomUUID();
-    const now   = new Date().toISOString();
-    const link: QuickLink = {
-      id, url, label, created_at: now,
-      link_username: form.link_username.trim() || null,
-      link_password: form.link_password.trim() || null,
-    };
-    setLinks((s) => [link, ...s]);
-    setForm(BLANK); setAdding(false); setShowAddPw(false);
-    await db.from("dashboard_links").insert({ ...link, user_id: userId });
+    if (!newName.trim()) return;
+    const id  = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const item: Item = { id, label: newName.trim(), url: newValue.trim(), created_at: now };
+    setItems((s) => [item, ...s]);
+    setAdding(false); setNewName(""); setNewValue("");
+    await db.from("dashboard_links").insert({ ...item, user_id: userId });
   }
 
   async function remove(id: string) {
-    setLinks((s) => s.filter((l) => l.id !== id));
+    setItems((s) => s.filter((i) => i.id !== id));
     await db.from("dashboard_links").delete().eq("id", id);
   }
 
-  async function saveEdit(id: string) {
-    const url   = normalize(editForm.url.trim() || links.find((l) => l.id === id)!.url);
-    const label = editForm.label.trim() || hostOf(url);
-    const patch = {
-      url, label,
-      link_username: editForm.link_username.trim() || null,
-      link_password: editForm.link_password.trim() || null,
-    };
-    setLinks((s) => s.map((l) => l.id === id ? { ...l, ...patch } : l));
-    setEditId(null); setEditForm(BLANK); setShowEditPw(false);
+  async function saveEdit() {
+    if (!editId) return;
+    const patch = { label: editName.trim(), url: editValue.trim() };
+    setItems((s) => s.map((i) => i.id === editId ? { ...i, ...patch } : i));
+    const id = editId;
+    setEditId(null); setEditName(""); setEditValue("");
     await db.from("dashboard_links").update(patch).eq("id", id);
-  }
-
-  function startEdit(link: QuickLink) {
-    setEditId(link.id);
-    setEditForm({ url: link.url, label: link.label, link_username: link.link_username ?? "", link_password: link.link_password ?? "" });
   }
 
   function copy(text: string, key: string) {
@@ -108,16 +85,23 @@ export function QuickLinks({ userId }: { userId: string }) {
 
   function startAdding() {
     setAdding(true);
-    setTimeout(() => urlRef.current?.focus(), 0);
+    setEditId(null);
+    setTimeout(() => nameRef.current?.focus(), 0);
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  function startEdit(item: Item) {
+    setEditId(item.id);
+    setEditName(item.label);
+    setEditValue(item.url);
+    setAdding(false);
+  }
+
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 shrink-0">
         <h2 className="text-sm font-medium text-zinc-100">Quick Links</h2>
-        <button onClick={startAdding} className="p-1 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors" title="Add link">
+        <button onClick={startAdding} className="p-1 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors" title="Add field">
           <Plus className="h-4 w-4" />
         </button>
       </div>
@@ -125,114 +109,95 @@ export function QuickLinks({ userId }: { userId: string }) {
       {/* Add form */}
       {adding && (
         <div className="px-4 py-3 border-b border-zinc-800 space-y-2 shrink-0">
-          <input ref={urlRef} value={form.url} onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
-            onKeyDown={(e) => { if (e.key === "Enter") add(); if (e.key === "Escape") { setAdding(false); setForm(BLANK); setShowAddPw(false); } }}
-            placeholder="Paste URL…"
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600" />
-          <input value={form.label} onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
-            onKeyDown={(e) => { if (e.key === "Enter") add(); }}
-            placeholder="Label (optional)"
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600" />
-          <input value={form.link_username} onChange={(e) => setForm((f) => ({ ...f, link_username: e.target.value }))}
-            onKeyDown={(e) => { if (e.key === "Enter") add(); }}
-            placeholder="Username (optional)"
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600" />
-          <div className="relative">
-            <input value={form.link_password} onChange={(e) => setForm((f) => ({ ...f, link_password: e.target.value }))}
-              onKeyDown={(e) => { if (e.key === "Enter") add(); }}
-              type={showAddPw ? "text" : "password"} placeholder="Password (optional)"
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 pr-9 text-sm text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600" />
-            <button onClick={() => setShowAddPw((v) => !v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors">
-              {showAddPw ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-            </button>
-          </div>
+          <input
+            ref={nameRef}
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") add();
+              if (e.key === "Escape") { setAdding(false); setNewName(""); setNewValue(""); }
+            }}
+            placeholder="Name"
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600"
+          />
+          <input
+            value={newValue}
+            onChange={(e) => setNewValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") add();
+              if (e.key === "Escape") { setAdding(false); setNewName(""); setNewValue(""); }
+            }}
+            placeholder="Value"
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600"
+          />
           <div className="flex gap-2">
             <button onClick={add} className="px-3 py-1.5 rounded-lg bg-zinc-700 text-xs text-zinc-200 hover:bg-zinc-600 transition-colors">Save</button>
-            <button onClick={() => { setAdding(false); setForm(BLANK); setShowAddPw(false); }} className="px-3 py-1.5 rounded-lg text-xs text-zinc-500 hover:text-zinc-300 transition-colors">Cancel</button>
+            <button onClick={() => { setAdding(false); setNewName(""); setNewValue(""); }} className="px-3 py-1.5 rounded-lg text-xs text-zinc-500 hover:text-zinc-300 transition-colors">Cancel</button>
           </div>
         </div>
       )}
 
       {/* List */}
       <div className="flex-1 overflow-y-auto min-h-0 divide-y divide-zinc-800">
-        {links.length === 0 && !adding && (
-          <div className="flex flex-col items-center justify-center py-10 px-4 gap-2 text-center">
-            <Link2 className="h-5 w-5 text-zinc-700" />
-            <p className="text-xs text-zinc-600">No links yet — add one above</p>
+        {items.length === 0 && !adding && (
+          <div className="flex items-center justify-center py-10 px-4">
+            <p className="text-xs text-zinc-600">No fields yet — click + to add</p>
           </div>
         )}
-        {links.map((link) =>
-          editId === link.id ? (
-            /* Edit form */
-            <div key={link.id} className="px-4 py-3 space-y-2">
-              <input value={editForm.url} onChange={(e) => setEditForm((f) => ({ ...f, url: e.target.value }))}
-                placeholder="URL"
-                className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600" />
-              <input value={editForm.label} onChange={(e) => setEditForm((f) => ({ ...f, label: e.target.value }))}
-                placeholder="Label"
-                className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600" />
-              <input value={editForm.link_username} onChange={(e) => setEditForm((f) => ({ ...f, link_username: e.target.value }))}
-                placeholder="Username"
-                className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600" />
-              <div className="relative">
-                <input value={editForm.link_password} onChange={(e) => setEditForm((f) => ({ ...f, link_password: e.target.value }))}
-                  type={showEditPw ? "text" : "password"} placeholder="Password"
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 pr-9 text-sm text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600" />
-                <button onClick={() => setShowEditPw((v) => !v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors">
-                  {showEditPw ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                </button>
-              </div>
+        {items.map((item) =>
+          editId === item.id ? (
+            <div key={item.id} className="px-4 py-3 space-y-2">
+              <input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Name"
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600"
+              />
+              <input
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") { setEditId(null); } }}
+                placeholder="Value"
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600"
+              />
               <div className="flex gap-2">
-                <button onClick={() => saveEdit(link.id)} className="px-3 py-1.5 rounded-lg bg-zinc-700 text-xs text-zinc-200 hover:bg-zinc-600 transition-colors">Save</button>
-                <button onClick={() => { setEditId(null); setEditForm(BLANK); setShowEditPw(false); }} className="px-3 py-1.5 rounded-lg text-xs text-zinc-500 hover:text-zinc-300 transition-colors">Cancel</button>
+                <button onClick={saveEdit} className="px-3 py-1.5 rounded-lg bg-zinc-700 text-xs text-zinc-200 hover:bg-zinc-600 transition-colors">Save</button>
+                <button onClick={() => { setEditId(null); setEditName(""); setEditValue(""); }} className="px-3 py-1.5 rounded-lg text-xs text-zinc-500 hover:text-zinc-300 transition-colors">Cancel</button>
               </div>
             </div>
           ) : (
-            /* Normal row */
-            <div key={link.id} className="group flex items-center gap-2.5 px-4 py-3">
-              <img src={`https://www.google.com/s2/favicons?sz=16&domain=${link.url}`} alt="" width={16} height={16}
-                className="h-4 w-4 shrink-0 opacity-70"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+            <div key={item.id} className="group flex items-center gap-3 px-4 py-3">
               <div className="flex-1 min-w-0">
-                <a href={link.url} target="_blank" rel="noopener noreferrer"
-                  className="block text-sm text-zinc-300 hover:text-zinc-100 truncate transition-colors" title={link.url}>
-                  {link.label}
-                </a>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <p className="text-[10px] text-zinc-600 truncate">{hostOf(link.url)}</p>
-                  {link.link_username && (
-                    <p className="text-[10px] text-zinc-600 truncate">· {link.link_username}</p>
-                  )}
-                  {link.link_password && (
-                    <p className="text-[10px] text-zinc-700">· ••••</p>
-                  )}
-                </div>
+                <p className="text-[10px] font-medium text-zinc-500 mb-0.5 uppercase tracking-wide">{item.label}</p>
+                {looksLikeUrl(item.url) ? (
+                  <a href={toHref(item.url)} target="_blank" rel="noopener noreferrer"
+                    className="text-sm text-zinc-300 hover:text-zinc-100 truncate block transition-colors">
+                    {item.url}
+                  </a>
+                ) : (
+                  <p className="text-sm text-zinc-300 truncate">{item.url || <span className="text-zinc-600 italic">—</span>}</p>
+                )}
               </div>
-              {/* Hover actions */}
               <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                {link.link_username && (
-                  <button onClick={() => copy(link.link_username!, `u-${link.id}`)} title="Copy username"
-                    className="flex items-center justify-center h-6 w-6 rounded text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors text-[10px] font-bold">
-                    {copied === `u-${link.id}` ? <Check className="h-3 w-3 text-emerald-400" /> : "U"}
-                  </button>
-                )}
-                {link.link_password && (
-                  <button onClick={() => copy(link.link_password!, `p-${link.id}`)} title="Copy password"
+                {item.url && (
+                  <button onClick={() => copy(item.url, item.id)} title="Copy value"
                     className="flex items-center justify-center h-6 w-6 rounded text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors">
-                    {copied === `p-${link.id}` ? <Check className="h-3 w-3 text-emerald-400" /> : <Key className="h-3 w-3" />}
+                    {copied === item.id ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
                   </button>
                 )}
-                <a href={link.url} target="_blank" rel="noopener noreferrer" title="Open"
-                  className="flex items-center justify-center h-6 w-6 rounded text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors">
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-                <button onClick={() => startEdit(link)} title="Edit"
+                {looksLikeUrl(item.url) && (
+                  <a href={toHref(item.url)} target="_blank" rel="noopener noreferrer" title="Open"
+                    className="flex items-center justify-center h-6 w-6 rounded text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors">
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+                <button onClick={() => startEdit(item)} title="Edit"
                   className="flex items-center justify-center h-6 w-6 rounded text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 transition-colors">
                   <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
                     <path d="M8 2l2 2-6 6H2v-2l6-6z" />
                   </svg>
                 </button>
-                <button onClick={() => remove(link.id)} title="Remove"
+                <button onClick={() => remove(item.id)} title="Remove"
                   className="flex items-center justify-center h-6 w-6 rounded text-zinc-600 hover:text-red-400 hover:bg-zinc-800 transition-colors">
                   <X className="h-3 w-3" />
                 </button>
