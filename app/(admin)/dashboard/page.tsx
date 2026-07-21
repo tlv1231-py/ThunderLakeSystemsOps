@@ -7,6 +7,7 @@ import {
   type CashflowInvoice,
   type CashflowTimeEntry,
 } from "@/services/cashflow-service";
+import { QuickLinks } from "@/components/dashboard/QuickLinks";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -280,30 +281,33 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Activity feed */}
-      <div>
-        <h2 className="mb-4 text-sm font-medium text-zinc-400">Recent Activity</h2>
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800">
-          {(recentActivity ?? []).length === 0 && (
-            <p className="px-4 py-6 text-sm text-zinc-500 text-center">No activity yet</p>
-          )}
-          {(recentActivity ?? []).map((event) => (
-            <div key={event.id} className="flex items-center gap-3 px-4 py-3">
-              <div className="h-1.5 w-1.5 rounded-full bg-zinc-600 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-zinc-300 truncate">
-                  {formatEventLabel(event.event_type)}
-                  {(event.clients as { company_name: string } | null)?.company_name
-                    ? ` — ${(event.clients as { company_name: string }).company_name}`
-                    : ""}
-                </p>
+      {/* Activity feed + Quick Links */}
+      <div className="grid grid-cols-2 gap-6 items-start">
+        <div>
+          <h2 className="mb-4 text-sm font-medium text-zinc-400">Recent Activity</h2>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800">
+            {(recentActivity ?? []).length === 0 && (
+              <p className="px-4 py-6 text-sm text-zinc-500 text-center">No activity yet</p>
+            )}
+            {(recentActivity ?? []).map((event) => (
+              <div key={event.id} className="flex items-center gap-3 px-4 py-3">
+                <div className="h-1.5 w-1.5 rounded-full bg-zinc-600 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-zinc-300 truncate">
+                    {formatEventLabel(event.event_type)}
+                    {(event.clients as { company_name: string } | null)?.company_name
+                      ? ` — ${(event.clients as { company_name: string }).company_name}`
+                      : ""}
+                  </p>
+                </div>
+                <time className="text-xs text-zinc-500 flex-shrink-0">
+                  {new Date(event.created_at).toLocaleDateString()}
+                </time>
               </div>
-              <time className="text-xs text-zinc-500 flex-shrink-0">
-                {new Date(event.created_at).toLocaleDateString()}
-              </time>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
+        <QuickLinks />
       </div>
     </div>
   );
