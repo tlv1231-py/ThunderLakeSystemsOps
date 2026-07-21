@@ -6,6 +6,16 @@ export const ADMIN_EMAIL = "tlevander.py@gmail.com";
 // is appended/stripped automatically and never shown to them.
 export const TEAM_EMAIL_DOMAIN = "thunderlake.team";
 
+export function usernameToEmail(username: string) {
+  return `${username.toLowerCase()}@${TEAM_EMAIL_DOMAIN}`;
+}
+
+export function emailToUsername(email: string) {
+  return email.endsWith(`@${TEAM_EMAIL_DOMAIN}`)
+    ? email.slice(0, -(TEAM_EMAIL_DOMAIN.length + 1))
+    : email;
+}
+
 export const CURRENCIES = [
   { code: "USD", label: "US Dollar" },
   { code: "EUR", label: "Euro" },

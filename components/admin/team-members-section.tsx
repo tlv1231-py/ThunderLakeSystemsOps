@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createTeamMemberAction, deleteTeamMemberAction, emailToUsername } from "@/app/actions/team";
+import { createTeamMemberAction, deleteTeamMemberAction } from "@/app/actions/team";
+import { emailToUsername } from "@/lib/constants";
 import { Trash2, Copy, Check } from "lucide-react";
 
 type Member = { id: string; email: string; created_at: string };

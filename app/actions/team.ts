@@ -3,17 +3,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { ADMIN_EMAIL, TEAM_EMAIL_DOMAIN } from "@/lib/constants";
-
-export function usernameToEmail(username: string) {
-  return `${username.toLowerCase()}@${TEAM_EMAIL_DOMAIN}`;
-}
-
-export function emailToUsername(email: string) {
-  return email.endsWith(`@${TEAM_EMAIL_DOMAIN}`)
-    ? email.slice(0, -(TEAM_EMAIL_DOMAIN.length + 1))
-    : email;
-}
+import { ADMIN_EMAIL, usernameToEmail, emailToUsername } from "@/lib/constants";
 
 async function requireAdmin() {
   const supabase = await createClient();
