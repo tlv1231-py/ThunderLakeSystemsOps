@@ -425,7 +425,17 @@ export function StrategyHub({
         <div className="mb-6 flex items-start justify-between">
           <div>
             <h1 className="text-xl font-semibold text-zinc-100">Strategy Hub</h1>
-            <p className="mt-1 text-sm text-zinc-500">Shared workspace · Thunder Lake</p>
+            <p className="mt-1 text-sm text-zinc-500">
+              Shared workspace ·{" "}
+              <a
+                href="https://tlv1231-py.github.io/ThunderLakeSystems/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-zinc-400 hover:text-zinc-200 transition-colors underline underline-offset-2"
+              >
+                Thunder Lake
+              </a>
+            </p>
           </div>
           {!viewAsUserId && (
             <div className="relative">
