@@ -3,7 +3,17 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { ADMIN_EMAIL } from "@/lib/constants";
+import { ADMIN_EMAIL, TEAM_EMAIL_DOMAIN } from "@/lib/constants";
+
+export function usernameToEmail(username: string) {
+  return `${username.toLowerCase()}@${TEAM_EMAIL_DOMAIN}`;
+}
+
+export function emailToUsername(email: string) {
+  return email.endsWith(`@${TEAM_EMAIL_DOMAIN}`)
+    ? email.slice(0, -(TEAM_EMAIL_DOMAIN.length + 1))
+    : email;
+}
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -23,15 +33,16 @@ export async function listTeamMembersAction() {
 
 export async function createTeamMemberAction(formData: FormData) {
   await requireAdmin();
-  const email    = (formData.get("email")    as string).trim().toLowerCase();
+  const username = (formData.get("username") as string).trim().toLowerCase().replace(/\s+/g, "");
   const password = (formData.get("password") as string).trim();
 
-  if (!email || !password) throw new Error("Email and password are required.");
-  if (password.length < 6)  throw new Error("Password must be at least 6 characters.");
+  if (!username || !password) throw new Error("Username and password are required.");
+  if (password.length < 6)    throw new Error("Password must be at least 6 characters.");
+  if (!/^[a-z0-9_-]+$/.test(username)) throw new Error("Username can only contain letters, numbers, - and _.");
 
   const admin = createAdminClient();
   const { error } = await admin.auth.admin.createUser({
-    email,
+    email: usernameToEmail(username),
     password,
     email_confirm: true,
   });

@@ -1,6 +1,11 @@
 // The one account that owns the invoicing workspace
 export const ADMIN_EMAIL = "tlevander.py@gmail.com";
 
+// Fake domain used to satisfy Supabase's email requirement for team accounts.
+// Team members log in with just their username — the @thunderlake.team suffix
+// is appended/stripped automatically and never shown to them.
+export const TEAM_EMAIL_DOMAIN = "thunderlake.team";
+
 export const CURRENCIES = [
   { code: "USD", label: "US Dollar" },
   { code: "EUR", label: "Euro" },

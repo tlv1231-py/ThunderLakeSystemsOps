@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { ADMIN_EMAIL } from "@/lib/constants";
+import { ADMIN_EMAIL, TEAM_EMAIL_DOMAIN } from "@/lib/constants";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
@@ -19,7 +19,9 @@ export function LoginForm() {
     setLoading(true);
     setError(null);
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    // Plain username → convert to fake email; real email → use as-is
+    const resolvedEmail = email.includes("@") ? email : `${email.toLowerCase()}@${TEAM_EMAIL_DOMAIN}`;
+    const { data, error } = await supabase.auth.signInWithPassword({ email: resolvedEmail, password });
 
     setLoading(false);
 
@@ -37,17 +39,17 @@ export function LoginForm() {
       <div className="space-y-4">
         <div>
           <label htmlFor="email" className="block text-sm font-medium text-zinc-300">
-            Email
+            Username
           </label>
           <input
             id="email"
-            type="email"
-            autoComplete="email"
+            type="text"
+            autoComplete="username"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="mt-1.5 block w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
-            placeholder="you@example.com"
+            placeholder="username or email"
           />
         </div>
 
