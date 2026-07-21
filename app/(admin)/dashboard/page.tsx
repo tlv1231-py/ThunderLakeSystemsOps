@@ -307,7 +307,7 @@ export default async function DashboardPage() {
             ))}
           </div>
         </div>
-        <QuickLinks />
+        <QuickLinks userId={user!.id} />
       </div>
     </div>
   );
