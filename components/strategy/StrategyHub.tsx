@@ -433,7 +433,7 @@ export function StrategyHub({
                 rel="noopener noreferrer"
                 className="text-zinc-400 hover:text-zinc-200 transition-colors underline underline-offset-2"
               >
-                Thunder Lake
+                Website
               </a>
             </p>
           </div>
