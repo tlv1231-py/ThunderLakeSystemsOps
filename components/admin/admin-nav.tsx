@@ -74,9 +74,24 @@ export function AdminNav({ isAdmin }: { isAdmin: boolean }) {
         {/* Logo */}
         <div className={cn("mb-8 overflow-hidden", collapsed ? "flex justify-center" : "px-3")}>
           {collapsed ? (
-            <span className="text-sm font-bold text-zinc-100 select-none">T</span>
+            <a
+              href="https://tlv1231-py.github.io/ThunderLakeSystems/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-bold text-zinc-100 select-none hover:text-zinc-300 transition-colors"
+              title="Thunder Lake Systems"
+            >
+              T
+            </a>
           ) : (
-            <span className="text-sm font-semibold text-zinc-100 whitespace-nowrap">Thunder Lake</span>
+            <a
+              href="https://tlv1231-py.github.io/ThunderLakeSystems/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-semibold text-zinc-100 whitespace-nowrap hover:text-zinc-300 transition-colors"
+            >
+              Thunder Lake
+            </a>
           )}
         </div>
 
