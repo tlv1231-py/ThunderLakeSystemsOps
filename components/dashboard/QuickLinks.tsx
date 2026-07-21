@@ -72,14 +72,16 @@ export function QuickLinks({ userId }: { userId: string }) {
   }
 
   // ── Field CRUD ───────────────────────────────────────────────────────────
-  async function addField(groupId: string) {
+  async function addField(groupId: string, keepOpen = false) {
     const key = newFieldKey.trim();
     if (!key) return;
     const newField: Field = { key, value: newFieldValue.trim() };
     const group = groups.find((g) => g.id === groupId)!;
     const fields = [...group.fields, newField];
     setGroups((s) => s.map((g) => g.id === groupId ? { ...g, fields } : g));
-    setAddingFieldTo(null); setNewFieldKey(""); setNewFieldValue("");
+    setNewFieldKey(""); setNewFieldValue("");
+    if (keepOpen) { setTimeout(() => fieldKeyRef.current?.focus(), 0); }
+    else { setAddingFieldTo(null); }
     await db.from("dashboard_links").update({ fields }).eq("id", groupId);
   }
 
@@ -189,15 +191,17 @@ export function QuickLinks({ userId }: { userId: string }) {
                 const isEditing = editingField?.groupId === group.id && editingField.idx === idx;
                 const copyKey = `${group.id}-${idx}`;
                 return isEditing ? (
-                  <div key={idx} className="mx-4 space-y-1.5 py-1">
-                    <input value={editKey} onChange={(e) => setEditKey(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Escape") setEditingField(null); }}
-                      placeholder="Field name"
-                      className="w-full rounded border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-zinc-500" />
-                    <input value={editValue} onChange={(e) => setEditValue(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") updateField(group.id, idx); if (e.key === "Escape") setEditingField(null); }}
-                      placeholder="Value"
-                      className="w-full rounded border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-zinc-500" />
+                  <div key={idx} className="mx-4 py-1 space-y-1.5">
+                    <div className="flex gap-2">
+                      <input value={editKey} onChange={(e) => setEditKey(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Escape") setEditingField(null); }}
+                        placeholder="Field name"
+                        className="w-28 shrink-0 rounded border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-zinc-500" />
+                      <input value={editValue} onChange={(e) => setEditValue(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") updateField(group.id, idx); if (e.key === "Escape") setEditingField(null); }}
+                        placeholder="Value"
+                        className="flex-1 min-w-0 rounded border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-zinc-500" />
+                    </div>
                     <div className="flex gap-1.5">
                       <button onClick={() => updateField(group.id, idx)} className="px-2.5 py-1 rounded bg-zinc-700 text-xs text-zinc-200 hover:bg-zinc-600 transition-colors">Save</button>
                       <button onClick={() => setEditingField(null)} className="px-2.5 py-1 rounded text-xs text-zinc-500 hover:text-zinc-300 transition-colors">Cancel</button>
@@ -247,15 +251,20 @@ export function QuickLinks({ userId }: { userId: string }) {
 
               {/* Add field form */}
               {addingFieldTo === group.id && (
-                <div className="mx-4 space-y-1.5 pt-1">
-                  <input ref={fieldKeyRef} value={newFieldKey} onChange={(e) => setNewFieldKey(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Escape") { setAddingFieldTo(null); setNewFieldKey(""); setNewFieldValue(""); } }}
-                    placeholder="Field name"
-                    className="w-full rounded border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600" />
-                  <input value={newFieldValue} onChange={(e) => setNewFieldValue(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") addField(group.id); if (e.key === "Escape") { setAddingFieldTo(null); setNewFieldKey(""); setNewFieldValue(""); } }}
-                    placeholder="Value"
-                    className="w-full rounded border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600" />
+                <div className="mx-4 pt-1 space-y-1.5">
+                  <div className="flex gap-2">
+                    <input ref={fieldKeyRef} value={newFieldKey} onChange={(e) => setNewFieldKey(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Escape") { setAddingFieldTo(null); setNewFieldKey(""); setNewFieldValue(""); } }}
+                      placeholder="Field name"
+                      className="w-28 shrink-0 rounded border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600" />
+                    <input value={newFieldValue} onChange={(e) => setNewFieldValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") addField(group.id, true);
+                        if (e.key === "Escape") { setAddingFieldTo(null); setNewFieldKey(""); setNewFieldValue(""); }
+                      }}
+                      placeholder="Value"
+                      className="flex-1 min-w-0 rounded border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600" />
+                  </div>
                   <div className="flex gap-1.5">
                     <button onClick={() => addField(group.id)} className="px-2.5 py-1 rounded bg-zinc-700 text-xs text-zinc-200 hover:bg-zinc-600 transition-colors">Save</button>
                     <button onClick={() => { setAddingFieldTo(null); setNewFieldKey(""); setNewFieldValue(""); }}
