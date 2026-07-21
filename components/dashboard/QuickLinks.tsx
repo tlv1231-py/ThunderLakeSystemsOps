@@ -140,8 +140,11 @@ export function QuickLinks({ userId }: { userId: string }) {
       {/* List */}
       <div className="flex-1 overflow-y-auto min-h-0 divide-y divide-zinc-800">
         {items.length === 0 && !adding && (
-          <div className="flex items-center justify-center py-10 px-4">
-            <p className="text-xs text-zinc-600">No fields yet — click + to add</p>
+          <div className="flex flex-col items-center justify-center py-10 px-4 gap-3">
+            <p className="text-xs text-zinc-600">No fields yet</p>
+            <button onClick={startAdding} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 text-xs text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors">
+              <Plus className="h-3 w-3" /> Add field
+            </button>
           </div>
         )}
         {items.map((item) =>
