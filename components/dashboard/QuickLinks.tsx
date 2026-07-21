@@ -7,7 +7,12 @@ import { createClient } from "@/lib/supabase/client";
 type Field = { key: string; value: string };
 type LinkGroup = { id: string; name: string; fields: Field[]; created_at: string };
 
-function looksLikeUrl(s: string) { return /^https?:\/\//i.test(s) || /^www\./i.test(s); }
+function looksLikeUrl(s: string) {
+  if (!s) return false;
+  return /^https?:\/\//i.test(s)
+    || /^www\./i.test(s)
+    || /^[a-zA-Z0-9][a-zA-Z0-9-]*(\.[a-zA-Z0-9-]+)+([/?#]|$)/.test(s);
+}
 function toHref(s: string) { return /^https?:\/\//i.test(s) ? s : `https://${s}`; }
 
 export function QuickLinks({ userId }: { userId: string }) {
