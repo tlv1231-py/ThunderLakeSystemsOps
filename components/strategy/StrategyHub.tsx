@@ -40,6 +40,14 @@ export type StrategyNote = {
   updated_at: string;
 };
 
+export type StrategyImage = {
+  id: string;
+  storage_path: string;
+  caption: string;
+  author_email: string;
+  created_at: string;
+};
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const CARD_CATEGORIES = [
@@ -78,17 +86,20 @@ export function StrategyHub({
   initialCards,
   initialTasks,
   initialNotes,
+  initialImages,
   userEmail,
 }: {
   initialCards: StrategyCard[];
   initialTasks: StrategyTask[];
   initialNotes: StrategyNote[];
+  initialImages: StrategyImage[];
   userEmail: string;
 }) {
-  const [tab, setTab] = useState<"ideas" | "tasks" | "notes">("ideas");
+  const [tab, setTab] = useState<"ideas" | "tasks" | "notes" | "moodboard">("ideas");
   const [cards, setCards] = useState<StrategyCard[]>(initialCards);
   const [tasks, setTasks] = useState<StrategyTask[]>(initialTasks);
   const [notes, setNotes] = useState<StrategyNote[]>(initialNotes);
+  const [images, setImages] = useState<StrategyImage[]>(initialImages);
   const supabase = createClient();
   const db = supabase as unknown as SupabaseClient;
 
@@ -121,6 +132,15 @@ export function StrategyHub({
           setNotes((p) => p.map((n) => n.id === payload.new.id ? payload.new as StrategyNote : n));
         } else if (payload.eventType === "DELETE") {
           setNotes((p) => p.filter((n) => n.id !== payload.old.id));
+        }
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "strategy_images" }, (payload: any) => {
+        if (payload.eventType === "INSERT") {
+          setImages((p) => [payload.new as StrategyImage, ...p]);
+        } else if (payload.eventType === "UPDATE") {
+          setImages((p) => p.map((i) => i.id === payload.new.id ? payload.new as StrategyImage : i));
+        } else if (payload.eventType === "DELETE") {
+          setImages((p) => p.filter((i) => i.id !== payload.old.id));
         }
       })
       .subscribe();
@@ -161,6 +181,33 @@ export function StrategyHub({
     await db.from("strategy_notes").delete().eq("id", id);
   }
 
+  // ── Image CRUD ────────────────────────────────────────────────────────────
+  async function uploadImage(file: File) {
+    const ext = file.name.split(".").pop() ?? "jpg";
+    const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error } = await (supabase as any).storage
+      .from("strategy-images")
+      .upload(path, file, { cacheControl: "3600", upsert: false });
+    if (error) { console.error("Upload failed", error); return; }
+    await db.from("strategy_images").insert({ storage_path: path, caption: "", author_email: userEmail });
+  }
+
+  async function updateImageCaption(id: string, caption: string) {
+    await db.from("strategy_images").update({ caption }).eq("id", id);
+  }
+
+  async function deleteImage(id: string, storagePath: string) {
+    await (supabase as any).storage.from("strategy-images").remove([storagePath]);
+    await db.from("strategy_images").delete().eq("id", id);
+  }
+
+  async function getSignedUrl(path: string): Promise<string> {
+    const { data } = await (supabase as any).storage
+      .from("strategy-images")
+      .createSignedUrl(path, 3600);
+    return data?.signedUrl ?? "";
+  }
+
   return (
     <div className="flex flex-col" style={{ minHeight: "calc(100vh - 10rem)" }}>
       {/* Header */}
@@ -171,18 +218,18 @@ export function StrategyHub({
 
       {/* Tabs */}
       <div className="flex gap-0 mb-6 border-b border-zinc-800">
-        {(["ideas", "tasks", "notes"] as const).map((t) => (
+        {(["ideas", "tasks", "notes", "moodboard"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={cn(
-              "px-5 py-2.5 text-sm font-medium capitalize -mb-px border-b-2 transition-colors",
+              "px-5 py-2.5 text-sm font-medium -mb-px border-b-2 transition-colors",
               tab === t
                 ? "border-zinc-100 text-zinc-100"
                 : "border-transparent text-zinc-500 hover:text-zinc-300"
             )}
           >
-            {t === "ideas" ? "Ideas Board" : t === "tasks" ? "Tasks" : "Notes"}
+            {t === "ideas" ? "Ideas Board" : t === "tasks" ? "Tasks" : t === "notes" ? "Notes" : "Moodboard"}
           </button>
         ))}
       </div>
@@ -211,6 +258,15 @@ export function StrategyHub({
             onAdd={addNote}
             onUpdate={updateNote}
             onDelete={deleteNote}
+          />
+        )}
+        {tab === "moodboard" && (
+          <MoodboardPanel
+            images={images}
+            onUpload={uploadImage}
+            onDelete={deleteImage}
+            onUpdateCaption={updateImageCaption}
+            getSignedUrl={getSignedUrl}
           />
         )}
       </div>
@@ -695,6 +751,214 @@ function NotesPanel({
           <div className="flex items-center justify-center h-full rounded-xl border border-zinc-800 bg-zinc-900">
             <p className="text-sm text-zinc-600">Select a note or create one</p>
           </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Moodboard Panel ───────────────────────────────────────────────────────────
+
+function MoodboardPanel({
+  images, onUpload, onDelete, onUpdateCaption, getSignedUrl,
+}: {
+  images: StrategyImage[];
+  onUpload: (file: File) => Promise<void>;
+  onDelete: (id: string, path: string) => Promise<void>;
+  onUpdateCaption: (id: string, caption: string) => Promise<void>;
+  getSignedUrl: (path: string) => Promise<string>;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  // Map from storage_path → signed URL (expires in 1h)
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Generate signed URLs for all images on mount and when new images arrive
+  useEffect(() => {
+    const missing = images.filter((img) => !signedUrls[img.storage_path]);
+    if (missing.length === 0) return;
+    Promise.all(
+      missing.map(async (img) => {
+        const url = await getSignedUrl(img.storage_path);
+        return [img.storage_path, url] as [string, string];
+      })
+    ).then((pairs) => {
+      setSignedUrls((prev) => {
+        const next = { ...prev };
+        pairs.forEach(([path, url]) => { next[path] = url; });
+        return next;
+      });
+    });
+  }, [images]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clipboard paste support
+  useEffect(() => {
+    async function handlePaste(e: ClipboardEvent) {
+      const items = Array.from(e.clipboardData?.items ?? []);
+      const imageItems = items.filter((i) => i.type.startsWith("image/"));
+      if (imageItems.length === 0) return;
+      setUploading(true);
+      await Promise.all(imageItems.map((item) => {
+        const file = item.getAsFile();
+        return file ? onUpload(file) : Promise.resolve();
+      }));
+      setUploading(false);
+    }
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, [onUpload]);
+
+  async function handleFiles(files: File[]) {
+    const images = files.filter((f) => f.type.startsWith("image/"));
+    if (images.length === 0) return;
+    setUploading(true);
+    await Promise.all(images.map(onUpload));
+    setUploading(false);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    setDragging(true);
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false);
+  }
+
+  async function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragging(false);
+    await handleFiles(Array.from(e.dataTransfer.files));
+  }
+
+  return (
+    <div>
+      {/* Drop zone */}
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={cn(
+          "flex flex-col items-center justify-center h-32 rounded-xl border-2 border-dashed transition-colors cursor-pointer mb-6",
+          dragging
+            ? "border-zinc-400 bg-zinc-800"
+            : "border-zinc-700 bg-zinc-900 hover:border-zinc-600 hover:bg-zinc-800/50"
+        )}
+        onClick={() => fileInputRef.current?.click()}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => handleFiles(Array.from(e.target.files ?? []))}
+        />
+        {uploading ? (
+          <p className="text-sm text-zinc-500">Uploading...</p>
+        ) : (
+          <>
+            <p className="text-sm text-zinc-400">Drop images here or click to browse</p>
+            <p className="text-xs text-zinc-600 mt-1">PNG, JPG, GIF, WebP · 10 MB max · Paste also works</p>
+          </>
+        )}
+      </div>
+
+      {/* Image grid */}
+      {images.length === 0 ? (
+        <p className="text-sm text-zinc-600 text-center py-12">No images yet — drag some in</p>
+      ) : (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          {images.map((img) => (
+            <ImageCard
+              key={img.id}
+              image={img}
+              signedUrl={signedUrls[img.storage_path]}
+              onDelete={() => onDelete(img.id, img.storage_path)}
+              onUpdateCaption={(caption) => onUpdateCaption(img.id, caption)}
+              onExpand={() => setLightbox(signedUrls[img.storage_path] ?? null)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
+          onClick={() => setLightbox(null)}
+        >
+          <button
+            className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-100 transition-colors"
+            onClick={() => setLightbox(null)}
+          >
+            <X className="h-6 w-6" />
+          </button>
+          <img
+            src={lightbox}
+            alt=""
+            className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ImageCard({
+  image, signedUrl, onDelete, onUpdateCaption, onExpand,
+}: {
+  image: StrategyImage;
+  signedUrl: string | undefined;
+  onDelete: () => void;
+  onUpdateCaption: (caption: string) => void;
+  onExpand: () => void;
+}) {
+  const [caption, setCaption] = useState(image.caption);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  function handleCaptionChange(val: string) {
+    setCaption(val);
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => onUpdateCaption(val), 800);
+  }
+
+  useEffect(() => () => clearTimeout(saveTimer.current), []);
+
+  return (
+    <div className="group flex flex-col rounded-xl overflow-hidden border border-zinc-800 bg-zinc-900">
+      {/* Image area */}
+      <div className="relative aspect-square bg-zinc-800 overflow-hidden cursor-pointer" onClick={onExpand}>
+        {signedUrl ? (
+          <img src={signedUrl} alt={caption || ""} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <div className="h-4 w-4 rounded-full border-2 border-zinc-600 border-t-zinc-400 animate-spin" />
+          </div>
+        )}
+        {/* Hover overlay */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-start justify-end p-2 opacity-0 group-hover:opacity-100">
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className="rounded-lg bg-black/60 p-1.5 text-zinc-300 hover:text-red-400 transition-colors"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+      {/* Caption + author */}
+      <div className="p-2">
+        <input
+          value={caption}
+          onChange={(e) => handleCaptionChange(e.target.value)}
+          placeholder="Add caption..."
+          className="w-full bg-transparent text-xs text-zinc-300 outline-none placeholder:text-zinc-600"
+        />
+        {image.author_email && (
+          <p className="text-[10px] text-zinc-700 mt-0.5">{displayName(image.author_email)}</p>
         )}
       </div>
     </div>
