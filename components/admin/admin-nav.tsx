@@ -35,7 +35,7 @@ const NAV_ITEMS = [
   { href: "/strategy",   label: "Strategy",  icon: Compass         },
 ];
 
-export function AdminNav() {
+export function AdminNav({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
@@ -82,31 +82,46 @@ export function AdminNav() {
 
         {/* Nav links */}
         <ul className="flex flex-1 flex-col gap-0.5">
-          {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href || pathname.startsWith(href + "/");
-            return (
-              <li key={href}>
+          {isAdmin
+            ? NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+                const active = pathname === href || pathname.startsWith(href + "/");
+                return (
+                  <li key={href}>
+                    <NavItem
+                      href={href}
+                      label={label}
+                      icon={<Icon className="h-4 w-4 flex-shrink-0" />}
+                      active={active}
+                      collapsed={collapsed}
+                    />
+                  </li>
+                );
+              })
+            : (
+              <li>
                 <NavItem
-                  href={href}
-                  label={label}
-                  icon={<Icon className="h-4 w-4 flex-shrink-0" />}
-                  active={active}
+                  href="/strategy"
+                  label="Strategy"
+                  icon={<Compass className="h-4 w-4 flex-shrink-0" />}
+                  active={true}
                   collapsed={collapsed}
                 />
               </li>
-            );
-          })}
+            )
+          }
         </ul>
 
         {/* Bottom section */}
         <div className="border-t border-zinc-800 pt-4 mt-4 space-y-0.5">
-          <NavItem
-            href="/settings"
-            label="Settings"
-            icon={<Settings className="h-4 w-4 flex-shrink-0" />}
-            active={pathname.startsWith("/settings")}
-            collapsed={collapsed}
-          />
+          {isAdmin && (
+            <NavItem
+              href="/settings"
+              label="Settings"
+              icon={<Settings className="h-4 w-4 flex-shrink-0" />}
+              active={pathname.startsWith("/settings")}
+              collapsed={collapsed}
+            />
+          )}
 
           <NavButton
             label="Sign out"

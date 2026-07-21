@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { SettingsForm } from "@/components/admin/settings-form";
+import { TeamMembersSection } from "@/components/admin/team-members-section";
+import { listTeamMembersAction } from "@/app/actions/team";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -11,6 +13,9 @@ export default async function SettingsPage() {
     .eq("id", user!.id)
     .single();
 
+  const teamMembers = await listTeamMembersAction().catch(() => []);
+  const loginUrl = `${process.env.NEXT_PUBLIC_APP_URL}/auth/login`;
+
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
@@ -19,6 +24,8 @@ export default async function SettingsPage() {
       </div>
 
       <SettingsForm settings={settings} />
+
+      <TeamMembersSection initialMembers={teamMembers} loginUrl={loginUrl} />
     </div>
   );
 }

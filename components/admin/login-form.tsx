@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { ADMIN_EMAIL } from "@/lib/constants";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
@@ -18,14 +19,15 @@ export function LoginForm() {
     setLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     setLoading(false);
 
     if (error) {
       setError("Invalid email or password.");
     } else {
-      router.push("/dashboard");
+      const dest = data.user?.email === ADMIN_EMAIL ? "/dashboard" : "/strategy";
+      router.push(dest);
       router.refresh();
     }
   }

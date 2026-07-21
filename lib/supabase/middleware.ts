@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/types/database";
+import { ADMIN_EMAIL } from "@/lib/constants";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -32,7 +33,10 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // Admin routes require authentication
+  const isAuthRoute     = pathname.startsWith("/auth");
+  const isStrategyRoute = pathname.startsWith("/strategy");
+  const isPortalRoute   = pathname.startsWith("/portal");
+
   const isAdminRoute =
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/clients") ||
@@ -44,12 +48,17 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/reports") ||
     pathname.startsWith("/settings");
 
-  // Portal routes handled separately — no redirect, portal has its own auth check
-  const isPortalRoute = pathname.startsWith("/portal");
-
-  if (isAdminRoute && !user) {
+  // Unauthenticated users trying to access protected routes → login
+  if (!user && (isAdminRoute || isStrategyRoute)) {
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";
+    return NextResponse.redirect(url);
+  }
+
+  // Team members (non-admin) can only access /strategy
+  if (user && user.email !== ADMIN_EMAIL && !isStrategyRoute && !isAuthRoute && !isPortalRoute) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/strategy";
     return NextResponse.redirect(url);
   }
 

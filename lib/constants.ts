@@ -1,3 +1,6 @@
+// The one account that owns the invoicing workspace
+export const ADMIN_EMAIL = "tlevander.py@gmail.com";
+
 export const CURRENCIES = [
   { code: "USD", label: "US Dollar" },
   { code: "EUR", label: "Euro" },
