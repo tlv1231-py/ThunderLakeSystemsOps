@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, X, Palette, ThumbsUp, ThumbsDown, MessageSquare, Send, Eye, CheckCircle2, XCircle, RefreshCw, Loader2 } from "lucide-react";
+import { Plus, Trash2, X, Palette, ThumbsUp, ThumbsDown, MessageSquare, Send, Eye, CheckCircle2, XCircle, RefreshCw, Loader2, Star, Search, Globe, Archive, ArrowUpDown, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -19,6 +19,8 @@ export type StrategyCard = {
   updated_at: string;
   domain_available?: boolean | null;
   domain_checked_at?: string | null;
+  is_chosen?: boolean | null;
+  color?: string | null;
 };
 
 export type StrategyTask = {
@@ -228,7 +230,17 @@ const PRIORITY_DOT: Record<string, string> = {
   high:   "bg-red-500",
 };
 
-const DEFAULT_PREFS: StrategyPrefs = { user_id: "", theme: "dark", bg_color: null, text_color: null, header_color: null, font_scale: null };
+const CARD_COLORS: { value: string | null; label: string }[] = [
+  { value: null,      label: "None"   },
+  { value: "#ef4444", label: "Red"    },
+  { value: "#f59e0b", label: "Amber"  },
+  { value: "#22c55e", label: "Green"  },
+  { value: "#3b82f6", label: "Blue"   },
+  { value: "#a855f7", label: "Purple" },
+  { value: "#ec4899", label: "Pink"   },
+];
+
+const DEFAULT_PREFS: StrategyPrefs = { user_id: "", theme: "dark", bg_color: null, text_color: null, header_color: null, font_scale: 1.1 };
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
@@ -253,7 +265,9 @@ export function StrategyHub({
   isAdmin: boolean;
   initialMessages: StrategyMessage[];
 }) {
-  const [tab, setTab] = useState<"ideas" | "tasks" | "notes" | "moodboard">("ideas");
+  const [tab, setTab] = useState<"ideas" | "tasks" | "notes" | "moodboard" | "archive">("ideas");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen]   = useState(false);
   const [cards, setCards]       = useState<StrategyCard[]>(initialCards);
   const [tasks, setTasks]       = useState<StrategyTask[]>(initialTasks);
   const [notes, setNotes]       = useState<StrategyNote[]>(initialNotes);
@@ -278,7 +292,7 @@ export function StrategyHub({
 
   const themeCSS = useMemo(() => buildThemeCSS(activePrefs), [activePrefs]);
 
-  const activeFontScale = activePrefs.font_scale ?? 1;
+  const activeFontScale = activePrefs.font_scale ?? 1.1;
 
   // Saves prefs for whoever is active (own account or the user being previewed)
   const saveActivePrefs = useCallback(async (next: StrategyPrefs) => {
@@ -424,24 +438,6 @@ export function StrategyHub({
   async function deleteComment(id: string) {
     setComments((s) => s.filter((c) => c.id !== id));
     await db.from("strategy_comments").delete().eq("id", id);
-  }
-
-  // ── Domain availability check ─────────────────────────────────────────────
-  async function checkDomain(card: StrategyCard) {
-    const inErrorState = !!card.domain_checked_at && card.domain_available == null;
-    if (!inErrorState && !canCheckDomain(card.domain_checked_at)) return;
-    const domain = parseDomainForCheck(card.content);
-    try {
-      const res = await fetch(`/api/domain-check?domain=${encodeURIComponent(domain)}`);
-      const data = await res.json();
-      const available = typeof data.available === "boolean" ? data.available : null;
-      // Only stamp domain_checked_at when we got a real boolean — null means
-      // the API returned an error, so we don't start the cooldown and the user
-      // can retry immediately.
-      if (available !== null) {
-        await updateCard(card.id, { domain_available: available, domain_checked_at: new Date().toISOString() });
-      }
-    } catch { /* no update on network failure */ }
   }
 
   // ── Chat ──────────────────────────────────────────────────────────────────
@@ -603,9 +599,9 @@ export function StrategyHub({
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-0 mb-6 border-b border-zinc-800">
-          {(["ideas", "tasks", "notes", "moodboard"] as const).map((t) => (
+        {/* Tabs + search */}
+        <div className="flex items-end gap-0 mb-6 border-b border-zinc-800">
+          {(["ideas", "tasks", "notes", "moodboard", "archive"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -616,9 +612,30 @@ export function StrategyHub({
                   : "border-transparent text-zinc-500 hover:text-zinc-300"
               )}
             >
-              {t === "ideas" ? "Ideas Board" : t === "tasks" ? "Tasks" : t === "notes" ? "Notes" : "Moodboard"}
+              {t === "ideas" ? "Ideas Board" : t === "tasks" ? "Tasks" : t === "notes" ? "Notes" : t === "moodboard" ? "Moodboard" : "Archive"}
             </button>
           ))}
+          <div className="ml-auto mb-1 flex items-center gap-1.5 pb-0.5">
+            {searchOpen ? (
+              <div className="flex items-center gap-1">
+                <input
+                  autoFocus
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Escape") { setSearchQuery(""); setSearchOpen(false); } }}
+                  placeholder="Search ideas, tasks, notes…"
+                  className="bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1 text-xs text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600 w-52"
+                />
+                <button onClick={() => { setSearchQuery(""); setSearchOpen(false); }} className="text-zinc-600 hover:text-zinc-400">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setSearchOpen(true)} className="p-1.5 rounded-lg text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800 transition-colors" title="Search">
+                <Search className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Content */}
@@ -630,6 +647,7 @@ export function StrategyHub({
               reactions={reactions}
               comments={comments}
               userEmail={userEmail}
+              searchQuery={searchQuery}
               onAdd={addCard}
               onUpdate={updateCard}
               onDelete={deleteCard}
@@ -639,14 +657,13 @@ export function StrategyHub({
               onToggleReaction={toggleReaction}
               onAddComment={addComment}
               onDeleteComment={deleteComment}
-              onCheckDomain={checkDomain}
             />
           )}
           {tab === "tasks" && (
-            <TaskBoard tasks={tasks} onAdd={addTask} onUpdate={updateTask} onDelete={deleteTask} />
+            <TaskBoard tasks={tasks.filter((t) => !searchQuery || t.title.toLowerCase().includes(searchQuery.toLowerCase()) || t.description?.toLowerCase().includes(searchQuery.toLowerCase()))} onAdd={addTask} onUpdate={updateTask} onDelete={deleteTask} />
           )}
           {tab === "notes" && (
-            <NotesPanel notes={notes} onAdd={addNote} onUpdate={updateNote} onDelete={deleteNote} />
+            <NotesPanel notes={notes.filter((n) => !searchQuery || n.title.toLowerCase().includes(searchQuery.toLowerCase()) || n.content?.toLowerCase().includes(searchQuery.toLowerCase()))} onAdd={addNote} onUpdate={updateNote} onDelete={deleteNote} />
           )}
           {tab === "moodboard" && (
             <MoodboardPanel
@@ -655,6 +672,14 @@ export function StrategyHub({
               onDelete={deleteImage}
               onUpdateCaption={updateImageCaption}
               getSignedUrl={getSignedUrl}
+            />
+          )}
+          {tab === "archive" && (
+            <ArchivePanel
+              cards={cards.filter((c) => c.status === "archived")}
+              columns={columns}
+              onRestore={(id) => updateCard(id, { status: "idea" })}
+              onDelete={deleteCard}
             />
           )}
         </div>
@@ -668,6 +693,15 @@ export function StrategyHub({
 
 // ── Chat Panel ────────────────────────────────────────────────────────────────
 
+function renderWithMentions(content: string) {
+  const parts = content.split(/(@\w+)/g);
+  return parts.map((part, i) =>
+    /^@\w+$/.test(part)
+      ? <strong key={i} className="text-zinc-200 font-semibold">{part}</strong>
+      : <span key={i}>{part}</span>
+  );
+}
+
 function ChatPanel({ messages, userEmail, onSend, fontScale = 1 }: {
   messages: StrategyMessage[];
   userEmail: string;
@@ -675,12 +709,19 @@ function ChatPanel({ messages, userEmail, onSend, fontScale = 1 }: {
   fontScale?: number;
 }) {
   const [text, setText] = useState("");
-  const [width, setWidth] = useState(256);
+  const [width, setWidth] = useState(280);
+  const [seenCount, setSeenCount] = useState(messages.length);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const unreadCount = Math.max(0, messages.length - seenCount);
+
+  function markRead() {
+    setSeenCount(messages.length);
+  }
 
   function startResize(e: React.MouseEvent) {
     e.preventDefault();
@@ -702,12 +743,14 @@ function ChatPanel({ messages, userEmail, onSend, fontScale = 1 }: {
     if (!t) return;
     setText("");
     await onSend(t);
+    setSeenCount((n) => n + 1);
   }
 
   return (
     <div
       className="shrink-0 flex flex-col border-l border-zinc-800 sticky relative"
       style={{ top: 0, height: `calc((100vh - 6rem) / ${fontScale})`, alignSelf: "flex-start", width }}
+      onClick={markRead}
     >
       {/* Drag-to-resize handle */}
       <div
@@ -717,8 +760,13 @@ function ChatPanel({ messages, userEmail, onSend, fontScale = 1 }: {
       >
         <div className="absolute inset-y-0 left-1/2 w-px bg-zinc-800 group-hover/resize:bg-zinc-500 transition-colors" />
       </div>
-      <div className="px-4 py-3 border-b border-zinc-800 shrink-0">
+      <div className="px-4 py-3 border-b border-zinc-800 shrink-0 flex items-center justify-between">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Team Chat</h3>
+        {unreadCount > 0 && (
+          <span className="flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-blue-600 text-[9px] font-bold text-white">
+            {unreadCount}
+          </span>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto py-3 flex flex-col gap-3 min-h-0">
@@ -726,9 +774,9 @@ function ChatPanel({ messages, userEmail, onSend, fontScale = 1 }: {
           <p className="px-4 text-xs text-zinc-700">No messages yet. Say hi!</p>
         )}
         {messages.map((m) => {
-          const isMe   = m.author_email === userEmail;
-          const name   = displayName(m.author_email);
-          const time   = new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          const isMe = m.author_email === userEmail;
+          const name = displayName(m.author_email);
+          const time = new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
           return (
             <div key={m.id} className="px-3 flex gap-2 items-start">
               <div className={cn(
@@ -742,7 +790,7 @@ function ChatPanel({ messages, userEmail, onSend, fontScale = 1 }: {
                   <span className="text-[11px] font-medium text-zinc-300 truncate">{name}</span>
                   <span className="text-[9px] text-zinc-600 shrink-0">{time}</span>
                 </div>
-                <p className="text-xs text-zinc-400 leading-relaxed break-words">{m.content}</p>
+                <p className="text-xs text-zinc-400 leading-relaxed break-words">{renderWithMentions(m.content)}</p>
               </div>
             </div>
           );
@@ -756,7 +804,7 @@ function ChatPanel({ messages, userEmail, onSend, fontScale = 1 }: {
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-            placeholder="Message the team..."
+            placeholder="Message the team…"
             className="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600"
           />
           <button
@@ -817,11 +865,12 @@ function UserSwitcherSidebar({
 
 // ── Domain Availability Panel ─────────────────────────────────────────────────
 
-function DomainAvailabilityPanel({ card, onCheck }: {
+function DomainAvailabilityPanel({ card, onSaveResult }: {
   card: StrategyCard;
-  onCheck: () => Promise<void>;
+  onSaveResult: (updates: Partial<StrategyCard>) => Promise<void>;
 }) {
   const [checking, setChecking] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -829,25 +878,34 @@ function DomainAvailabilityPanel({ card, onCheck }: {
     return () => clearInterval(id);
   }, []);
 
-  const left     = domainCooldownLeft(card.domain_checked_at);
-  const hasData  = card.domain_available !== null && card.domain_available !== undefined;
-  const hadError = !hasData && !!card.domain_checked_at;
+  const left    = domainCooldownLeft(card.domain_checked_at);
+  const hasData = card.domain_available !== null && card.domain_available !== undefined;
   const canCheck = !checking && left === 0;
+  const domain  = parseDomainForCheck(card.content);
+  const whoisUrl = `https://who.is/whois/${domain}`;
 
-  async function handle(e: React.MouseEvent) {
+  async function runCheck(e: React.MouseEvent, force = false) {
     e.stopPropagation();
-    if (!canCheck) return;
-    setChecking(true);
-    await onCheck();
-    setChecking(false);
-  }
-
-  async function handleForce(e: React.MouseEvent) {
-    e.stopPropagation();
+    if (!force && !canCheck) return;
     if (checking) return;
     setChecking(true);
-    await onCheck();
-    setChecking(false);
+    setApiError(null);
+    try {
+      const res = await fetch(`/api/domain-check?domain=${encodeURIComponent(domain)}`);
+      const data = await res.json();
+      if (data.error) {
+        setApiError(data.error);
+      } else if (typeof data.available === "boolean") {
+        await onSaveResult({ domain_available: data.available, domain_checked_at: new Date().toISOString() });
+        setApiError(null);
+      } else {
+        setApiError("No data from registry");
+      }
+    } catch {
+      setApiError("Network error");
+    } finally {
+      setChecking(false);
+    }
   }
 
   return (
@@ -857,21 +915,25 @@ function DomainAvailabilityPanel({ card, onCheck }: {
           <Loader2 className="h-3 w-3 animate-spin text-zinc-500 shrink-0" />
           <span className="text-[10px] text-zinc-500">Checking…</span>
         </div>
-      ) : hadError ? (
+      ) : apiError ? (
         <>
-          <span className="text-[10px] text-zinc-600">No response</span>
-          <button onClick={handleForce} className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors text-left">
+          <div className="flex items-center gap-1">
+            <AlertCircle className="h-3 w-3 text-zinc-600 shrink-0" />
+            <span className="text-[10px] text-zinc-500 leading-tight">{apiError.length > 22 ? apiError.slice(0, 20) + "…" : apiError}</span>
+          </div>
+          <button onClick={(e) => runCheck(e, true)} className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors text-left">
             Try again
           </button>
+          <a href={whoisUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+            className="flex items-center gap-0.5 text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors mt-0.5">
+            <Globe className="h-2.5 w-2.5 shrink-0" /> WHOIS
+          </a>
         </>
       ) : !hasData ? (
         <button
-          onClick={handle}
+          onClick={(e) => runCheck(e)}
           disabled={!canCheck}
-          className={cn(
-            "text-xs text-left leading-snug transition-colors",
-            canCheck ? "text-zinc-400 hover:text-zinc-100" : "text-zinc-700 cursor-default"
-          )}
+          className={cn("text-xs text-left leading-snug transition-colors", canCheck ? "text-zinc-400 hover:text-zinc-100" : "text-zinc-700 cursor-default")}
         >
           {left > 0 ? `Check in ${formatCooldown(left)}` : "Check Availability"}
         </button>
@@ -886,25 +948,24 @@ function DomainAvailabilityPanel({ card, onCheck }: {
             ) : (
               <>
                 <XCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />
-                <span className="text-xs font-medium text-red-400">Unavailable</span>
+                <span className="text-xs font-medium text-red-400">Taken</span>
               </>
             )}
           </div>
           {card.domain_checked_at && (
-            <p className="text-[10px] text-zinc-600 leading-snug">
-              Last checked {timeAgoPrecise(card.domain_checked_at)}
-            </p>
+            <p className="text-[10px] text-zinc-600 leading-snug">{timeAgoPrecise(card.domain_checked_at)}</p>
           )}
           {left > 0 ? (
             <span className="text-[10px] text-zinc-700">recheck in {formatCooldown(left)}</span>
           ) : (
-            <button
-              onClick={handle}
-              className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors text-left"
-            >
+            <button onClick={(e) => runCheck(e)} className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors text-left">
               Check again
             </button>
           )}
+          <a href={whoisUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+            className="flex items-center gap-0.5 text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors mt-0.5">
+            <Globe className="h-2.5 w-2.5 shrink-0" /> WHOIS
+          </a>
         </>
       )}
     </div>
@@ -914,16 +975,17 @@ function DomainAvailabilityPanel({ card, onCheck }: {
 // ── Ideas Board ───────────────────────────────────────────────────────────────
 
 function IdeasBoard({
-  cards, columns, reactions, comments, userEmail,
+  cards, columns, reactions, comments, userEmail, searchQuery,
   onAdd, onUpdate, onDelete,
   onAddColumn, onUpdateColumn, onDeleteColumn,
-  onToggleReaction, onAddComment, onDeleteComment, onCheckDomain,
+  onToggleReaction, onAddComment, onDeleteComment,
 }: {
   cards: StrategyCard[];
   columns: StrategyColumn[];
   reactions: StrategyReaction[];
   comments: StrategyComment[];
   userEmail: string;
+  searchQuery: string;
   onAdd: (category: string, content: string) => Promise<void>;
   onUpdate: (id: string, updates: Partial<StrategyCard>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -933,13 +995,14 @@ function IdeasBoard({
   onToggleReaction: (itemId: string, itemType: string, reaction: "up" | "down") => Promise<void>;
   onAddComment: (itemId: string, itemType: string, content: string) => Promise<void>;
   onDeleteComment: (id: string) => Promise<void>;
-  onCheckDomain: (card: StrategyCard) => Promise<void>;
 }) {
   const [selected, setSelected] = useState<StrategyCard | null>(null);
   const [adding, setAdding]     = useState<string | null>(null);
   const [newContent, setNewContent] = useState("");
   const [addingCol, setAddingCol]   = useState(false);
   const [newColName, setNewColName] = useState("");
+  const [sortByReactions, setSortByReactions] = useState<Record<string, boolean>>({});
+  const [checkingAll, setCheckingAll] = useState(false);
 
   async function handleAddCard(colId: string) {
     if (!newContent.trim()) return;
@@ -955,16 +1018,51 @@ function IdeasBoard({
     setAddingCol(false);
   }
 
+  async function setChosen(cardId: string, colId: string) {
+    const card = cards.find((c) => c.id === cardId);
+    if (!card) return;
+    const newChosen = !card.is_chosen;
+    const others = cards.filter((c) => c.category === colId && c.is_chosen && c.id !== cardId);
+    await Promise.all(others.map((c) => onUpdate(c.id, { is_chosen: false })));
+    await onUpdate(cardId, { is_chosen: newChosen });
+  }
+
+  async function checkAll(colId: string) {
+    if (checkingAll) return;
+    setCheckingAll(true);
+    const toCheck = cards.filter((c) => c.category === colId && canCheckDomain(c.domain_checked_at));
+    for (const card of toCheck) {
+      const domain = parseDomainForCheck(card.content);
+      try {
+        const res = await fetch(`/api/domain-check?domain=${encodeURIComponent(domain)}`);
+        const data = await res.json();
+        if (!data.error && typeof data.available === "boolean") {
+          await onUpdate(card.id, { domain_available: data.available, domain_checked_at: new Date().toISOString() });
+        }
+      } catch {}
+      await new Promise((r) => setTimeout(r, 600));
+    }
+    setCheckingAll(false);
+  }
+
   const domainsColId = columns.find((c) => c.name.toLowerCase() === "domains")?.id;
+  const q = searchQuery.toLowerCase();
 
   return (
     <>
     <style>{`.ideas-scroll::-webkit-scrollbar{display:none}`}</style>
     <div className="ideas-scroll flex gap-4 pb-4" style={{ overflowX: "auto", scrollbarWidth: "none" } as React.CSSProperties}>
       {columns.map((col) => {
-        const colCards = cards.filter((c) => c.category === col.id);
         const isDomainCol = col.id === domainsColId;
         const isProtected = ["business names", "domains"].includes(col.name.toLowerCase());
+        const sorted = sortByReactions[col.id]
+          ? [...cards.filter((c) => c.category === col.id)].sort((a, b) => {
+              const netA = reactions.filter((r) => r.item_id === a.id && r.reaction === "up").length - reactions.filter((r) => r.item_id === a.id && r.reaction === "down").length;
+              const netB = reactions.filter((r) => r.item_id === b.id && r.reaction === "up").length - reactions.filter((r) => r.item_id === b.id && r.reaction === "down").length;
+              return netB - netA;
+            })
+          : cards.filter((c) => c.category === col.id);
+        const colCards = q ? sorted.filter((c) => c.content.toLowerCase().includes(q) || (c.notes ?? "").toLowerCase().includes(q)) : sorted;
         return (
           <div key={col.id} className={cn("flex-1 flex flex-col", isDomainCol ? "min-w-[22rem]" : "min-w-52")}>
             <ColumnHeader
@@ -973,6 +1071,11 @@ function IdeasBoard({
               onRename={(name) => onUpdateColumn(col.id, { name })}
               onDelete={() => onDeleteColumn(col.id)}
               isProtected={isProtected}
+              sortActive={!!sortByReactions[col.id]}
+              onToggleSort={() => setSortByReactions((s) => ({ ...s, [col.id]: !s[col.id] }))}
+              isDomainCol={isDomainCol}
+              checkingAll={checkingAll}
+              onCheckAll={() => checkAll(col.id)}
             />
             <div className="flex flex-col gap-2">
               {colCards.map((card) => (
@@ -988,13 +1091,14 @@ function IdeasBoard({
                       onToggleReaction={(r) => onToggleReaction(card.id, "card", r)}
                       onAddComment={(c) => onAddComment(card.id, "card", c)}
                       onDeleteComment={onDeleteComment}
+                      onToggleChosen={() => setChosen(card.id, col.id)}
                       contentClassName={isDomainCol ? "break-all" : ""}
                     />
                   </div>
                   {isDomainCol && (
                     <DomainAvailabilityPanel
                       card={card}
-                      onCheck={() => onCheckDomain(card)}
+                      onSaveResult={(updates) => onUpdate(card.id, updates)}
                     />
                   )}
                 </div>
@@ -1061,9 +1165,13 @@ function IdeasBoard({
       {selected && (
         <IdeaEditPanel
           card={selected}
-          onUpdate={(updates) => { onUpdate(selected.id, updates); setSelected({ ...selected, ...updates }); }}
+          onUpdate={(updates) => { onUpdate(selected.id, updates); setSelected((s) => s ? { ...s, ...updates } : s); }}
           onDelete={() => { onDelete(selected.id); setSelected(null); }}
           onClose={() => setSelected(null)}
+          onToggleChosen={async () => {
+            await setChosen(selected.id, selected.category);
+            setSelected((s) => s ? { ...s, is_chosen: !s.is_chosen } : s);
+          }}
         />
       )}
     </div>
@@ -1075,12 +1183,19 @@ function IdeasBoard({
 
 function ColumnHeader({
   column, cardCount, onRename, onDelete, isProtected = false,
+  sortActive = false, onToggleSort,
+  isDomainCol = false, checkingAll = false, onCheckAll,
 }: {
   column: StrategyColumn;
   cardCount: number;
   onRename: (name: string) => void;
   onDelete: () => void;
   isProtected?: boolean;
+  sortActive?: boolean;
+  onToggleSort?: () => void;
+  isDomainCol?: boolean;
+  checkingAll?: boolean;
+  onCheckAll?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(column.name);
@@ -1115,8 +1230,27 @@ function ColumnHeader({
           {column.name}
         </button>
       )}
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1">
         <span className="text-xs text-zinc-700 font-mono">{cardCount}</span>
+        {onToggleSort && (
+          <button
+            onClick={onToggleSort}
+            title={sortActive ? "Sorted by reactions (click to reset)" : "Sort by reactions"}
+            className={cn("p-0.5 transition-colors", sortActive ? "text-zinc-300" : "opacity-0 group-hover:opacity-100 text-zinc-700 hover:text-zinc-400")}
+          >
+            <ArrowUpDown className="h-3 w-3" />
+          </button>
+        )}
+        {isDomainCol && onCheckAll && (
+          <button
+            onClick={onCheckAll}
+            disabled={checkingAll}
+            title="Check all domains"
+            className="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-700 hover:text-zinc-400 transition-all disabled:opacity-30"
+          >
+            {checkingAll ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+          </button>
+        )}
         {!isProtected && (
           <button
             onClick={onDelete}
@@ -1135,7 +1269,7 @@ function ColumnHeader({
 
 function IdeaCard({
   card, reactions, comments, userEmail,
-  onClick, onDelete, onToggleReaction, onAddComment, onDeleteComment,
+  onClick, onDelete, onToggleReaction, onAddComment, onDeleteComment, onToggleChosen,
   contentClassName = "",
 }: {
   card: StrategyCard;
@@ -1147,6 +1281,7 @@ function IdeaCard({
   onToggleReaction: (reaction: "up" | "down") => Promise<void>;
   onAddComment: (content: string) => Promise<void>;
   onDeleteComment: (id: string) => Promise<void>;
+  onToggleChosen: () => void;
   contentClassName?: string;
 }) {
   const [commentsOpen, setCommentsOpen] = useState(false);
@@ -1170,9 +1305,23 @@ function IdeaCard({
   }
 
   return (
-    <div className="group relative rounded-lg border border-zinc-800 bg-zinc-900 transition-colors hover:border-zinc-700">
+    <div
+      className="group relative rounded-lg border border-zinc-800 bg-zinc-900 transition-colors hover:border-zinc-700 overflow-hidden"
+      style={card.color ? { borderLeftColor: card.color, borderLeftWidth: 3 } : undefined}
+    >
+      {/* Chosen star */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggleChosen(); }}
+        title={card.is_chosen ? "Unchosen" : "Mark as chosen"}
+        className={cn(
+          "absolute top-2 left-2 transition-all p-0.5 z-10",
+          card.is_chosen ? "text-amber-400" : "opacity-0 group-hover:opacity-100 text-zinc-700 hover:text-amber-400"
+        )}
+      >
+        <Star className="h-3 w-3" fill={card.is_chosen ? "currentColor" : "none"} />
+      </button>
       <div className="p-3 cursor-pointer" onClick={onClick}>
-        <p className={cn("text-sm text-zinc-200 leading-snug pr-4", contentClassName)}>{card.content}</p>
+        <p className={cn("text-sm text-zinc-200 leading-snug pr-4", card.is_chosen ? "pl-4" : "", contentClassName)}>{card.content}</p>
         {card.notes && (
           <p className="mt-1 text-xs text-zinc-500 leading-snug line-clamp-2">{card.notes}</p>
         )}
@@ -1269,25 +1418,39 @@ function IdeaCard({
 // ── Idea Edit Panel ───────────────────────────────────────────────────────────
 
 function IdeaEditPanel({
-  card, onUpdate, onDelete, onClose,
+  card, onUpdate, onDelete, onClose, onToggleChosen,
 }: {
   card: StrategyCard;
   onUpdate: (updates: Partial<StrategyCard>) => void;
   onDelete: () => void;
   onClose: () => void;
+  onToggleChosen: () => Promise<void>;
 }) {
   const [content, setContent] = useState(card.content);
   const [notes, setNotes]     = useState(card.notes ?? "");
   const [status, setStatus]   = useState(card.status);
+  const [color, setColor]     = useState<string | null>(card.color ?? null);
   const [dirty, setDirty]     = useState(false);
 
-  useEffect(() => { setContent(card.content); setNotes(card.notes ?? ""); setStatus(card.status); setDirty(false); }, [card.id]);
+  useEffect(() => {
+    setContent(card.content); setNotes(card.notes ?? ""); setStatus(card.status);
+    setColor(card.color ?? null); setDirty(false);
+  }, [card.id]);
 
   return (
     <div className="w-72 shrink-0 rounded-xl border border-zinc-700 bg-zinc-900 flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
         <span className="text-sm font-medium text-zinc-200">Edit idea</span>
-        <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 transition-colors"><X className="h-4 w-4" /></button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onToggleChosen}
+            title={card.is_chosen ? "Remove chosen mark" : "Mark as chosen"}
+            className={cn("transition-colors", card.is_chosen ? "text-amber-400" : "text-zinc-600 hover:text-amber-400")}
+          >
+            <Star className="h-4 w-4" fill={card.is_chosen ? "currentColor" : "none"} />
+          </button>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 transition-colors"><X className="h-4 w-4" /></button>
+        </div>
       </div>
       <div className="p-4 flex flex-col gap-4 flex-1">
         <div>
@@ -1304,12 +1467,76 @@ function IdeaEditPanel({
             {CARD_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
         </div>
+        <div>
+          <label className="text-xs text-zinc-500 mb-1.5 block">Color Label</label>
+          <div className="flex gap-1.5 flex-wrap">
+            {CARD_COLORS.map(({ value, label }) => (
+              <button
+                key={label}
+                title={label}
+                onClick={() => { setColor(value); setDirty(true); }}
+                className={cn(
+                  "h-5 w-5 rounded-full border-2 transition-all",
+                  color === value ? "border-zinc-200 scale-110" : "border-zinc-700 hover:border-zinc-400"
+                )}
+                style={{ backgroundColor: value ?? "transparent" }}
+              />
+            ))}
+          </div>
+        </div>
         {displayName(card.author_email) && <p className="text-xs text-zinc-600">Added by {displayName(card.author_email)}</p>}
       </div>
       <div className="flex items-center justify-between px-4 py-3 border-t border-zinc-800">
         <button onClick={onDelete} className="text-xs text-red-500 hover:text-red-400 transition-colors">Delete</button>
-        <button onClick={() => { onUpdate({ content, notes, status }); setDirty(false); }} disabled={!dirty} className="px-3 py-1.5 rounded-lg bg-zinc-700 text-xs text-zinc-200 hover:bg-zinc-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">Save</button>
+        <button onClick={() => { onUpdate({ content, notes, status, color }); setDirty(false); }} disabled={!dirty} className="px-3 py-1.5 rounded-lg bg-zinc-700 text-xs text-zinc-200 hover:bg-zinc-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">Save</button>
       </div>
+    </div>
+  );
+}
+
+// ── Archive Panel ─────────────────────────────────────────────────────────────
+
+function ArchivePanel({ cards, columns, onRestore, onDelete }: {
+  cards: StrategyCard[];
+  columns: StrategyColumn[];
+  onRestore: (id: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  if (cards.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3 text-zinc-700">
+        <Archive className="h-8 w-8" />
+        <p className="text-sm">No archived ideas</p>
+      </div>
+    );
+  }
+
+  const byColumn = columns.map((col) => ({
+    col,
+    items: cards.filter((c) => c.category === col.id),
+  })).filter((g) => g.items.length > 0);
+
+  return (
+    <div className="flex flex-col gap-6">
+      {byColumn.map(({ col, items }) => (
+        <div key={col.id}>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-600 mb-3">{col.name}</h3>
+          <div className="flex flex-col gap-2">
+            {items.map((card) => (
+              <div key={card.id} className="flex items-start gap-3 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-zinc-300">{card.content}</p>
+                  {card.notes && <p className="text-xs text-zinc-600 mt-0.5">{card.notes}</p>}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => onRestore(card.id)} className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors">Restore</button>
+                  <button onClick={() => onDelete(card.id)} className="text-xs text-red-700 hover:text-red-400 transition-colors">Delete</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

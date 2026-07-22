@@ -9,14 +9,17 @@ async function checkOne(domain: string, pat: string) {
       { headers: { Authorization: `sso-key ${pat}` } }
     );
     const data = await res.json();
+    if (!res.ok) {
+      return { domain, available: null, price: null, currency: "USD", error: data.message ?? `GoDaddy error ${res.status}` };
+    }
     return {
       domain,
       available: data.available ?? null,
       price: typeof data.price === "number" ? data.price / 1_000_000 : null,
       currency: data.currency ?? "USD",
     };
-  } catch {
-    return { domain, available: null, price: null, currency: "USD" };
+  } catch (e: any) {
+    return { domain, available: null, price: null, currency: "USD", error: e?.message ?? "Network error" };
   }
 }
 
