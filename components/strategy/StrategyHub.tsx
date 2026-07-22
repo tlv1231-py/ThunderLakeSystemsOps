@@ -584,16 +584,6 @@ export function StrategyHub({
                 </button>
               </div>
             )}
-            <button
-              onClick={() => saveFontScale(activeFontScale - 0.05)}
-              title={viewAsUserId ? `Decrease text size for ${displayName(viewAsEmail)}` : "Decrease text size"}
-              className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors text-base leading-none font-semibold select-none"
-            >−</button>
-            <button
-              onClick={() => saveFontScale(activeFontScale + 0.05)}
-              title={viewAsUserId ? `Increase text size for ${displayName(viewAsEmail)}` : "Increase text size"}
-              className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors text-base leading-none font-semibold select-none"
-            >+</button>
             {briefToken && (
               <button
                 onClick={() => {
@@ -610,6 +600,16 @@ export function StrategyHub({
                 {briefCopied ? "Copied!" : "AI Brief"}
               </button>
             )}
+            <button
+              onClick={() => saveFontScale(activeFontScale - 0.05)}
+              title={viewAsUserId ? `Decrease text size for ${displayName(viewAsEmail)}` : "Decrease text size"}
+              className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors text-base leading-none font-semibold select-none"
+            >−</button>
+            <button
+              onClick={() => saveFontScale(activeFontScale + 0.05)}
+              title={viewAsUserId ? `Increase text size for ${displayName(viewAsEmail)}` : "Increase text size"}
+              className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors text-base leading-none font-semibold select-none"
+            >+</button>
             <div className="relative">
               <button
                 onClick={() => setThemeOpen((o) => !o)}
@@ -935,7 +935,7 @@ function DomainAvailabilityPanel({ card, onSaveResult }: {
   }
 
   return (
-    <div className="flex flex-col gap-1 px-3 pt-1.5 pb-2 border-t border-current/20">
+    <div className="w-36 shrink-0 border-l border-current/20 flex flex-col justify-center gap-1 px-3 py-2">
       {checking ? (
         <div className="flex items-center gap-1.5">
           <Loader2 className="h-3 w-3 animate-spin text-zinc-500 shrink-0" />
@@ -1355,7 +1355,7 @@ function IdeaCard({
   contentClassName?: string;
   domainPanel?: React.ReactNode;
 }) {
-  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(true);
   const [newComment, setNewComment] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -1391,24 +1391,25 @@ function IdeaCard({
       >
         <Star className="h-3 w-3" fill={card.is_chosen ? "currentColor" : "none"} />
       </button>
-      <div className="p-3 cursor-pointer" onClick={onClick}>
-        <p className={cn("text-sm text-zinc-200 leading-snug pr-4", card.is_chosen ? "pl-4" : "", contentClassName)}>{card.content}</p>
-        {card.notes && (
-          <p className="mt-1 text-xs text-zinc-500 leading-snug line-clamp-2">{card.notes}</p>
-        )}
-        <div className="flex items-center justify-between mt-2">
-          {card.status !== "idea" && (
-            <span className={cn("inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium", statusInfo.cls)}>
-              {statusInfo.label}
-            </span>
+      <div className="flex items-stretch">
+        <div className="flex-1 p-3 cursor-pointer" onClick={onClick}>
+          <p className={cn("text-sm text-zinc-200 leading-snug pr-4", card.is_chosen ? "pl-4" : "", contentClassName)}>{card.content}</p>
+          {card.notes && (
+            <p className="mt-1 text-xs text-zinc-500 leading-snug line-clamp-2">{card.notes}</p>
           )}
-          {displayName(card.author_email) && (
-            <span className="text-[10px] text-zinc-700 ml-auto">{displayName(card.author_email)}</span>
-          )}
+          <div className="flex items-center justify-between mt-2">
+            {card.status !== "idea" && (
+              <span className={cn("inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium", statusInfo.cls)}>
+                {statusInfo.label}
+              </span>
+            )}
+            {displayName(card.author_email) && (
+              <span className="text-[10px] text-zinc-700 ml-auto">{displayName(card.author_email)}</span>
+            )}
+          </div>
         </div>
+        {domainPanel}
       </div>
-
-      {domainPanel}
 
       {/* Reactions bar */}
       <div className="px-3 pb-2 border-t border-current/20 flex items-center gap-2">
