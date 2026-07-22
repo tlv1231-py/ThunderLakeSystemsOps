@@ -37,7 +37,9 @@ const NAV_ITEMS = [
   { href: "/tools",      label: "Tools",     icon: Wrench          },
 ];
 
-export function AdminNav({ isAdmin }: { isAdmin: boolean }) {
+const COLLAPSE_DEFAULT_SLUGS = ["mark", "didi", "kelsea"];
+
+export function AdminNav({ isAdmin, userEmail = "" }: { isAdmin: boolean; userEmail?: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
@@ -47,7 +49,12 @@ export function AdminNav({ isAdmin }: { isAdmin: boolean }) {
   useEffect(() => {
     setMounted(true);
     const saved = localStorage.getItem("nav-collapsed");
-    if (saved === "true") setCollapsed(true);
+    if (saved !== null) {
+      setCollapsed(saved === "true");
+    } else {
+      const slug = userEmail.split("@")[0].split(/[._-]/)[0].toLowerCase();
+      if (COLLAPSE_DEFAULT_SLUGS.includes(slug)) setCollapsed(true);
+    }
   }, []);
 
   function toggle() {
