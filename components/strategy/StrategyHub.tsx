@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Trash2, X, Palette, ThumbsUp, ThumbsDown, MessageSquare, Send, Eye, CheckCircle2, XCircle, RefreshCw, Loader2, Star, Search, Globe, Archive, ArrowUpDown, AlertCircle, GripVertical, Link } from "lucide-react";
@@ -23,7 +23,7 @@ export type StrategyCard = {
   updated_at: string;
   domain_available?: boolean | null;
   domain_checked_at?: string | null;
-  domain_tlds?: { com: boolean | null; net: boolean | null; co: boolean | null } | null;
+  domain_tlds?: { com: boolean | null; net: boolean | null } | null;
   is_chosen?: boolean | null;
   color?: string | null;
   position?: number | null;
@@ -1183,19 +1183,19 @@ function DomainAvailabilityPanel({ card, onSaveResult }: {
     setChecking(true);
     setApiError(null);
     try {
-      const res = await fetch(`/api/domain-check?name=${encodeURIComponent(stem)}&tlds=com,net,co`);
+      const res = await fetch(`/api/domain-check?name=${encodeURIComponent(stem)}&tlds=com,net`);
       const data = await res.json();
       if (!Array.isArray(data)) {
         setApiError(data.error ?? "No data from registry");
         return;
       }
-      const tlds: { com: boolean | null; net: boolean | null; co: boolean | null } = {
-        com: null, net: null, co: null,
+      const tlds: { com: boolean | null; net: boolean | null } = {
+        com: null, net: null,
       };
       for (const item of data) {
         const tld = item.domain.split(".").slice(1).join(".");
-        if (tld === "com" || tld === "net" || tld === "co") {
-          tlds[tld as "com" | "net" | "co"] = item.available ?? null;
+        if (tld === "com" || tld === "net") {
+          tlds[tld as "com" | "net"] = item.available ?? null;
         }
       }
       await onSaveResult({ domain_tlds: tlds, domain_checked_at: new Date().toISOString() });
@@ -1239,7 +1239,7 @@ function DomainAvailabilityPanel({ card, onSaveResult }: {
       ) : hasTldsData ? (
         <>
           <div className="space-y-0.5">
-            {(["com", "net", "co"] as const).map((tld) => {
+            {(["com", "net"] as const).map((tld) => {
               const val = card.domain_tlds![tld];
               return (
                 <div key={tld} className="flex items-center gap-1.5">
@@ -1400,14 +1400,14 @@ function IdeasBoard({
     for (const card of toCheck) {
       const stem = parseDomainStem(card.content);
       try {
-        const res = await fetch(`/api/domain-check?name=${encodeURIComponent(stem)}&tlds=com,net,co`);
+        const res = await fetch(`/api/domain-check?name=${encodeURIComponent(stem)}&tlds=com,net`);
         const data = await res.json();
         if (Array.isArray(data)) {
-          const tlds: { com: boolean | null; net: boolean | null; co: boolean | null } = { com: null, net: null, co: null };
+          const tlds: { com: boolean | null; net: boolean | null } = { com: null, net: null };
           for (const item of data) {
             const tld = item.domain.split(".").slice(1).join(".");
-            if (tld === "com" || tld === "net" || tld === "co") {
-              tlds[tld as "com" | "net" | "co"] = item.available ?? null;
+            if (tld === "com" || tld === "net") {
+              tlds[tld as "com" | "net"] = item.available ?? null;
             }
           }
           await onUpdate(card.id, { domain_tlds: tlds, domain_checked_at: new Date().toISOString() });
@@ -1478,7 +1478,7 @@ function IdeasBoard({
                               onAddComment={(c) => onAddComment(card.id, "card", c)}
                               onDeleteComment={onDeleteComment}
                               onToggleChosen={() => setChosen(card.id, col.id)}
-                              contentClassName={isDomainCol ? "break-all" : ""}
+                              fitContent={isDomainCol}
                               domainPanel={isDomainCol ? <DomainAvailabilityPanel card={card} onSaveResult={(updates) => onUpdate(card.id, updates)} /> : undefined}
                             />
                           </div>
@@ -1655,7 +1655,7 @@ function ColumnHeader({
 function IdeaCard({
   card, reactions, comments, userEmail,
   onClick, onDelete, onToggleReaction, onAddComment, onDeleteComment, onToggleChosen,
-  contentClassName = "", domainPanel,
+  contentClassName = "", domainPanel, fitContent = false,
 }: {
   card: StrategyCard;
   reactions: StrategyReaction[];
@@ -1669,11 +1669,26 @@ function IdeaCard({
   onToggleChosen: () => void;
   contentClassName?: string;
   domainPanel?: React.ReactNode;
+  fitContent?: boolean;
 }) {
   const [commentsOpen, setCommentsOpen] = useState(true);
   const [newComment, setNewComment] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const contentRef = useRef<HTMLParagraphElement>(null);
   const resolveColor = React.useContext(UserColorsCtx);
+
+  useLayoutEffect(() => {
+    if (!fitContent) return;
+    const el = contentRef.current;
+    if (!el) return;
+    el.style.fontSize = "";
+    const natural = parseFloat(getComputedStyle(el).fontSize);
+    let size = natural;
+    while (el.scrollWidth > el.offsetWidth && size > 9) {
+      size -= 0.5;
+      el.style.fontSize = `${size}px`;
+    }
+  }, [card.content, fitContent]);
 
   const statusInfo    = CARD_STATUSES.find((s) => s.key === card.status) ?? CARD_STATUSES[0];
   const cardReactions = reactions.filter((r) => r.item_id === card.id && r.item_type === "card");
@@ -1709,7 +1724,14 @@ function IdeaCard({
       </button>
       <div className="flex items-stretch">
         <div className="flex-1 p-3 cursor-pointer" onClick={onClick}>
-          <p className={cn("text-sm font-semibold text-zinc-200 leading-snug pr-4", card.is_chosen ? "pl-4" : "", contentClassName)}>{card.content}</p>
+          <p
+            ref={fitContent ? contentRef : undefined}
+            className={cn(
+              "text-sm font-semibold text-zinc-200 leading-snug pr-4",
+              card.is_chosen ? "pl-4" : "",
+              fitContent ? "whitespace-nowrap overflow-hidden" : contentClassName
+            )}
+          >{card.content}</p>
           {card.notes && (
             <p className="mt-1 text-xs text-zinc-500 leading-snug line-clamp-2">{card.notes}</p>
           )}
