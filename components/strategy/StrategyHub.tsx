@@ -425,6 +425,9 @@ export function StrategyHub({
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "strategy_chat" }, (p: any) => {
         setMessages((s) => s.filter((m) => m.id !== p.old.id));
       })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "strategy_preferences" }, (p: any) => {
+        if (p.new.user_id === userId) setPrefs((prev) => ({ ...prev, ...p.new }));
+      })
       .subscribe();
 
     return () => { (supabase as any).removeChannel(ch); };
