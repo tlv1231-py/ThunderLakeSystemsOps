@@ -22,7 +22,7 @@ export default async function AdminLayout({
   return (
     <div className="flex h-screen bg-zinc-950">
       <AdminNav isAdmin={isAdmin} />
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-y-auto" style={{ overflowX: "clip" }}>
         <div className="px-4 py-6">{children}</div>
       </main>
     </div>
