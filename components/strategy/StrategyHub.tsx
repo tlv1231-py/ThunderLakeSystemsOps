@@ -262,22 +262,41 @@ export function StrategyHub({
   const [reactions, setReactions] = useState<StrategyReaction[]>(initialReactions);
   const [comments, setComments] = useState<StrategyComment[]>(initialComments);
   const [messages, setMessages] = useState<StrategyMessage[]>(initialMessages);
-  const [prefs, setPrefs]       = useState<StrategyPrefs>(initialPrefs ?? { ...DEFAULT_PREFS, user_id: userId });
-  const [viewAsUserId, setViewAsUserId] = useState<string | null>(null);
-  const [themeOpen, setThemeOpen] = useState(false);
+  const [prefs, setPrefs]           = useState<StrategyPrefs>(initialPrefs ?? { ...DEFAULT_PREFS, user_id: userId });
+  const [allPrefsLocal, setAllPrefsLocal] = useState<StrategyPrefs[]>(allPrefs);
+  const [viewAsUserId, setViewAsUserId]   = useState<string | null>(null);
+  const [themeOpen, setThemeOpen]         = useState(false);
 
   const supabase = createClient();
   const db = supabase as unknown as SupabaseClient;
 
+  // The prefs that are active for the current view (own or viewed user's)
   const activePrefs = useMemo(() => {
     if (!viewAsUserId) return prefs;
-    return allPrefs.find((p) => p.user_id === viewAsUserId) ?? DEFAULT_PREFS;
-  }, [viewAsUserId, prefs, allPrefs]);
+    return allPrefsLocal.find((p) => p.user_id === viewAsUserId) ?? { ...DEFAULT_PREFS, user_id: viewAsUserId };
+  }, [viewAsUserId, prefs, allPrefsLocal]);
 
   const themeCSS = useMemo(() => buildThemeCSS(activePrefs), [activePrefs]);
 
-  const fontScale = prefs.font_scale ?? 1;
+  const activeFontScale = activePrefs.font_scale ?? 1;
 
+  // Saves prefs for whoever is active (own account or the user being previewed)
+  const saveActivePrefs = useCallback(async (next: StrategyPrefs) => {
+    const targetId = viewAsUserId ?? userId;
+    if (viewAsUserId) {
+      setAllPrefsLocal((prev) => {
+        const exists = prev.some((p) => p.user_id === viewAsUserId);
+        return exists
+          ? prev.map((p) => p.user_id === viewAsUserId ? { ...next, user_id: viewAsUserId } : p)
+          : [...prev, { ...next, user_id: viewAsUserId }];
+      });
+    } else {
+      setPrefs(next);
+    }
+    await db.from("strategy_preferences").upsert({ ...next, user_id: targetId });
+  }, [db, userId, viewAsUserId]);
+
+  // Kept for legacy call-sites that always mean "my own prefs"
   const savePrefs = useCallback(async (next: StrategyPrefs) => {
     setPrefs(next);
     await db.from("strategy_preferences").upsert({ ...next, user_id: userId });
@@ -285,8 +304,8 @@ export function StrategyHub({
 
   const saveFontScale = useCallback(async (scale: number) => {
     const clamped = Math.round(Math.max(0.7, Math.min(1.5, scale)) * 100) / 100;
-    await savePrefs({ ...prefs, font_scale: clamped });
-  }, [prefs, savePrefs]);
+    await saveActivePrefs({ ...activePrefs, font_scale: clamped });
+  }, [activePrefs, saveActivePrefs]);
 
   // ── Realtime ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -532,17 +551,6 @@ export function StrategyHub({
       )}
 
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Preview banner */}
-        {viewAsUserId && (
-          <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-900/30 border border-amber-700/40 text-xs text-amber-300">
-            <Eye className="h-3.5 w-3.5 shrink-0" />
-            Viewing as {displayName(viewAsEmail)}
-            <button onClick={() => setViewAsUserId(null)} className="ml-auto text-amber-500 hover:text-amber-300 transition-colors">
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
-
         {/* Header */}
         <div className="mb-6 flex items-start justify-between">
           <div>
@@ -559,32 +567,40 @@ export function StrategyHub({
               </a>
             </p>
           </div>
-          {!viewAsUserId && (
-            <div className="flex items-center gap-0.5">
-              <button
-                onClick={() => saveFontScale(fontScale - 0.05)}
-                title="Decrease text size"
-                className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors text-base leading-none font-semibold select-none"
-              >−</button>
-              <button
-                onClick={() => saveFontScale(fontScale + 0.05)}
-                title="Increase text size"
-                className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors text-base leading-none font-semibold select-none"
-              >+</button>
-              <div className="relative">
-                <button
-                  onClick={() => setThemeOpen((o) => !o)}
-                  className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-                  title="Customize theme"
-                >
-                  <Palette className="h-4 w-4" />
+          <div className="flex items-center gap-1.5">
+            {/* "Viewing as" chip — inline with controls */}
+            {viewAsUserId && (
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-900/30 border border-amber-700/40 text-xs text-amber-300 mr-1">
+                <Eye className="h-3 w-3 shrink-0" />
+                <span>{displayName(viewAsEmail)}</span>
+                <button onClick={() => setViewAsUserId(null)} className="text-amber-500 hover:text-amber-300 transition-colors ml-0.5">
+                  <X className="h-3 w-3" />
                 </button>
-                {themeOpen && (
-                  <ThemePanel prefs={prefs} onChange={savePrefs} onClose={() => setThemeOpen(false)} />
-                )}
               </div>
+            )}
+            <button
+              onClick={() => saveFontScale(activeFontScale - 0.05)}
+              title={viewAsUserId ? `Decrease text size for ${displayName(viewAsEmail)}` : "Decrease text size"}
+              className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors text-base leading-none font-semibold select-none"
+            >−</button>
+            <button
+              onClick={() => saveFontScale(activeFontScale + 0.05)}
+              title={viewAsUserId ? `Increase text size for ${displayName(viewAsEmail)}` : "Increase text size"}
+              className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors text-base leading-none font-semibold select-none"
+            >+</button>
+            <div className="relative">
+              <button
+                onClick={() => setThemeOpen((o) => !o)}
+                className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                title={viewAsUserId ? `Edit theme for ${displayName(viewAsEmail)}` : "Customize theme"}
+              >
+                <Palette className="h-4 w-4" />
+              </button>
+              {themeOpen && (
+                <ThemePanel prefs={activePrefs} onChange={saveActivePrefs} onClose={() => setThemeOpen(false)} />
+              )}
             </div>
-          )}
+          </div>
         </div>
 
         {/* Tabs */}
