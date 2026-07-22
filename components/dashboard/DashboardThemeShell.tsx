@@ -27,7 +27,7 @@ export function DashboardThemeShell({
   async function toggle() {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
-    await supabase.from("dashboard_preferences").upsert({ user_id: userId, theme: next });
+    await (supabase as any).from("dashboard_preferences").upsert({ user_id: userId, theme: next });
   }
 
   const isDark = theme === "dark";
