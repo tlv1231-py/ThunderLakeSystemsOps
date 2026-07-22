@@ -45,6 +45,7 @@ export default async function StrategyPage() {
       userId={user?.id ?? ""}
       isAdmin={isAdmin}
       initialMessages={(chatRes.data ?? []) as StrategyMessage[]}
+      briefToken={process.env.STRATEGY_BRIEF_TOKEN ?? ""}
     />
   );
 }

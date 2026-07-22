@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, X, Palette, ThumbsUp, ThumbsDown, MessageSquare, Send, Eye, CheckCircle2, XCircle, RefreshCw, Loader2, Star, Search, Globe, Archive, ArrowUpDown, AlertCircle, GripVertical } from "lucide-react";
+import { Plus, Trash2, X, Palette, ThumbsUp, ThumbsDown, MessageSquare, Send, Eye, CheckCircle2, XCircle, RefreshCw, Loader2, Star, Search, Globe, Archive, ArrowUpDown, AlertCircle, GripVertical, Link } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import type { DragEndEvent } from "@dnd-kit/core";
@@ -256,7 +256,7 @@ export function StrategyHub({
   initialCards, initialTasks, initialNotes, initialImages,
   initialColumns, initialReactions, initialComments,
   initialPrefs, allPrefs, teamMembers,
-  userEmail, userId, isAdmin, initialMessages,
+  userEmail, userId, isAdmin, initialMessages, briefToken,
 }: {
   initialCards: StrategyCard[];
   initialTasks: StrategyTask[];
@@ -272,6 +272,7 @@ export function StrategyHub({
   userId: string;
   isAdmin: boolean;
   initialMessages: StrategyMessage[];
+  briefToken: string;
 }) {
   const [tab, setTab] = useState<"ideas" | "tasks" | "notes" | "moodboard" | "archive">("ideas");
   const [searchQuery, setSearchQuery] = useState("");
@@ -288,6 +289,7 @@ export function StrategyHub({
   const [allPrefsLocal, setAllPrefsLocal] = useState<StrategyPrefs[]>(allPrefs);
   const [viewAsUserId, setViewAsUserId]   = useState<string | null>(null);
   const [themeOpen, setThemeOpen]         = useState(false);
+  const [briefCopied, setBriefCopied]     = useState(false);
 
   const supabase = createClient();
   const db = supabase as unknown as SupabaseClient;
@@ -592,6 +594,22 @@ export function StrategyHub({
               title={viewAsUserId ? `Increase text size for ${displayName(viewAsEmail)}` : "Increase text size"}
               className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors text-base leading-none font-semibold select-none"
             >+</button>
+            {briefToken && (
+              <button
+                onClick={() => {
+                  const url = `${window.location.origin}/brief/${briefToken}`;
+                  navigator.clipboard.writeText(url).then(() => {
+                    setBriefCopied(true);
+                    setTimeout(() => setBriefCopied(false), 2000);
+                  });
+                }}
+                title="Copy AI brief link — paste into any AI to share the full hub"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors border border-zinc-700 hover:border-zinc-500"
+              >
+                <Link className="h-3 w-3 shrink-0" />
+                {briefCopied ? "Copied!" : "AI Brief"}
+              </button>
+            )}
             <div className="relative">
               <button
                 onClick={() => setThemeOpen((o) => !o)}
