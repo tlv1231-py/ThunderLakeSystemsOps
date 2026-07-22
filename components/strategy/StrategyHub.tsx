@@ -406,13 +406,14 @@ export function StrategyHub({
     try {
       const res = await fetch(`/api/domain-check?domain=${encodeURIComponent(domain)}`);
       const data = await res.json();
-      await updateCard(card.id, {
-        domain_available: typeof data.available === "boolean" ? data.available : null,
-        domain_checked_at: new Date().toISOString(),
-      });
-    } catch {
-      // don't update checked_at on failure so they can retry immediately
-    }
+      const available = typeof data.available === "boolean" ? data.available : null;
+      // Only stamp domain_checked_at when we got a real boolean — null means
+      // the API returned an error, so we don't start the cooldown and the user
+      // can retry immediately.
+      if (available !== null) {
+        await updateCard(card.id, { domain_available: available, domain_checked_at: new Date().toISOString() });
+      }
+    } catch { /* no update on network failure */ }
   }
 
   // ── Chat ──────────────────────────────────────────────────────────────────
@@ -633,11 +634,27 @@ function ChatPanel({ messages, userEmail, onSend }: {
   onSend: (content: string) => Promise<void>;
 }) {
   const [text, setText] = useState("");
+  const [width, setWidth] = useState(256);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  function startResize(e: React.MouseEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = width;
+    function onMove(ev: MouseEvent) {
+      setWidth(Math.max(180, Math.min(520, startW + startX - ev.clientX)));
+    }
+    function onUp() {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
 
   async function send() {
     const t = text.trim();
@@ -648,9 +665,17 @@ function ChatPanel({ messages, userEmail, onSend }: {
 
   return (
     <div
-      className="shrink-0 w-64 flex flex-col border-l border-zinc-800 sticky"
-      style={{ top: 0, height: "calc(100vh - 6rem)", alignSelf: "flex-start" }}
+      className="shrink-0 flex flex-col border-l border-zinc-800 sticky relative"
+      style={{ top: 0, height: "calc(100vh - 6rem)", alignSelf: "flex-start", width }}
     >
+      {/* Drag-to-resize handle */}
+      <div
+        onMouseDown={startResize}
+        className="absolute left-0 top-0 bottom-0 w-3 cursor-col-resize z-10 group/resize"
+        style={{ transform: "translateX(-50%)" }}
+      >
+        <div className="absolute inset-y-0 left-1/2 w-px bg-zinc-800 group-hover/resize:bg-zinc-500 transition-colors" />
+      </div>
       <div className="px-4 py-3 border-b border-zinc-800 shrink-0">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Team Chat</h3>
       </div>
@@ -763,8 +788,9 @@ function DomainAvailabilityPanel({ card, onCheck }: {
     return () => clearInterval(id);
   }, []);
 
-  const left    = domainCooldownLeft(card.domain_checked_at);
-  const hasData = card.domain_available !== null && card.domain_available !== undefined;
+  const left     = domainCooldownLeft(card.domain_checked_at);
+  const hasData  = card.domain_available !== null && card.domain_available !== undefined;
+  const hadError = !hasData && !!card.domain_checked_at; // checked but got no boolean back
   const canCheck = !checking && left === 0;
 
   async function handle(e: React.MouseEvent) {
@@ -782,6 +808,13 @@ function DomainAvailabilityPanel({ card, onCheck }: {
           <Loader2 className="h-3 w-3 animate-spin text-zinc-500 shrink-0" />
           <span className="text-[10px] text-zinc-500">Checking…</span>
         </div>
+      ) : hadError ? (
+        <>
+          <span className="text-[10px] text-zinc-600">No response</span>
+          <button onClick={handle} className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors text-left">
+            Try again
+          </button>
+        </>
       ) : !hasData ? (
         <button
           onClick={handle}
@@ -876,7 +909,9 @@ function IdeasBoard({
   const domainsColId = columns.find((c) => c.name.toLowerCase() === "domains")?.id;
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4">
+    <>
+    <style>{`.ideas-scroll::-webkit-scrollbar{display:none}`}</style>
+    <div className="ideas-scroll flex gap-4 pb-4" style={{ overflowX: "auto", scrollbarWidth: "none" } as React.CSSProperties}>
       {columns.map((col) => {
         const colCards = cards.filter((c) => c.category === col.id);
         const isDomainCol = col.id === domainsColId;
@@ -944,10 +979,10 @@ function IdeasBoard({
         );
       })}
 
-      {/* Add column */}
-      <div className="shrink-0 w-44">
+      {/* Add column — just a + at header height */}
+      <div className="shrink-0 pt-0.5">
         {addingCol ? (
-          <div className="rounded-lg border border-zinc-700 bg-zinc-800 p-3">
+          <div>
             <input
               autoFocus
               value={newColName}
@@ -956,20 +991,17 @@ function IdeasBoard({
                 if (e.key === "Enter") handleAddColumn();
                 if (e.key === "Escape") { setAddingCol(false); setNewColName(""); }
               }}
-              placeholder="Column name..."
-              className="w-full bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-600 mb-2"
+              placeholder="Column name…"
+              className="text-xs font-semibold uppercase tracking-wide bg-transparent border-b border-zinc-600 outline-none text-zinc-300 w-32 py-0.5"
             />
-            <div className="flex gap-2">
-              <button onClick={handleAddColumn} className="px-2.5 py-1 rounded bg-zinc-700 text-xs text-zinc-200 hover:bg-zinc-600 transition-colors">Add</button>
-              <button onClick={() => { setAddingCol(false); setNewColName(""); }} className="px-2.5 py-1 rounded text-xs text-zinc-500 hover:text-zinc-300 transition-colors">Cancel</button>
-            </div>
           </div>
         ) : (
           <button
-            onClick={() => setAddingCol(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-dashed border-zinc-700 text-xs text-zinc-600 hover:text-zinc-400 hover:border-zinc-500 transition-colors w-full mt-6"
+            onClick={() => { setAddingCol(true); setNewColName(""); }}
+            title="Add column"
+            className="text-zinc-700 hover:text-zinc-400 transition-colors"
           >
-            <Plus className="h-3.5 w-3.5" /> Add column
+            <Plus className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
@@ -983,6 +1015,7 @@ function IdeasBoard({
         />
       )}
     </div>
+    </>
   );
 }
 
