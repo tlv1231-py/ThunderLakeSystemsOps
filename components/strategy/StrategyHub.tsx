@@ -348,6 +348,20 @@ export function StrategyHub({
 
   const activeFontScale = activePrefs.font_scale ?? 1.1;
 
+  // Canonical color for each user = their own self-designated bubble color (stored in their own prefs).
+  // Falls back to the current user's personal overrides, then hash-based default.
+  const canonicalUserColors = useMemo(() => {
+    const map: Record<string, string> = { ...(prefs.user_colors ?? {}) };
+    for (const ap of allPrefsLocal) {
+      if (!ap.user_colors) continue;
+      const member = teamMembers.find((m) => m.id === ap.user_id);
+      if (member?.email && ap.user_colors[member.email]) {
+        map[member.email] = ap.user_colors[member.email];
+      }
+    }
+    return map;
+  }, [allPrefsLocal, prefs.user_colors, teamMembers]);
+
   // Saves prefs for whoever is active (own account or the user being previewed)
   const saveActivePrefs = useCallback(async (next: StrategyPrefs) => {
     const targetId = viewAsUserId ?? userId;
@@ -422,6 +436,12 @@ export function StrategyHub({
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "strategy_preferences" }, (p: any) => {
         if (p.new.user_id === userId) setPrefs((prev) => ({ ...prev, ...p.new }));
+        setAllPrefsLocal((prev) => {
+          const exists = prev.some((ap) => ap.user_id === p.new.user_id);
+          return exists
+            ? prev.map((ap) => ap.user_id === p.new.user_id ? { ...ap, ...p.new } : ap)
+            : [...prev, p.new];
+        });
       })
       .subscribe();
 
@@ -630,7 +650,7 @@ export function StrategyHub({
     : "";
 
   return (
-    <UserColorsCtx.Provider value={(email) => resolveUserColor(email, prefs.user_colors)}>
+    <UserColorsCtx.Provider value={(email) => resolveUserColor(email, canonicalUserColors)}>
     <div
       className="sh-root flex gap-4"
       style={{ minHeight: "calc(100vh - 10rem)", zoom: activeFontScale !== 1 ? activeFontScale : undefined } as React.CSSProperties}
@@ -807,7 +827,7 @@ export function StrategyHub({
       </div>
 
       {/* Chat panel */}
-      <ChatPanel messages={messages} userEmail={userEmail} onSend={sendMessage} onDeleteMessage={deleteMessage} fontScale={activeFontScale} userColors={prefs.user_colors} onSetUserColor={setUserColor} onlineEmails={onlineEmails} />
+      <ChatPanel messages={messages} userEmail={userEmail} onSend={sendMessage} onDeleteMessage={deleteMessage} fontScale={activeFontScale} userColors={canonicalUserColors} onSetUserColor={setUserColor} onlineEmails={onlineEmails} />
     </div>
     </UserColorsCtx.Provider>
   );
@@ -886,9 +906,12 @@ function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1
   const [seenCount, setSeenCount]                 = useState(messages.length);
   const [colorPickingMsgId, setColorPickingMsgId] = useState<string | null>(null);
   const [headerPickingEmail, setHeaderPickingEmail] = useState<string | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages]);
 
   const unreadCount = Math.max(0, messages.length - seenCount);
   function markRead() { setSeenCount(messages.length); }
@@ -964,7 +987,7 @@ function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto py-3 flex flex-col gap-0 min-h-0">
+      <div ref={chatScrollRef} className="flex-1 overflow-y-auto py-3 flex flex-col gap-0 min-h-0">
         {messages.length === 0 && <p className="px-4 text-xs text-zinc-700">No messages yet. Say hi!</p>}
         {messages.map((m, i) => {
           const prev        = i > 0 ? messages[i - 1] : null;
@@ -1019,9 +1042,9 @@ function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1
                 <div
                   className={cn(
                     "max-w-[72%] px-3 py-1.5 rounded-2xl text-xs leading-relaxed break-words",
-                    isMe ? "rounded-br-sm" : "bg-zinc-800 text-zinc-200 rounded-bl-sm"
+                    isMe ? "rounded-br-sm" : "rounded-bl-sm"
                   )}
-                  style={isMe ? { background: color, color: contrastColor(color) } : undefined}
+                  style={{ background: color, color: contrastColor(color) }}
                 >
                   {renderWithMentions(m.content)}
                 </div>
@@ -1040,7 +1063,6 @@ function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1
             </React.Fragment>
           );
         })}
-        <div ref={bottomRef} />
       </div>
 
       <div className="px-3 pb-3 pt-2 border-t border-zinc-800 shrink-0">
