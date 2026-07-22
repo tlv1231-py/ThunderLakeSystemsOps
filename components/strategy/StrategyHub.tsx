@@ -268,6 +268,14 @@ function emailColorIndex(email: string): number {
 function resolveUserColor(email: string, userColors: Record<string, string> | null | undefined): string {
   return userColors?.[email] ?? USER_COLOR_PALETTE[emailColorIndex(email)];
 }
+function contrastColor(hex: string): string {
+  const h = hex.replace("#", "");
+  if (h.length < 6) return "#ffffff";
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.55 ? "#000000" : "#ffffff";
+}
 
 function formatChatTime(dateStr: string): string {
   const d   = new Date(dateStr);
@@ -325,6 +333,7 @@ export function StrategyHub({
   const [themeOpen, setThemeOpen]         = useState(false);
   const [briefCopied, setBriefCopied]     = useState(false);
   const [onlineEmails, setOnlineEmails]   = useState<Set<string>>(new Set());
+  const chatChannelRef = useRef<any>(null);
 
   const supabase = createClient();
   const db = supabase as unknown as SupabaseClient;
@@ -432,6 +441,20 @@ export function StrategyHub({
     return () => { ch.untrack(); (supabase as any).removeChannel(ch); };
   }, [userEmail]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Chat Broadcast (instant delivery, no table replication needed) ─────────
+  useEffect(() => {
+    const ch = (supabase as any).channel("strategy-chat-broadcast");
+    ch.on("broadcast", { event: "msg" }, ({ payload }: any) => {
+      setMessages((s) => s.find((m) => m.id === payload.id) ? s : [...s, payload]);
+    })
+    .on("broadcast", { event: "del" }, ({ payload }: any) => {
+      setMessages((s) => s.filter((m) => m.id !== payload.id));
+    })
+    .subscribe();
+    chatChannelRef.current = ch;
+    return () => { (supabase as any).removeChannel(ch); chatChannelRef.current = null; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Card CRUD ─────────────────────────────────────────────────────────────
   async function addCard(category: string, content: string) {
     const id = crypto.randomUUID();
@@ -519,6 +542,7 @@ export function StrategyHub({
       const next = [...s, msg];
       return next.length > 300 ? next.slice(-300) : next;
     });
+    chatChannelRef.current?.send({ type: "broadcast", event: "msg", payload: msg });
     await db.from("strategy_chat").insert(msg);
     // Prune server-side ~10% of sends to stay under 500 messages
     if (Math.random() < 0.1) {
@@ -538,6 +562,7 @@ export function StrategyHub({
 
   async function deleteMessage(id: string) {
     setMessages((s) => s.filter((m) => m.id !== id));
+    chatChannelRef.current?.send({ type: "broadcast", event: "del", payload: { id } });
     await db.from("strategy_chat").delete().eq("id", id).eq("author_email", userEmail);
   }
 
@@ -856,10 +881,11 @@ function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1
   onSetUserColor: (key: string, color: string) => Promise<void>;
   onlineEmails: Set<string>;
 }) {
-  const [text, setText]                     = useState("");
-  const [width, setWidth]                   = useState(280);
-  const [seenCount, setSeenCount]           = useState(messages.length);
+  const [text, setText]                           = useState("");
+  const [width, setWidth]                         = useState(280);
+  const [seenCount, setSeenCount]                 = useState(messages.length);
   const [colorPickingMsgId, setColorPickingMsgId] = useState<string | null>(null);
+  const [headerPickingEmail, setHeaderPickingEmail] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -904,22 +930,35 @@ function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1
         <div className="absolute inset-y-0 left-1/2 w-px bg-zinc-800 group-hover/resize:bg-zinc-500 transition-colors" />
       </div>
 
-      {/* Header: participant bubbles with online indicators */}
+      {/* Header: participant bubbles with online indicators + color picker */}
       <div className="px-3 py-2.5 border-b border-zinc-800 shrink-0 flex items-center gap-2">
-        {knownUsers.slice(0, 8).map((email) => (
-          <div key={email} className="relative" title={displayName(email)}>
-            <div
-              className="h-7 w-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
-              style={{ background: resolveUserColor(email, userColors) }}
-            >
-              {displayName(email).charAt(0).toUpperCase()}
+        {knownUsers.slice(0, 8).map((email) => {
+          const bubbleColor = resolveUserColor(email, userColors);
+          const isPicking   = headerPickingEmail === email;
+          return (
+            <div key={email} className="relative" title={displayName(email)}>
+              <button
+                onClick={(e) => { e.stopPropagation(); setHeaderPickingEmail(isPicking ? null : email); }}
+                className="h-7 w-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 transition-opacity hover:opacity-80"
+                style={{ background: bubbleColor, color: contrastColor(bubbleColor) }}
+              >
+                {displayName(email).charAt(0).toUpperCase()}
+              </button>
+              <div className={cn(
+                "absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-zinc-900 pointer-events-none",
+                onlineEmails.has(email) ? "bg-green-500" : "bg-zinc-600"
+              )} />
+              {isPicking && (
+                <ColorPickerPopover
+                  email={email}
+                  currentColor={bubbleColor}
+                  onPick={(c) => { onSetUserColor(email, c); setHeaderPickingEmail(null); }}
+                  onClose={() => setHeaderPickingEmail(null)}
+                />
+              )}
             </div>
-            <div className={cn(
-              "absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-zinc-900",
-              onlineEmails.has(email) ? "bg-green-500" : "bg-zinc-600"
-            )} />
-          </div>
-        ))}
+          );
+        })}
         {unreadCount > 0 && (
           <span className="ml-auto flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-blue-600 text-[9px] font-bold text-white shrink-0">{unreadCount}</span>
         )}
@@ -958,8 +997,8 @@ function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1
                     <button
                       onClick={(e) => { e.stopPropagation(); setColorPickingMsgId(isPickingThis ? null : m.id); }}
                       title={isMe ? `Your bubble color` : `Set color for ${name}`}
-                      className="h-7 w-7 rounded-full flex items-center justify-center text-[11px] font-bold transition-opacity hover:opacity-80 text-white"
-                      style={{ background: color }}
+                      className="h-7 w-7 rounded-full flex items-center justify-center text-[11px] font-bold transition-opacity hover:opacity-80"
+                      style={{ background: color, color: contrastColor(color) }}
                     >
                       {name.charAt(0).toUpperCase() || "?"}
                     </button>
@@ -980,9 +1019,9 @@ function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1
                 <div
                   className={cn(
                     "max-w-[72%] px-3 py-1.5 rounded-2xl text-xs leading-relaxed break-words",
-                    isMe ? "text-white rounded-br-sm" : "bg-zinc-800 text-zinc-200 rounded-bl-sm"
+                    isMe ? "rounded-br-sm" : "bg-zinc-800 text-zinc-200 rounded-bl-sm"
                   )}
-                  style={isMe ? { background: color } : undefined}
+                  style={isMe ? { background: color, color: contrastColor(color) } : undefined}
                 >
                   {renderWithMentions(m.content)}
                 </div>
