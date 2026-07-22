@@ -251,9 +251,12 @@ const CARD_COLORS: { value: string | null; label: string }[] = [
 
 const DEFAULT_PREFS: StrategyPrefs = { user_id: "", theme: "dark", bg_color: null, text_color: null, header_color: null, font_scale: 1.1, user_colors: null };
 
-// Context so every sub-component can resolve a user's assigned color without prop drilling
+// Contexts so every sub-component can resolve a user's assigned colors without prop drilling
 const UserColorsCtx = React.createContext<(email: string) => string>(
   (email) => resolveUserColor(email, null)
+);
+const UserTextColorsCtx = React.createContext<(email: string) => string | null>(
+  () => null
 );
 
 const USER_COLOR_PALETTE = [
@@ -276,6 +279,9 @@ function emailColorIndex(email: string): number {
 
 function resolveUserColor(email: string, userColors: Record<string, string> | null | undefined): string {
   return userColors?.[email] ?? USER_COLOR_PALETTE[emailColorIndex(email)];
+}
+function resolveUserTextColor(email: string, userColors: Record<string, string> | null | undefined): string | null {
+  return userColors?.[email + ":text"] ?? null;
 }
 
 function formatChatTime(dateStr: string): string {
@@ -497,8 +503,8 @@ export function StrategyHub({
   }
 
   // ── User color preferences ────────────────────────────────────────────────
-  async function setUserColor(email: string, color: string) {
-    const updated: StrategyPrefs = { ...prefs, user_colors: { ...(prefs.user_colors ?? {}), [email]: color } };
+  async function setUserColor(key: string, color: string) {
+    const updated: StrategyPrefs = { ...prefs, user_colors: { ...(prefs.user_colors ?? {}), [key]: color } };
     setPrefs(updated);
     await (db as any).from("strategy_preferences").upsert({ ...updated, user_id: userId });
   }
@@ -598,6 +604,7 @@ export function StrategyHub({
 
   return (
     <UserColorsCtx.Provider value={(email) => resolveUserColor(email, prefs.user_colors)}>
+    <UserTextColorsCtx.Provider value={(email) => resolveUserTextColor(email, prefs.user_colors)}>
     <div
       className="sh-root flex gap-4"
       style={{ minHeight: "calc(100vh - 10rem)", zoom: activeFontScale !== 1 ? activeFontScale : undefined } as React.CSSProperties}
@@ -776,6 +783,7 @@ export function StrategyHub({
       {/* Chat panel */}
       <ChatPanel messages={messages} userEmail={userEmail} onSend={sendMessage} onDeleteMessage={deleteMessage} fontScale={activeFontScale} userColors={prefs.user_colors} onSetUserColor={setUserColor} />
     </div>
+    </UserTextColorsCtx.Provider>
     </UserColorsCtx.Provider>
   );
 }
@@ -791,10 +799,12 @@ function renderWithMentions(content: string) {
   );
 }
 
-function ColorPickerPopover({ email, currentColor, onPick, onClose }: {
+function ColorPickerPopover({ email, currentBubbleColor, currentTextColor, onPickBubble, onPickText, onClose }: {
   email: string;
-  currentColor: string;
-  onPick: (color: string) => void;
+  currentBubbleColor: string;
+  currentTextColor: string | null;
+  onPickBubble: (color: string) => void;
+  onPickText: (color: string) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -806,34 +816,46 @@ function ColorPickerPopover({ email, currentColor, onPick, onClose }: {
     return () => document.removeEventListener("mousedown", handleDown);
   }, [onClose]);
 
+  function SwatchRow({ current, onPick }: { current: string | null; onPick: (c: string) => void }) {
+    return (
+      <>
+        <div className="grid grid-cols-4 gap-1.5">
+          {COLOR_SWATCHES.map((c) => (
+            <button
+              key={c}
+              onClick={() => onPick(c)}
+              className="h-6 w-6 rounded-full transition-transform hover:scale-110"
+              style={{ background: c, outline: c === current ? `2px solid ${c}` : "none", outlineOffset: 2 }}
+            />
+          ))}
+        </div>
+        <div className="mt-1.5 flex items-center gap-2">
+          <input
+            type="color"
+            defaultValue={current ?? "#a1a1aa"}
+            onChange={(e) => onPick(e.target.value)}
+            className="h-5 w-7 cursor-pointer rounded border-0 p-0 bg-transparent"
+            title="Custom"
+          />
+          <span className="text-[9px] text-zinc-500">Custom</span>
+        </div>
+      </>
+    );
+  }
+
   return (
     <div
       ref={ref}
       onClick={(e) => e.stopPropagation()}
       className="absolute left-8 top-0 z-50 rounded-lg border border-zinc-700 bg-zinc-950 shadow-xl p-2.5"
-      style={{ width: 140 }}
+      style={{ width: 148 }}
     >
       <p className="text-[9px] text-zinc-500 uppercase tracking-wide mb-2 leading-none">{displayName(email)}</p>
-      <div className="grid grid-cols-4 gap-1.5">
-        {COLOR_SWATCHES.map((c) => (
-          <button
-            key={c}
-            onClick={() => onPick(c)}
-            className="h-6 w-6 rounded-full transition-transform hover:scale-110 ring-offset-1 ring-offset-zinc-950"
-            style={{ background: c, outline: c === currentColor ? `2px solid ${c}` : "none", outlineOffset: 2 }}
-          />
-        ))}
-      </div>
-      <div className="mt-2.5 flex items-center gap-2">
-        <input
-          type="color"
-          defaultValue={currentColor}
-          onChange={(e) => onPick(e.target.value)}
-          className="h-6 w-8 cursor-pointer rounded border-0 p-0 bg-transparent"
-          title="Custom color"
-        />
-        <span className="text-[9px] text-zinc-500">Custom</span>
-      </div>
+      <p className="text-[9px] text-zinc-600 uppercase tracking-wide mb-1">Bubble</p>
+      <SwatchRow current={currentBubbleColor} onPick={onPickBubble} />
+      <div className="my-2 border-t border-zinc-800" />
+      <p className="text-[9px] text-zinc-600 uppercase tracking-wide mb-1">Text</p>
+      <SwatchRow current={currentTextColor} onPick={onPickText} />
     </div>
   );
 }
@@ -895,9 +917,10 @@ function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1
         {messages.length === 0 && <p className="px-4 text-xs text-zinc-700">No messages yet. Say hi!</p>}
         {messages.map((m, i) => {
           const prev     = i > 0 ? messages[i - 1] : null;
-          const isMe     = m.author_email === userEmail;
-          const name     = displayName(m.author_email);
-          const color    = resolveUserColor(m.author_email, userColors);
+          const isMe      = m.author_email === userEmail;
+          const name      = displayName(m.author_email);
+          const color     = resolveUserColor(m.author_email, userColors);
+          const textColor = resolveUserTextColor(m.author_email, userColors);
           const gapMs    = prev ? new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() : Infinity;
           const showStamp = gapMs > 15 * 60 * 1000;
           const sameAuthor = !showStamp && prev?.author_email === m.author_email;
@@ -931,14 +954,16 @@ function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1
                     {isPickingThis && !isMe && (
                       <ColorPickerPopover
                         email={m.author_email}
-                        currentColor={color}
-                        onPick={(c) => { onSetUserColor(m.author_email, c); setColorPickingMsgId(null); }}
+                        currentBubbleColor={color}
+                        currentTextColor={resolveUserTextColor(m.author_email, userColors)}
+                        onPickBubble={(c) => { onSetUserColor(m.author_email, c); setColorPickingMsgId(null); }}
+                        onPickText={(c) => { onSetUserColor(m.author_email + ":text", c); setColorPickingMsgId(null); }}
                         onClose={() => setColorPickingMsgId(null)}
                       />
                     )}
                   </div>
                 )}
-                <p className="text-xs text-zinc-400 leading-relaxed break-words flex-1 min-w-0">
+                <p className="text-xs text-zinc-400 leading-relaxed break-words flex-1 min-w-0" style={textColor ? { color: textColor } : undefined}>
                   {renderWithMentions(m.content)}
                 </p>
                 {isMe && (
@@ -1487,7 +1512,8 @@ function IdeaCard({
   const [commentsOpen, setCommentsOpen] = useState(true);
   const [newComment, setNewComment] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const resolveColor = React.useContext(UserColorsCtx);
+  const resolveColor     = React.useContext(UserColorsCtx);
+  const resolveTextColor = React.useContext(UserTextColorsCtx);
 
   const statusInfo    = CARD_STATUSES.find((s) => s.key === card.status) ?? CARD_STATUSES[0];
   const cardReactions = reactions.filter((r) => r.item_id === card.id && r.item_type === "card");
@@ -1579,7 +1605,7 @@ function IdeaCard({
                   >
                     {displayName(c.author_email).charAt(0).toUpperCase()}
                   </div>
-                  <p className="text-xs text-zinc-300 leading-snug break-words flex-1 min-w-0">{c.content}</p>
+                  <p className="text-xs text-zinc-300 leading-snug break-words flex-1 min-w-0" style={resolveTextColor(c.author_email) ? { color: resolveTextColor(c.author_email)! } : undefined}>{c.content}</p>
                   {c.author_email === userEmail && (
                     <button
                       onClick={() => onDeleteComment(c.id)}
