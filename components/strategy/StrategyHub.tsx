@@ -661,17 +661,18 @@ export function StrategyHub({
       </div>
 
       {/* Chat panel */}
-      <ChatPanel messages={messages} userEmail={userEmail} onSend={sendMessage} />
+      <ChatPanel messages={messages} userEmail={userEmail} onSend={sendMessage} fontScale={activeFontScale} />
     </div>
   );
 }
 
 // ── Chat Panel ────────────────────────────────────────────────────────────────
 
-function ChatPanel({ messages, userEmail, onSend }: {
+function ChatPanel({ messages, userEmail, onSend, fontScale = 1 }: {
   messages: StrategyMessage[];
   userEmail: string;
   onSend: (content: string) => Promise<void>;
+  fontScale?: number;
 }) {
   const [text, setText] = useState("");
   const [width, setWidth] = useState(256);
@@ -706,7 +707,7 @@ function ChatPanel({ messages, userEmail, onSend }: {
   return (
     <div
       className="shrink-0 flex flex-col border-l border-zinc-800 sticky relative"
-      style={{ top: 0, height: "calc(100vh - 6rem)", alignSelf: "flex-start", width }}
+      style={{ top: 0, height: `calc((100vh - 6rem) / ${fontScale})`, alignSelf: "flex-start", width }}
     >
       {/* Drag-to-resize handle */}
       <div
