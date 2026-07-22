@@ -827,7 +827,7 @@ export function StrategyHub({
       </div>
 
       {/* Chat panel */}
-      <ChatPanel messages={messages} userEmail={userEmail} onSend={sendMessage} onDeleteMessage={deleteMessage} fontScale={activeFontScale} userColors={canonicalUserColors} onSetUserColor={setUserColor} onlineEmails={onlineEmails} />
+      <ChatPanel messages={messages} userEmail={userEmail} onSend={sendMessage} onDeleteMessage={deleteMessage} fontScale={activeFontScale} userColors={canonicalUserColors} onSetUserColor={setUserColor} onlineEmails={onlineEmails} teamMembers={teamMembers} />
     </div>
     </UserColorsCtx.Provider>
   );
@@ -891,7 +891,7 @@ function ColorPickerPopover({ email, currentColor, onPick, onClose }: {
   );
 }
 
-function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1, userColors, onSetUserColor, onlineEmails }: {
+function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1, userColors, onSetUserColor, onlineEmails, teamMembers }: {
   messages: StrategyMessage[];
   userEmail: string;
   onSend: (content: string) => Promise<void>;
@@ -900,6 +900,7 @@ function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1
   userColors?: Record<string, string> | null;
   onSetUserColor: (key: string, color: string) => Promise<void>;
   onlineEmails: Set<string>;
+  teamMembers: { id: string; email: string }[];
 }) {
   const [text, setText]                           = useState("");
   const [width, setWidth]                         = useState(280);
@@ -933,15 +934,18 @@ function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1
     setSeenCount((n) => n + 1);
   }
 
-  // Unique participants (self first, then others in order of first appearance)
+  // All known participants: current user, then all team members, then any message authors not already included
   const knownUsers = useMemo(() => {
     const seen = new Set<string>([userEmail]);
     const list: string[] = [userEmail];
+    for (const m of teamMembers) {
+      if (!seen.has(m.email)) { seen.add(m.email); list.push(m.email); }
+    }
     for (const m of messages) {
       if (!seen.has(m.author_email)) { seen.add(m.author_email); list.push(m.author_email); }
     }
     return list;
-  }, [messages, userEmail]);
+  }, [messages, userEmail, teamMembers]);
 
   return (
     <div
