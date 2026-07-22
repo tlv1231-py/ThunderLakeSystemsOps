@@ -3,8 +3,12 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, X, Palette, ThumbsUp, ThumbsDown, MessageSquare, Send, Eye, CheckCircle2, XCircle, RefreshCw, Loader2, Star, Search, Globe, Archive, ArrowUpDown, AlertCircle } from "lucide-react";
+import { Plus, Trash2, X, Palette, ThumbsUp, ThumbsDown, MessageSquare, Send, Eye, CheckCircle2, XCircle, RefreshCw, Loader2, Star, Search, Globe, Archive, ArrowUpDown, AlertCircle, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import type { DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -21,6 +25,7 @@ export type StrategyCard = {
   domain_checked_at?: string | null;
   is_chosen?: boolean | null;
   color?: string | null;
+  position?: number | null;
 };
 
 export type StrategyTask = {
@@ -33,6 +38,7 @@ export type StrategyTask = {
   author_email: string;
   created_at: string;
   updated_at: string;
+  position?: number | null;
 };
 
 export type StrategyNote = {
@@ -218,10 +224,12 @@ const CARD_STATUSES = [
   { key: "archived",    label: "Archived",    cls: "bg-zinc-800 text-zinc-600"           },
 ];
 
-const TASK_STATUSES = [
+const TASK_STATUS_OPTIONS = [
+  { key: "idea",        label: "Idea"        },
   { key: "todo",        label: "To Do"       },
   { key: "in_progress", label: "In Progress" },
   { key: "done",        label: "Done"        },
+  { key: "cancelled",   label: "Cancelled"   },
 ];
 
 const PRIORITY_DOT: Record<string, string> = {
@@ -972,6 +980,24 @@ function DomainAvailabilityPanel({ card, onSaveResult }: {
   );
 }
 
+// ── Sortable wrappers ─────────────────────────────────────────────────────────
+
+function SortableRow({ id, children }: {
+  id: string;
+  children: (handleProps: Record<string, unknown>) => React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1, zIndex: isDragging ? 10 : undefined }}
+      {...attributes}
+    >
+      {children(listeners ?? {})}
+    </div>
+  );
+}
+
 // ── Ideas Board ───────────────────────────────────────────────────────────────
 
 function IdeasBoard({
@@ -1003,6 +1029,20 @@ function IdeasBoard({
   const [newColName, setNewColName] = useState("");
   const [sortByReactions, setSortByReactions] = useState<Record<string, boolean>>({});
   const [checkingAll, setCheckingAll] = useState(false);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  async function handleDragEnd(event: DragEndEvent, colId: string) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const colCards = [...cards.filter((c) => c.category === colId)]
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const oldIdx = colCards.findIndex((c) => c.id === active.id);
+    const newIdx = colCards.findIndex((c) => c.id === over.id);
+    if (oldIdx === -1 || newIdx === -1) return;
+    const reordered = arrayMove(colCards, oldIdx, newIdx);
+    await Promise.all(reordered.map((card, i) => onUpdate(card.id, { position: i })));
+  }
 
   async function handleAddCard(colId: string) {
     if (!newContent.trim()) return;
@@ -1061,7 +1101,9 @@ function IdeasBoard({
               const netB = reactions.filter((r) => r.item_id === b.id && r.reaction === "up").length - reactions.filter((r) => r.item_id === b.id && r.reaction === "down").length;
               return netB - netA;
             })
-          : cards.filter((c) => c.category === col.id);
+          : [...cards.filter((c) => c.category === col.id)].sort((a, b) =>
+              (a.position ?? 0) - (b.position ?? 0) || new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+            );
         const colCards = q ? sorted.filter((c) => c.content.toLowerCase().includes(q) || (c.notes ?? "").toLowerCase().includes(q)) : sorted;
         return (
           <div key={col.id} className={cn("flex-1 flex flex-col", isDomainCol ? "min-w-[22rem]" : "min-w-52")}>
@@ -1077,33 +1119,48 @@ function IdeasBoard({
               checkingAll={checkingAll}
               onCheckAll={() => checkAll(col.id)}
             />
-            <div className="flex flex-col gap-2">
-              {colCards.map((card) => (
-                <div key={card.id} className={cn("flex gap-0", isDomainCol && "items-stretch")}>
-                  <div className="flex-1 min-w-0">
-                    <IdeaCard
-                      card={card}
-                      reactions={reactions}
-                      comments={comments}
-                      userEmail={userEmail}
-                      onClick={() => setSelected(card)}
-                      onDelete={() => onDelete(card.id)}
-                      onToggleReaction={(r) => onToggleReaction(card.id, "card", r)}
-                      onAddComment={(c) => onAddComment(card.id, "card", c)}
-                      onDeleteComment={onDeleteComment}
-                      onToggleChosen={() => setChosen(card.id, col.id)}
-                      contentClassName={isDomainCol ? "break-all" : ""}
-                    />
-                  </div>
-                  {isDomainCol && (
-                    <DomainAvailabilityPanel
-                      card={card}
-                      onSaveResult={(updates) => onUpdate(card.id, updates)}
-                    />
-                  )}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleDragEnd(e, col.id)}>
+              <SortableContext items={colCards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+                <div className="flex flex-col gap-2">
+                  {colCards.map((card) => (
+                    <SortableRow key={card.id} id={card.id}>
+                      {(handleProps) => (
+                        <div className={cn("flex gap-0", isDomainCol && "items-stretch")}>
+                          <button
+                            {...handleProps}
+                            className="flex items-start pt-2.5 px-0.5 text-zinc-700 hover:text-zinc-500 cursor-grab active:cursor-grabbing shrink-0"
+                            tabIndex={-1}
+                          >
+                            <GripVertical className="h-3.5 w-3.5" />
+                          </button>
+                          <div className="flex-1 min-w-0">
+                            <IdeaCard
+                              card={card}
+                              reactions={reactions}
+                              comments={comments}
+                              userEmail={userEmail}
+                              onClick={() => setSelected(card)}
+                              onDelete={() => onDelete(card.id)}
+                              onToggleReaction={(r) => onToggleReaction(card.id, "card", r)}
+                              onAddComment={(c) => onAddComment(card.id, "card", c)}
+                              onDeleteComment={onDeleteComment}
+                              onToggleChosen={() => setChosen(card.id, col.id)}
+                              contentClassName={isDomainCol ? "break-all" : ""}
+                            />
+                          </div>
+                          {isDomainCol && (
+                            <DomainAvailabilityPanel
+                              card={card}
+                              onSaveResult={(updates) => onUpdate(card.id, updates)}
+                            />
+                          )}
+                        </div>
+                      )}
+                    </SortableRow>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </SortableContext>
+            </DndContext>
             {adding === col.id ? (
               <div className="mt-2 rounded-lg border border-zinc-700 bg-zinc-800 p-2.5">
                 <textarea
@@ -1543,6 +1600,14 @@ function ArchivePanel({ cards, columns, onRestore, onDelete }: {
 
 // ── Task Board ────────────────────────────────────────────────────────────────
 
+const TASK_STATUS_COLORS: Record<string, string> = {
+  idea:        "text-zinc-500",
+  todo:        "text-blue-400",
+  in_progress: "text-amber-400",
+  done:        "text-green-400",
+  cancelled:   "text-zinc-600 line-through",
+};
+
 function TaskBoard({ tasks, onAdd, onUpdate, onDelete }: {
   tasks: StrategyTask[];
   onAdd: (status: string, title: string) => Promise<void>;
@@ -1550,55 +1615,92 @@ function TaskBoard({ tasks, onAdd, onUpdate, onDelete }: {
   onDelete: (id: string) => Promise<void>;
 }) {
   const [selected, setSelected] = useState<StrategyTask | null>(null);
-  const [adding, setAdding]     = useState<string | null>(null);
+  const [adding, setAdding]     = useState(false);
   const [newTitle, setNewTitle] = useState("");
 
-  async function handleAdd(status: string) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  const sorted = [...tasks].sort((a, b) =>
+    (a.position ?? 0) - (b.position ?? 0) || new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+  async function handleAdd() {
     if (!newTitle.trim()) return;
-    await onAdd(status, newTitle.trim());
-    setNewTitle(""); setAdding(null);
+    await onAdd("todo", newTitle.trim());
+    setNewTitle(""); setAdding(false);
+  }
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = sorted.findIndex((t) => t.id === active.id);
+    const newIdx = sorted.findIndex((t) => t.id === over.id);
+    if (oldIdx === -1 || newIdx === -1) return;
+    const reordered = arrayMove(sorted, oldIdx, newIdx);
+    await Promise.all(reordered.map((task, i) => onUpdate(task.id, { position: i })));
   }
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4">
-      {TASK_STATUSES.map(({ key, label }) => {
-        const col = tasks.filter((t) => t.status === key);
-        return (
-          <div key={key} className="flex-1 min-w-60 flex flex-col">
-            <div className="flex items-center justify-between mb-3">
-              <span className="sh-header text-xs font-semibold uppercase tracking-wide text-zinc-500">{label}</span>
-              <span className="text-xs text-zinc-700 font-mono">{col.length}</span>
-            </div>
-            <div className="flex flex-col gap-2">
-              {col.map((task) => (
-                <div key={task.id} onClick={() => setSelected(task)} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 cursor-pointer hover:border-zinc-700 transition-colors">
-                  <div className="flex items-start gap-2">
-                    <div className={cn("mt-1.5 h-1.5 w-1.5 rounded-full shrink-0", PRIORITY_DOT[task.priority] ?? "bg-zinc-500")} />
-                    <p className="text-sm text-zinc-200 leading-snug flex-1">{task.title}</p>
-                  </div>
-                  {task.description && <p className="mt-1 ml-3.5 text-xs text-zinc-500 line-clamp-2">{task.description}</p>}
-                  {task.assignee && <p className="mt-1.5 ml-3.5 text-[10px] text-zinc-600">{task.assignee}</p>}
-                </div>
+    <div className="flex gap-4">
+      <div className="flex-1 max-w-2xl flex flex-col">
+        <div className="flex items-center justify-between mb-3">
+          <span className="sh-header text-xs font-semibold uppercase tracking-wide text-zinc-500">To Do</span>
+          <span className="text-xs text-zinc-700 font-mono">{sorted.length}</span>
+        </div>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={sorted.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+            <div className="flex flex-col gap-1.5">
+              {sorted.map((task) => (
+                <SortableRow key={task.id} id={task.id}>
+                  {(handleProps) => (
+                    <div className="flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-2 hover:border-zinc-700 transition-colors">
+                      <button
+                        {...handleProps}
+                        className="text-zinc-700 hover:text-zinc-500 cursor-grab active:cursor-grabbing shrink-0"
+                        tabIndex={-1}
+                      >
+                        <GripVertical className="h-3.5 w-3.5" />
+                      </button>
+                      <select
+                        value={task.status}
+                        onChange={(e) => { e.stopPropagation(); onUpdate(task.id, { status: e.target.value }); }}
+                        onClick={(e) => e.stopPropagation()}
+                        className={cn("bg-transparent text-xs outline-none cursor-pointer shrink-0 pr-1", TASK_STATUS_COLORS[task.status] ?? "text-zinc-400")}
+                      >
+                        {TASK_STATUS_OPTIONS.map((s) => (
+                          <option key={s.key} value={s.key} className="bg-zinc-900 text-zinc-200">{s.label}</option>
+                        ))}
+                      </select>
+                      <p
+                        className={cn("flex-1 text-sm text-zinc-200 leading-snug cursor-pointer", task.status === "cancelled" && "line-through text-zinc-600", task.status === "done" && "text-zinc-500")}
+                        onClick={() => setSelected(task)}
+                      >
+                        {task.title}
+                      </p>
+                      {task.assignee && <span className="text-[10px] text-zinc-600 shrink-0">{task.assignee}</span>}
+                    </div>
+                  )}
+                </SortableRow>
               ))}
             </div>
-            {adding === key ? (
-              <div className="mt-2 rounded-lg border border-zinc-700 bg-zinc-800 p-2.5">
-                <input autoFocus value={newTitle} onChange={(e) => setNewTitle(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleAdd(key); if (e.key === "Escape") { setAdding(null); setNewTitle(""); } }} placeholder="Task title..." className="w-full bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-600" />
-                <div className="flex gap-2 mt-2">
-                  <button onClick={() => handleAdd(key)} className="px-2.5 py-1 rounded bg-zinc-700 text-xs text-zinc-200 hover:bg-zinc-600 transition-colors">Add</button>
-                  <button onClick={() => { setAdding(null); setNewTitle(""); }} className="px-2.5 py-1 rounded text-xs text-zinc-500 hover:text-zinc-300 transition-colors">Cancel</button>
-                </div>
-              </div>
-            ) : (
-              <button onClick={() => { setAdding(key); setNewTitle(""); }} className="mt-2 flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800 transition-colors">
-                <Plus className="h-3 w-3" /> Add task
-              </button>
-            )}
+          </SortableContext>
+        </DndContext>
+        {adding ? (
+          <div className="mt-2 rounded-lg border border-zinc-700 bg-zinc-800 p-2.5">
+            <input autoFocus value={newTitle} onChange={(e) => setNewTitle(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); if (e.key === "Escape") { setAdding(false); setNewTitle(""); } }} placeholder="Task title..." className="w-full bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-600" />
+            <div className="flex gap-2 mt-2">
+              <button onClick={handleAdd} className="px-2.5 py-1 rounded bg-zinc-700 text-xs text-zinc-200 hover:bg-zinc-600 transition-colors">Add</button>
+              <button onClick={() => { setAdding(false); setNewTitle(""); }} className="px-2.5 py-1 rounded text-xs text-zinc-500 hover:text-zinc-300 transition-colors">Cancel</button>
+            </div>
           </div>
-        );
-      })}
+        ) : (
+          <button onClick={() => { setAdding(true); setNewTitle(""); }} className="mt-2 flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800 transition-colors">
+            <Plus className="h-3 w-3" /> Add task
+          </button>
+        )}
+      </div>
       {selected && (
-        <TaskEditPanel task={selected} onUpdate={(u) => { onUpdate(selected.id, u); setSelected({ ...selected, ...u }); }} onDelete={() => { onDelete(selected.id); setSelected(null); }} onClose={() => setSelected(null)} />
+        <TaskEditPanel task={selected} onUpdate={(u) => { onUpdate(selected.id, u); setSelected((s) => s ? { ...s, ...u } : s); }} onDelete={() => { onDelete(selected.id); setSelected(null); }} onClose={() => setSelected(null)} />
       )}
     </div>
   );
@@ -1638,7 +1740,7 @@ function TaskEditPanel({ task, onUpdate, onDelete, onClose }: {
           <div>
             <label className="text-xs text-zinc-500 mb-1.5 block">Status</label>
             <select value={status} onChange={(e) => { setStatus(e.target.value); setDirty(true); }} className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 py-2 text-sm text-zinc-100 outline-none">
-              {TASK_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+              {TASK_STATUS_OPTIONS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
           </div>
           <div>
