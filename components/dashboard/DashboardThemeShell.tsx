@@ -39,6 +39,11 @@ export function DashboardThemeShell({
         .db-root [class*="bg-zinc-"] { background-color: transparent !important; }
         .db-root [class*="border-zinc"] { border-color: rgba(255,255,255,0.1) !important; }
         .db-root [class*="divide-zinc"] > * + * { border-color: rgba(255,255,255,0.1) !important; }
+        .db-root [class*="text-emerald"] { color: #34d399 !important; }
+        .db-root [class*="text-red-4"] { color: #f87171 !important; }
+        .db-root [class*="text-green-"] { color: #4ade80 !important; }
+        .db-root [class*="text-blue-"] { color: #60a5fa !important; }
+        .db-root [class*="text-yellow-"] { color: #facc15 !important; }
       `
     : `
         .db-root { background: #fff; }
@@ -46,6 +51,11 @@ export function DashboardThemeShell({
         .db-root [class*="bg-zinc-"] { background-color: transparent !important; }
         .db-root [class*="border-zinc"] { border-color: rgba(0,0,0,0.1) !important; }
         .db-root [class*="divide-zinc"] > * + * { border-color: rgba(0,0,0,0.1) !important; }
+        .db-root [class*="text-emerald"] { color: #059669 !important; }
+        .db-root [class*="text-red-4"] { color: #dc2626 !important; }
+        .db-root [class*="text-green-"] { color: #16a34a !important; }
+        .db-root [class*="text-blue-"] { color: #2563eb !important; }
+        .db-root [class*="text-yellow-"] { color: #ca8a04 !important; }
       `;
 
   return (
