@@ -24,7 +24,7 @@ export default async function StrategyPage() {
       db.from("strategy_reactions").select("*"),
       db.from("strategy_comments").select("*").order("created_at", { ascending: true }),
       db.from("strategy_preferences").select("*"),
-      db.from("strategy_chat").select("*").order("created_at", { ascending: true }).limit(200),
+      db.from("strategy_chat").select("*").order("created_at", { ascending: true }).limit(300),
     ]);
 
   const teamMembers = isAdmin ? await listTeamMembersAction().catch(() => []) : [];

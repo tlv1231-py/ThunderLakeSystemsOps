@@ -124,6 +124,27 @@ function timeAgo(iso: string): string {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
+function timeAgoPrecise(iso: string): string {
+  const total = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  const d = Math.floor(total / 86400);
+  const h = Math.floor((total % 86400) / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const parts: string[] = [];
+  if (d) parts.push(`${d}d`);
+  if (h) parts.push(`${h}h`);
+  if (m) parts.push(`${m}m`);
+  parts.push(`${s}s`);
+  return parts.join(" ") + " ago";
+}
+
+function formatCooldown(ms: number): string {
+  const total = Math.ceil(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
 // ── Theme CSS ─────────────────────────────────────────────────────────────────
 
 function buildThemeCSS(prefs: StrategyPrefs): string {
@@ -398,8 +419,25 @@ export function StrategyHub({
   async function sendMessage(content: string) {
     const id = crypto.randomUUID();
     const msg: StrategyMessage = { id, content, author_email: userEmail, created_at: new Date().toISOString() };
-    setMessages((s) => [...s, msg]);
+    setMessages((s) => {
+      const next = [...s, msg];
+      return next.length > 300 ? next.slice(-300) : next;
+    });
     await db.from("strategy_chat").insert(msg);
+    // Prune server-side ~10% of sends to stay under 500 messages
+    if (Math.random() < 0.1) {
+      const { count } = await db.from("strategy_chat").select("id", { count: "exact", head: true });
+      if ((count ?? 0) > 500) {
+        const { data: old } = await db
+          .from("strategy_chat")
+          .select("id")
+          .order("created_at", { ascending: true })
+          .limit((count ?? 0) - 400);
+        if (old?.length) {
+          await db.from("strategy_chat").delete().in("id", old.map((m: any) => m.id));
+        }
+      }
+    }
   }
 
   // ── Task CRUD ─────────────────────────────────────────────────────────────
@@ -711,6 +749,86 @@ function UserSwitcherSidebar({
   );
 }
 
+// ── Domain Availability Panel ─────────────────────────────────────────────────
+
+function DomainAvailabilityPanel({ card, onCheck }: {
+  card: StrategyCard;
+  onCheck: () => Promise<void>;
+}) {
+  const [checking, setChecking] = useState(false);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const left    = domainCooldownLeft(card.domain_checked_at);
+  const hasData = card.domain_available !== null && card.domain_available !== undefined;
+  const canCheck = !checking && left === 0;
+
+  async function handle(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!canCheck) return;
+    setChecking(true);
+    await onCheck();
+    setChecking(false);
+  }
+
+  return (
+    <div className="w-36 shrink-0 border-l border-zinc-800 flex flex-col justify-center gap-1 px-3 py-2">
+      {checking ? (
+        <div className="flex items-center gap-1.5">
+          <Loader2 className="h-3 w-3 animate-spin text-zinc-500 shrink-0" />
+          <span className="text-[10px] text-zinc-500">Checking…</span>
+        </div>
+      ) : !hasData ? (
+        <button
+          onClick={handle}
+          disabled={!canCheck}
+          className={cn(
+            "text-xs text-left leading-snug transition-colors",
+            canCheck ? "text-zinc-400 hover:text-zinc-100" : "text-zinc-700 cursor-default"
+          )}
+        >
+          {left > 0 ? `Check in ${formatCooldown(left)}` : "Check Availability"}
+        </button>
+      ) : (
+        <>
+          <div className="flex items-center gap-1">
+            {card.domain_available ? (
+              <>
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                <span className="text-xs font-medium text-emerald-400">Available</span>
+              </>
+            ) : (
+              <>
+                <XCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />
+                <span className="text-xs font-medium text-red-400">Unavailable</span>
+              </>
+            )}
+          </div>
+          {card.domain_checked_at && (
+            <p className="text-[10px] text-zinc-600 leading-snug">
+              Last checked {timeAgoPrecise(card.domain_checked_at)}
+            </p>
+          )}
+          {left > 0 ? (
+            <span className="text-[10px] text-zinc-700">recheck in {formatCooldown(left)}</span>
+          ) : (
+            <button
+              onClick={handle}
+              className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors text-left"
+            >
+              Check again
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Ideas Board ───────────────────────────────────────────────────────────────
 
 function IdeasBoard({
@@ -772,20 +890,27 @@ function IdeasBoard({
             />
             <div className="flex flex-col gap-2">
               {colCards.map((card) => (
-                <IdeaCard
-                  key={card.id}
-                  card={card}
-                  reactions={reactions}
-                  comments={comments}
-                  userEmail={userEmail}
-                  isDomainCard={isDomainCol}
-                  onClick={() => setSelected(card)}
-                  onDelete={() => onDelete(card.id)}
-                  onToggleReaction={(r) => onToggleReaction(card.id, "card", r)}
-                  onAddComment={(c) => onAddComment(card.id, "card", c)}
-                  onDeleteComment={onDeleteComment}
-                  onCheckDomain={isDomainCol ? () => onCheckDomain(card) : undefined}
-                />
+                <div key={card.id} className={cn("flex gap-0", isDomainCol && "items-stretch")}>
+                  <div className="flex-1 min-w-0">
+                    <IdeaCard
+                      card={card}
+                      reactions={reactions}
+                      comments={comments}
+                      userEmail={userEmail}
+                      onClick={() => setSelected(card)}
+                      onDelete={() => onDelete(card.id)}
+                      onToggleReaction={(r) => onToggleReaction(card.id, "card", r)}
+                      onAddComment={(c) => onAddComment(card.id, "card", c)}
+                      onDeleteComment={onDeleteComment}
+                    />
+                  </div>
+                  {isDomainCol && (
+                    <DomainAvailabilityPanel
+                      card={card}
+                      onCheck={() => onCheckDomain(card)}
+                    />
+                  )}
+                </div>
               ))}
             </div>
             {adding === col.id ? (
@@ -922,23 +1047,20 @@ function ColumnHeader({
 
 function IdeaCard({
   card, reactions, comments, userEmail,
-  isDomainCard, onClick, onDelete, onToggleReaction, onAddComment, onDeleteComment, onCheckDomain,
+  onClick, onDelete, onToggleReaction, onAddComment, onDeleteComment,
 }: {
   card: StrategyCard;
   reactions: StrategyReaction[];
   comments: StrategyComment[];
   userEmail: string;
-  isDomainCard?: boolean;
   onClick: () => void;
   onDelete: () => void;
   onToggleReaction: (reaction: "up" | "down") => Promise<void>;
   onAddComment: (content: string) => Promise<void>;
   onDeleteComment: (id: string) => Promise<void>;
-  onCheckDomain?: () => Promise<void>;
 }) {
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [newComment, setNewComment] = useState("");
-  const [domainChecking, setDomainChecking] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const statusInfo    = CARD_STATUSES.find((s) => s.key === card.status) ?? CARD_STATUSES[0];
@@ -965,77 +1087,15 @@ function IdeaCard({
           <p className="mt-1 text-xs text-zinc-500 leading-snug line-clamp-2">{card.notes}</p>
         )}
         <div className="flex items-center justify-between mt-2">
-          <span className={cn("inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium", statusInfo.cls)}>
-            {statusInfo.label}
-          </span>
+          {card.status !== "idea" && (
+            <span className={cn("inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium", statusInfo.cls)}>
+              {statusInfo.label}
+            </span>
+          )}
           {displayName(card.author_email) && (
-            <span className="text-[10px] text-zinc-700">{displayName(card.author_email)}</span>
+            <span className="text-[10px] text-zinc-700 ml-auto">{displayName(card.author_email)}</span>
           )}
         </div>
-
-        {/* Domain availability row */}
-        {isDomainCard && (
-          <div className="flex items-center gap-1.5 mt-2 pt-1.5 border-t border-zinc-800/60" onClick={(e) => e.stopPropagation()}>
-            {card.domain_available === true && (
-              <>
-                <CheckCircle2 className="h-3 w-3 text-emerald-400 shrink-0" />
-                <span className="text-[10px] font-medium text-emerald-400">Available</span>
-                {card.domain_checked_at && (
-                  <span className="text-[10px] text-zinc-600">· {timeAgo(card.domain_checked_at)}</span>
-                )}
-              </>
-            )}
-            {card.domain_available === false && (
-              <>
-                <XCircle className="h-3 w-3 text-zinc-600 shrink-0" />
-                <span className="text-[10px] text-zinc-500">Taken</span>
-                {card.domain_checked_at && (
-                  <span className="text-[10px] text-zinc-600">· {timeAgo(card.domain_checked_at)}</span>
-                )}
-              </>
-            )}
-            {(card.domain_available === null || card.domain_available === undefined) && !domainChecking && (
-              <button
-                onClick={async () => {
-                  if (!onCheckDomain) return;
-                  setDomainChecking(true);
-                  await onCheckDomain();
-                  setDomainChecking(false);
-                }}
-                className="text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors"
-              >
-                Check availability
-              </button>
-            )}
-            {domainChecking && (
-              <>
-                <Loader2 className="h-3 w-3 text-zinc-600 animate-spin" />
-                <span className="text-[10px] text-zinc-600">Checking…</span>
-              </>
-            )}
-            {card.domain_available !== null && card.domain_available !== undefined && !domainChecking && (() => {
-              const left = domainCooldownLeft(card.domain_checked_at);
-              return left > 0 ? (
-                <span className="text-[10px] text-zinc-700 ml-auto" title={`Rate limited — can recheck in ${Math.ceil(left / 60000)}m`}>
-                  recheck in {Math.ceil(left / 60000)}m
-                </span>
-              ) : (
-                <button
-                  onClick={async () => {
-                    if (!onCheckDomain) return;
-                    setDomainChecking(true);
-                    await onCheckDomain();
-                    setDomainChecking(false);
-                  }}
-                  className="ml-auto text-[10px] text-zinc-700 hover:text-zinc-500 transition-colors flex items-center gap-0.5"
-                  title="Recheck availability"
-                >
-                  <RefreshCw className="h-2.5 w-2.5" />
-                </button>
-              );
-            })()}
-          </div>
-        )}
       </div>
 
       {/* Reactions bar */}

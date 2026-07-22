@@ -8,6 +8,7 @@ import {
   type CashflowTimeEntry,
 } from "@/services/cashflow-service";
 import { QuickLinks } from "@/components/dashboard/QuickLinks";
+import { DashboardThemeShell } from "@/components/dashboard/DashboardThemeShell";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -26,6 +27,14 @@ export default async function DashboardPage() {
     .toISOString().split("T")[0];
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
     .toISOString().split("T")[0];
+
+  const db = supabase as any;
+  const { data: dbPref } = await db
+    .from("dashboard_preferences")
+    .select("theme")
+    .eq("user_id", user!.id)
+    .maybeSingle();
+  const initialTheme = (dbPref?.theme ?? "dark") as "dark" | "light";
 
   const [
     { data: invoices },
@@ -219,6 +228,7 @@ export default async function DashboardPage() {
   );
 
   return (
+    <DashboardThemeShell initialTheme={initialTheme} userId={user!.id}>
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-zinc-100">Dashboard</h1>
@@ -310,6 +320,7 @@ export default async function DashboardPage() {
         <QuickLinks userId={user!.id} />
       </div>
     </div>
+    </DashboardThemeShell>
   );
 }
 
