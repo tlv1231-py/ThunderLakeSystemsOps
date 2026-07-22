@@ -23,6 +23,7 @@ export type StrategyCard = {
   updated_at: string;
   domain_available?: boolean | null;
   domain_checked_at?: string | null;
+  domain_tlds?: { com: boolean | null; net: boolean | null; co: boolean | null } | null;
   is_chosen?: boolean | null;
   color?: string | null;
   position?: number | null;
@@ -114,6 +115,14 @@ function parseDomainForCheck(content: string): string {
     .replace(/^www\./i, "")
     .split(/[/?#]/)[0];
   return s.includes(".") ? s : `${s}.com`;
+}
+
+function parseDomainStem(content: string): string {
+  return content.trim().toLowerCase()
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .split(/[./?#]/)[0]
+    .replace(/\s+/g, "");
 }
 
 function canCheckDomain(checkedAt?: string | null): boolean {
@@ -1159,11 +1168,13 @@ function DomainAvailabilityPanel({ card, onSaveResult }: {
     return () => clearInterval(id);
   }, []);
 
-  const left    = domainCooldownLeft(card.domain_checked_at);
-  const hasData = card.domain_available !== null && card.domain_available !== undefined;
-  const canCheck = !checking && left === 0;
-  const domain  = parseDomainForCheck(card.content);
-  const whoisUrl = `https://who.is/whois/${domain}`;
+  const left         = domainCooldownLeft(card.domain_checked_at);
+  const stem         = parseDomainStem(card.content);
+  const whoisUrl     = `https://who.is/whois/${stem}.com`;
+  const hasTldsData  = card.domain_tlds != null;
+  const hasOldData   = !hasTldsData && card.domain_available != null;
+  const hasData      = hasTldsData || hasOldData;
+  const canCheck     = !checking && left === 0;
 
   async function runCheck(e: React.MouseEvent, force = false) {
     e.stopPropagation();
@@ -1172,16 +1183,23 @@ function DomainAvailabilityPanel({ card, onSaveResult }: {
     setChecking(true);
     setApiError(null);
     try {
-      const res = await fetch(`/api/domain-check?domain=${encodeURIComponent(domain)}`);
+      const res = await fetch(`/api/domain-check?name=${encodeURIComponent(stem)}&tlds=com,net,co`);
       const data = await res.json();
-      if (data.error) {
-        setApiError(data.error);
-      } else if (typeof data.available === "boolean") {
-        await onSaveResult({ domain_available: data.available, domain_checked_at: new Date().toISOString() });
-        setApiError(null);
-      } else {
-        setApiError("No data from registry");
+      if (!Array.isArray(data)) {
+        setApiError(data.error ?? "No data from registry");
+        return;
       }
+      const tlds: { com: boolean | null; net: boolean | null; co: boolean | null } = {
+        com: null, net: null, co: null,
+      };
+      for (const item of data) {
+        const tld = item.domain.split(".").slice(1).join(".");
+        if (tld === "com" || tld === "net" || tld === "co") {
+          tlds[tld as "com" | "net" | "co"] = item.available ?? null;
+        }
+      }
+      await onSaveResult({ domain_tlds: tlds, domain_checked_at: new Date().toISOString() });
+      setApiError(null);
     } catch {
       setApiError("Network error");
     } finally {
@@ -1218,7 +1236,42 @@ function DomainAvailabilityPanel({ card, onSaveResult }: {
         >
           {left > 0 ? `Check in ${formatCooldown(left)}` : "Check Availability"}
         </button>
+      ) : hasTldsData ? (
+        <>
+          <div className="space-y-0.5">
+            {(["com", "net", "co"] as const).map((tld) => {
+              const val = card.domain_tlds![tld];
+              return (
+                <div key={tld} className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-zinc-500 w-7">.{tld}</span>
+                  {val === true ? (
+                    <CheckCircle2 className="h-3 w-3 text-emerald-400 shrink-0" />
+                  ) : val === false ? (
+                    <XCircle className="h-3 w-3 text-red-400 shrink-0" />
+                  ) : (
+                    <span className="text-[10px] text-zinc-600">—</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {card.domain_checked_at && (
+            <p className="text-[10px] text-zinc-600 leading-snug mt-0.5">{timeAgoPrecise(card.domain_checked_at)}</p>
+          )}
+          {left > 0 ? (
+            <span className="text-[10px] text-zinc-700">recheck in {formatCooldown(left)}</span>
+          ) : (
+            <button onClick={(e) => runCheck(e)} className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors text-left">
+              Check again
+            </button>
+          )}
+          <a href={whoisUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+            className="flex items-center gap-0.5 text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors mt-0.5">
+            <Globe className="h-2.5 w-2.5 shrink-0" /> WHOIS
+          </a>
+        </>
       ) : (
+        // Old single-TLD data (backwards compat)
         <>
           <div className="flex items-center gap-1">
             {card.domain_available ? (
@@ -1345,12 +1398,19 @@ function IdeasBoard({
     setCheckingAll(true);
     const toCheck = cards.filter((c) => c.category === colId && canCheckDomain(c.domain_checked_at));
     for (const card of toCheck) {
-      const domain = parseDomainForCheck(card.content);
+      const stem = parseDomainStem(card.content);
       try {
-        const res = await fetch(`/api/domain-check?domain=${encodeURIComponent(domain)}`);
+        const res = await fetch(`/api/domain-check?name=${encodeURIComponent(stem)}&tlds=com,net,co`);
         const data = await res.json();
-        if (!data.error && typeof data.available === "boolean") {
-          await onUpdate(card.id, { domain_available: data.available, domain_checked_at: new Date().toISOString() });
+        if (Array.isArray(data)) {
+          const tlds: { com: boolean | null; net: boolean | null; co: boolean | null } = { com: null, net: null, co: null };
+          for (const item of data) {
+            const tld = item.domain.split(".").slice(1).join(".");
+            if (tld === "com" || tld === "net" || tld === "co") {
+              tlds[tld as "com" | "net" | "co"] = item.available ?? null;
+            }
+          }
+          await onUpdate(card.id, { domain_tlds: tlds, domain_checked_at: new Date().toISOString() });
         }
       } catch {}
       await new Promise((r) => setTimeout(r, 600));

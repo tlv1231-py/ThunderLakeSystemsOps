@@ -41,6 +41,11 @@ export async function GET(req: NextRequest) {
   const name = req.nextUrl.searchParams.get("name")?.toLowerCase().trim();
   if (!name) return NextResponse.json({ error: "name or domain required" }, { status: 400 });
 
-  const results = await Promise.all(TLDS.map((tld) => checkOne(`${name}${tld}`)));
+  const tldsParam = req.nextUrl.searchParams.get("tlds");
+  const tldsToCheck = tldsParam
+    ? tldsParam.split(",").map((t) => `.${t.trim().replace(/^\./, "")}`)
+    : TLDS;
+
+  const results = await Promise.all(tldsToCheck.map((tld) => checkOne(`${name}${tld}`)));
   return NextResponse.json(results);
 }
