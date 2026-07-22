@@ -917,7 +917,7 @@ function DomainAvailabilityPanel({ card, onSaveResult }: {
   }
 
   return (
-    <div className="w-36 shrink-0 border-l border-zinc-800 flex flex-col justify-center gap-1 px-3 py-2">
+    <div className="flex flex-col gap-1 px-3 pt-1.5 pb-2 border-t border-current/20">
       {checking ? (
         <div className="flex items-center gap-1.5">
           <Loader2 className="h-3 w-3 animate-spin text-zinc-500 shrink-0" />
@@ -1125,7 +1125,7 @@ function IdeasBoard({
                   {colCards.map((card) => (
                     <SortableRow key={card.id} id={card.id}>
                       {(handleProps) => (
-                        <div className={cn("flex gap-0", isDomainCol && "items-stretch")}>
+                        <div className="flex gap-0.5 items-start">
                           <button
                             {...handleProps}
                             className="flex items-start pt-2.5 px-0.5 text-zinc-700 hover:text-zinc-500 cursor-grab active:cursor-grabbing shrink-0"
@@ -1146,14 +1146,9 @@ function IdeasBoard({
                               onDeleteComment={onDeleteComment}
                               onToggleChosen={() => setChosen(card.id, col.id)}
                               contentClassName={isDomainCol ? "break-all" : ""}
+                              domainPanel={isDomainCol ? <DomainAvailabilityPanel card={card} onSaveResult={(updates) => onUpdate(card.id, updates)} /> : undefined}
                             />
                           </div>
-                          {isDomainCol && (
-                            <DomainAvailabilityPanel
-                              card={card}
-                              onSaveResult={(updates) => onUpdate(card.id, updates)}
-                            />
-                          )}
                         </div>
                       )}
                     </SortableRow>
@@ -1327,7 +1322,7 @@ function ColumnHeader({
 function IdeaCard({
   card, reactions, comments, userEmail,
   onClick, onDelete, onToggleReaction, onAddComment, onDeleteComment, onToggleChosen,
-  contentClassName = "",
+  contentClassName = "", domainPanel,
 }: {
   card: StrategyCard;
   reactions: StrategyReaction[];
@@ -1340,6 +1335,7 @@ function IdeaCard({
   onDeleteComment: (id: string) => Promise<void>;
   onToggleChosen: () => void;
   contentClassName?: string;
+  domainPanel?: React.ReactNode;
 }) {
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [newComment, setNewComment] = useState("");
@@ -1363,7 +1359,7 @@ function IdeaCard({
 
   return (
     <div
-      className="group relative rounded-lg border border-zinc-800 bg-zinc-900 transition-colors hover:border-zinc-700 overflow-hidden"
+      className="group relative rounded-lg border border-current bg-transparent text-zinc-200 transition-colors overflow-hidden"
       style={card.color ? { borderLeftColor: card.color, borderLeftWidth: 3 } : undefined}
     >
       {/* Chosen star */}
@@ -1394,8 +1390,10 @@ function IdeaCard({
         </div>
       </div>
 
+      {domainPanel}
+
       {/* Reactions bar */}
-      <div className="px-3 pb-2 border-t border-zinc-800 flex items-center gap-2">
+      <div className="px-3 pb-2 border-t border-current/20 flex items-center gap-2">
         <button
           onClick={(e) => { e.stopPropagation(); onToggleReaction("up"); }}
           className={cn("flex items-center gap-1 text-xs mt-2 transition-colors", myReaction?.reaction === "up" ? "text-emerald-400" : "text-zinc-600 hover:text-zinc-400")}
@@ -1421,7 +1419,7 @@ function IdeaCard({
 
       {/* Comments panel */}
       {commentsOpen && (
-        <div className="border-t border-zinc-800 px-3 pb-3" onClick={(e) => e.stopPropagation()}>
+        <div className="border-t border-current/20 px-3 pb-3" onClick={(e) => e.stopPropagation()}>
           {cardComments.length > 0 && (
             <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
               {cardComments.map((c) => (
@@ -1449,7 +1447,7 @@ function IdeaCard({
               onChange={(e) => setNewComment(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitComment(); } }}
               placeholder="Add a comment..."
-              className="flex-1 bg-zinc-800 rounded-md px-2.5 py-1.5 text-xs text-zinc-200 outline-none placeholder:text-zinc-600 border border-zinc-700 focus:border-zinc-500"
+              className="flex-1 bg-black/20 rounded-md px-2.5 py-1.5 text-xs text-zinc-200 outline-none placeholder:text-zinc-600 border border-current/30 focus:border-current/60"
             />
             <button
               onClick={submitComment}
@@ -1653,7 +1651,7 @@ function TaskBoard({ tasks, onAdd, onUpdate, onDelete }: {
               {sorted.map((task) => (
                 <SortableRow key={task.id} id={task.id}>
                   {(handleProps) => (
-                    <div className="flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-2 hover:border-zinc-700 transition-colors">
+                    <div className="flex items-center gap-1.5 rounded-lg border border-current bg-transparent text-zinc-200 px-2 py-2 transition-colors">
                       <button
                         {...handleProps}
                         className="text-zinc-700 hover:text-zinc-500 cursor-grab active:cursor-grabbing shrink-0"
