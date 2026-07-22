@@ -850,7 +850,7 @@ function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1
   const [text, setText]                     = useState("");
   const [width, setWidth]                   = useState(280);
   const [seenCount, setSeenCount]           = useState(messages.length);
-  const [colorPickingEmail, setColorPickingEmail] = useState<string | null>(null);
+  const [colorPickingMsgId, setColorPickingMsgId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -901,7 +901,7 @@ function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1
           const gapMs    = prev ? new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() : Infinity;
           const showStamp = gapMs > 15 * 60 * 1000;
           const sameAuthor = !showStamp && prev?.author_email === m.author_email;
-          const isPickingThis = colorPickingEmail === m.author_email;
+          const isPickingThis = colorPickingMsgId === m.id;
 
           return (
             <React.Fragment key={m.id}>
@@ -920,7 +920,7 @@ function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        setColorPickingEmail(isPickingThis ? null : m.author_email);
+                        setColorPickingMsgId(isPickingThis ? null : m.id);
                       }}
                       title={isMe ? name : `Set color for ${name}`}
                       className="h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-opacity hover:opacity-75"
@@ -932,8 +932,8 @@ function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1
                       <ColorPickerPopover
                         email={m.author_email}
                         currentColor={color}
-                        onPick={(c) => { onSetUserColor(m.author_email, c); setColorPickingEmail(null); }}
-                        onClose={() => setColorPickingEmail(null)}
+                        onPick={(c) => { onSetUserColor(m.author_email, c); setColorPickingMsgId(null); }}
+                        onClose={() => setColorPickingMsgId(null)}
                       />
                     )}
                   </div>
