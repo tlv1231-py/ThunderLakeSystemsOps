@@ -53,6 +53,7 @@ export type StrategyPrefs = {
   theme: "dark" | "light";
   bg_color: string | null;
   text_color: string | null;
+  header_color: string | null;
 };
 
 export type StrategyColumn = {
@@ -89,13 +90,13 @@ function displayName(email: string) {
 // ── Theme CSS ─────────────────────────────────────────────────────────────────
 
 function buildThemeCSS(prefs: StrategyPrefs): string {
-  const light = prefs.theme === "light";
-  const bg    = prefs.bg_color;
-  const text  = prefs.text_color;
+  const light  = prefs.theme === "light";
+  const bg     = prefs.bg_color;
+  const text   = prefs.text_color;
+  const header = prefs.header_color;
   let css = "";
 
   if (light) {
-    // bg-zinc-950 is on the layout wrapper (outside sh-root), so target globally
     css += `
       .bg-zinc-950{background-color:#f1f5f9!important}
       .sh-root{background-color:#f1f5f9!important}
@@ -123,11 +124,11 @@ function buildThemeCSS(prefs: StrategyPrefs): string {
       .sh-root .placeholder\\:text-zinc-600::placeholder{color:#94a3b8!important}
       .sh-root textarea,.sh-root select,.sh-root input[type=text],.sh-root input[type=email]{color:#0f172a!important}
       .sh-root select{background-color:#f1f5f9!important}
+      .sh-root h1,.sh-root h2,.sh-root h3,.sh-root .sh-header{color:#0f172a!important}
     `;
   }
 
   if (bg) {
-    // Same pattern: target layout wrapper globally + sh-root itself
     css += `.bg-zinc-950{background-color:${bg}!important}.sh-root{background-color:${bg}!important}`;
   }
 
@@ -138,6 +139,10 @@ function buildThemeCSS(prefs: StrategyPrefs): string {
       .sh-root .text-zinc-300{color:${text}cc!important}
       .sh-root textarea,.sh-root input[type=text],.sh-root input[type=email]{color:${text}!important}
     `;
+  }
+
+  if (header) {
+    css += `.sh-root h1,.sh-root h2,.sh-root h3,.sh-root .sh-header{color:${header}!important}`;
   }
 
   return css;
@@ -164,7 +169,7 @@ const PRIORITY_DOT: Record<string, string> = {
   high:   "bg-red-500",
 };
 
-const DEFAULT_PREFS: StrategyPrefs = { user_id: "", theme: "dark", bg_color: null, text_color: null };
+const DEFAULT_PREFS: StrategyPrefs = { user_id: "", theme: "dark", bg_color: null, text_color: null, header_color: null };
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
@@ -731,13 +736,13 @@ function ColumnHeader({
           onChange={(e) => setName(e.target.value)}
           onBlur={save}
           onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") { setName(column.name); setEditing(false); } }}
-          className="flex-1 text-xs font-semibold uppercase tracking-wide bg-transparent border-b border-zinc-600 outline-none text-zinc-300 mr-2 py-0.5"
+          className="sh-header flex-1 text-xs font-semibold uppercase tracking-wide bg-transparent border-b border-zinc-600 outline-none text-zinc-300 mr-2 py-0.5"
         />
       ) : (
         <button
           onClick={() => setEditing(true)}
           title="Click to rename"
-          className="text-xs font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-300 transition-colors text-left flex-1"
+          className="sh-header text-xs font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-300 transition-colors text-left flex-1"
         >
           {column.name}
         </button>
@@ -960,7 +965,7 @@ function TaskBoard({ tasks, onAdd, onUpdate, onDelete }: {
         return (
           <div key={key} className="flex-1 min-w-60 flex flex-col">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{label}</span>
+              <span className="sh-header text-xs font-semibold uppercase tracking-wide text-zinc-500">{label}</span>
               <span className="text-xs text-zinc-700 font-mono">{col.length}</span>
             </div>
             <div className="flex flex-col gap-2">
@@ -1277,6 +1282,15 @@ const TEXT_PRESETS = [
   { label: "Black",   value: "#0f172a"   },
 ];
 
+const HEADER_PRESETS = [
+  { label: "Default", value: null        },
+  { label: "White",   value: "#ffffff"   },
+  { label: "Cream",   value: "#fef9ef"   },
+  { label: "Gold",    value: "#fcd34d"   },
+  { label: "Sky",     value: "#7dd3fc"   },
+  { label: "Black",   value: "#0f172a"   },
+];
+
 function ThemePanel({ prefs, onChange, onClose }: {
   prefs: StrategyPrefs;
   onChange: (next: StrategyPrefs) => void;
@@ -1330,7 +1344,23 @@ function ThemePanel({ prefs, onChange, onClose }: {
           ))}
         </div>
       </div>
-      <button onClick={() => set({ theme: "dark", bg_color: null, text_color: null })} className="w-full py-1.5 rounded-lg text-xs text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors">
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs text-zinc-500">Headers</p>
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <span className="text-xs text-zinc-600">Custom</span>
+            <div className="h-5 w-5 rounded border border-zinc-600 overflow-hidden" style={{ backgroundColor: prefs.header_color ?? "#f4f4f5" }}>
+              <input type="color" value={prefs.header_color ?? "#f4f4f5"} onChange={(e) => set({ header_color: e.target.value })} className="opacity-0 w-full h-full cursor-pointer" />
+            </div>
+          </label>
+        </div>
+        <div className="flex gap-1.5 flex-wrap">
+          {HEADER_PRESETS.map(({ label, value }) => (
+            <button key={label} onClick={() => set({ header_color: value })} title={label} className={cn("h-6 w-6 rounded-md border transition-all", prefs.header_color === value ? "border-zinc-300 scale-110" : "border-zinc-700 hover:border-zinc-500")} style={{ backgroundColor: value ?? "#f4f4f5" }} />
+          ))}
+        </div>
+      </div>
+      <button onClick={() => set({ theme: "dark", bg_color: null, text_color: null, header_color: null })} className="w-full py-1.5 rounded-lg text-xs text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors">
         Reset to default
       </button>
     </div>
