@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Trash2, X, Palette, ThumbsUp, ThumbsDown, MessageSquare, Send, Eye, CheckCircle2, XCircle, RefreshCw, Loader2, Star, Search, Globe, Archive, ArrowUpDown, AlertCircle, GripVertical, Link } from "lucide-react";
@@ -65,6 +65,7 @@ export type StrategyPrefs = {
   text_color: string | null;
   header_color: string | null;
   font_scale?: number | null;
+  user_colors?: Record<string, string> | null;
 };
 
 export type StrategyColumn = {
@@ -248,7 +249,44 @@ const CARD_COLORS: { value: string | null; label: string }[] = [
   { value: "#ec4899", label: "Pink"   },
 ];
 
-const DEFAULT_PREFS: StrategyPrefs = { user_id: "", theme: "dark", bg_color: null, text_color: null, header_color: null, font_scale: 1.1 };
+const DEFAULT_PREFS: StrategyPrefs = { user_id: "", theme: "dark", bg_color: null, text_color: null, header_color: null, font_scale: 1.1, user_colors: null };
+
+const USER_COLOR_PALETTE = [
+  "#3b82f6", "#10b981", "#f59e0b", "#ef4444",
+  "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16",
+  "#f97316", "#a855f7", "#14b8a6", "#e11d48",
+];
+
+const COLOR_SWATCHES = [
+  "#ef4444", "#f97316", "#f59e0b", "#84cc16",
+  "#22c55e", "#10b981", "#06b6d4", "#3b82f6",
+  "#8b5cf6", "#a855f7", "#ec4899", "#f43f5e",
+];
+
+function emailColorIndex(email: string): number {
+  let h = 0;
+  for (let i = 0; i < email.length; i++) { h = Math.imul(31, h) + email.charCodeAt(i) | 0; }
+  return Math.abs(h) % USER_COLOR_PALETTE.length;
+}
+
+function resolveUserColor(email: string, userColors: Record<string, string> | null | undefined): string {
+  return userColors?.[email] ?? USER_COLOR_PALETTE[emailColorIndex(email)];
+}
+
+function formatChatTime(dateStr: string): string {
+  const d   = new Date(dateStr);
+  const now = new Date();
+  const diffMs   = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  const timeStr  = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (diffMins < 1)   return "just now";
+  if (diffMins < 60)  return `${diffMins}m ago`;
+  if (d.toDateString() === now.toDateString()) return timeStr;
+  if (diffDays < 2)   return `Yesterday ${timeStr}`;
+  if (diffDays < 7)   return `${d.toLocaleDateString([], { weekday: "short" })} ${timeStr}`;
+  return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${timeStr}`;
+}
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
@@ -448,6 +486,13 @@ export function StrategyHub({
   async function deleteComment(id: string) {
     setComments((s) => s.filter((c) => c.id !== id));
     await db.from("strategy_comments").delete().eq("id", id);
+  }
+
+  // ── User color preferences ────────────────────────────────────────────────
+  async function setUserColor(email: string, color: string) {
+    const updated: StrategyPrefs = { ...prefs, user_colors: { ...(prefs.user_colors ?? {}), [email]: color } };
+    setPrefs(updated);
+    await (db as any).from("strategy_preferences").upsert({ ...updated, user_id: userId });
   }
 
   // ── Chat ──────────────────────────────────────────────────────────────────
@@ -712,7 +757,7 @@ export function StrategyHub({
       </div>
 
       {/* Chat panel */}
-      <ChatPanel messages={messages} userEmail={userEmail} onSend={sendMessage} fontScale={activeFontScale} />
+      <ChatPanel messages={messages} userEmail={userEmail} onSend={sendMessage} fontScale={activeFontScale} userColors={prefs.user_colors} onSetUserColor={setUserColor} />
     </div>
   );
 }
@@ -728,38 +773,77 @@ function renderWithMentions(content: string) {
   );
 }
 
-function ChatPanel({ messages, userEmail, onSend, fontScale = 1 }: {
+function ColorPickerPopover({ email, currentColor, onPick, onClose }: {
+  email: string;
+  currentColor: string;
+  onPick: (color: string) => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function handleDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener("mousedown", handleDown);
+    return () => document.removeEventListener("mousedown", handleDown);
+  }, [onClose]);
+
+  return (
+    <div
+      ref={ref}
+      onClick={(e) => e.stopPropagation()}
+      className="absolute left-8 top-0 z-50 rounded-lg border border-zinc-700 bg-zinc-950 shadow-xl p-2.5"
+      style={{ width: 140 }}
+    >
+      <p className="text-[9px] text-zinc-500 uppercase tracking-wide mb-2 leading-none">{displayName(email)}</p>
+      <div className="grid grid-cols-4 gap-1.5">
+        {COLOR_SWATCHES.map((c) => (
+          <button
+            key={c}
+            onClick={() => onPick(c)}
+            className="h-6 w-6 rounded-full transition-transform hover:scale-110 ring-offset-1 ring-offset-zinc-950"
+            style={{ background: c, outline: c === currentColor ? `2px solid ${c}` : "none", outlineOffset: 2 }}
+          />
+        ))}
+      </div>
+      <div className="mt-2.5 flex items-center gap-2">
+        <input
+          type="color"
+          defaultValue={currentColor}
+          onChange={(e) => onPick(e.target.value)}
+          className="h-6 w-8 cursor-pointer rounded border-0 p-0 bg-transparent"
+          title="Custom color"
+        />
+        <span className="text-[9px] text-zinc-500">Custom</span>
+      </div>
+    </div>
+  );
+}
+
+function ChatPanel({ messages, userEmail, onSend, fontScale = 1, userColors, onSetUserColor }: {
   messages: StrategyMessage[];
   userEmail: string;
   onSend: (content: string) => Promise<void>;
   fontScale?: number;
+  userColors?: Record<string, string> | null;
+  onSetUserColor: (email: string, color: string) => Promise<void>;
 }) {
-  const [text, setText] = useState("");
-  const [width, setWidth] = useState(280);
-  const [seenCount, setSeenCount] = useState(messages.length);
+  const [text, setText]                     = useState("");
+  const [width, setWidth]                   = useState(280);
+  const [seenCount, setSeenCount]           = useState(messages.length);
+  const [colorPickingEmail, setColorPickingEmail] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   const unreadCount = Math.max(0, messages.length - seenCount);
-
-  function markRead() {
-    setSeenCount(messages.length);
-  }
+  function markRead() { setSeenCount(messages.length); }
 
   function startResize(e: React.MouseEvent) {
     e.preventDefault();
-    const startX = e.clientX;
-    const startW = width;
-    function onMove(ev: MouseEvent) {
-      setWidth(Math.max(180, Math.min(520, startW + startX - ev.clientX)));
-    }
-    function onUp() {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    }
+    const startX = e.clientX, startW = width;
+    function onMove(ev: MouseEvent) { setWidth(Math.max(180, Math.min(520, startW + startX - ev.clientX))); }
+    function onUp() { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); }
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
   }
@@ -778,47 +862,68 @@ function ChatPanel({ messages, userEmail, onSend, fontScale = 1 }: {
       style={{ top: 0, height: `calc((100vh - 6rem) / ${fontScale})`, alignSelf: "flex-start", width }}
       onClick={markRead}
     >
-      {/* Drag-to-resize handle */}
-      <div
-        onMouseDown={startResize}
-        className="absolute left-0 top-0 bottom-0 w-3 cursor-col-resize z-10 group/resize"
-        style={{ transform: "translateX(-50%)" }}
-      >
+      <div onMouseDown={startResize} className="absolute left-0 top-0 bottom-0 w-3 cursor-col-resize z-10 group/resize" style={{ transform: "translateX(-50%)" }}>
         <div className="absolute inset-y-0 left-1/2 w-px bg-zinc-800 group-hover/resize:bg-zinc-500 transition-colors" />
       </div>
       <div className="px-4 py-3 border-b border-zinc-800 shrink-0 flex items-center justify-between">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Team Chat</h3>
         {unreadCount > 0 && (
-          <span className="flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-blue-600 text-[9px] font-bold text-white">
-            {unreadCount}
-          </span>
+          <span className="flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-blue-600 text-[9px] font-bold text-white">{unreadCount}</span>
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto py-3 flex flex-col gap-3 min-h-0">
-        {messages.length === 0 && (
-          <p className="px-4 text-xs text-zinc-700">No messages yet. Say hi!</p>
-        )}
-        {messages.map((m) => {
-          const isMe = m.author_email === userEmail;
-          const name = displayName(m.author_email);
-          const time = new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      <div className="flex-1 overflow-y-auto py-3 flex flex-col gap-0.5 min-h-0">
+        {messages.length === 0 && <p className="px-4 text-xs text-zinc-700">No messages yet. Say hi!</p>}
+        {messages.map((m, i) => {
+          const prev     = i > 0 ? messages[i - 1] : null;
+          const isMe     = m.author_email === userEmail;
+          const name     = displayName(m.author_email);
+          const color    = resolveUserColor(m.author_email, userColors);
+          const gapMs    = prev ? new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() : Infinity;
+          const showStamp = gapMs > 15 * 60 * 1000;
+          const sameAuthor = !showStamp && prev?.author_email === m.author_email;
+          const isPickingThis = colorPickingEmail === m.author_email;
+
           return (
-            <div key={m.id} className="px-3 flex gap-2 items-start">
-              <div className={cn(
-                "h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-semibold shrink-0 mt-0.5",
-                isMe ? "bg-zinc-600 text-zinc-100" : "bg-zinc-800 text-zinc-300"
-              )}>
-                {name.charAt(0).toUpperCase() || "?"}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-baseline gap-1.5 mb-0.5">
-                  <span className="text-[11px] font-medium text-zinc-300 truncate">{name}</span>
-                  <span className="text-[9px] text-zinc-600 shrink-0">{time}</span>
+            <React.Fragment key={m.id}>
+              {showStamp && (
+                <div className="flex items-center gap-2 px-3 py-2">
+                  <div className="flex-1 h-px bg-zinc-800" />
+                  <span className="text-[9px] text-zinc-600 shrink-0">{formatChatTime(m.created_at)}</span>
+                  <div className="flex-1 h-px bg-zinc-800" />
                 </div>
-                <p className="text-xs text-zinc-400 leading-relaxed break-words">{renderWithMentions(m.content)}</p>
+              )}
+              <div className={cn("px-3 flex gap-2 items-start", sameAuthor ? "mt-0" : "mt-2")}>
+                {sameAuthor ? (
+                  <div className="w-6 shrink-0" />
+                ) : (
+                  <div className="relative shrink-0 mt-0.5">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setColorPickingEmail(isPickingThis ? null : m.author_email);
+                      }}
+                      title={isMe ? name : `Set color for ${name}`}
+                      className="h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-opacity hover:opacity-75"
+                      style={{ background: isMe ? "#52525b" : color, color: "#fff" }}
+                    >
+                      {name.charAt(0).toUpperCase() || "?"}
+                    </button>
+                    {isPickingThis && !isMe && (
+                      <ColorPickerPopover
+                        email={m.author_email}
+                        currentColor={color}
+                        onPick={(c) => { onSetUserColor(m.author_email, c); setColorPickingEmail(null); }}
+                        onClose={() => setColorPickingEmail(null)}
+                      />
+                    )}
+                  </div>
+                )}
+                <p className="text-xs text-zinc-400 leading-relaxed break-words flex-1 min-w-0">
+                  {renderWithMentions(m.content)}
+                </p>
               </div>
-            </div>
+            </React.Fragment>
           );
         })}
         <div ref={bottomRef} />
@@ -833,11 +938,7 @@ function ChatPanel({ messages, userEmail, onSend, fontScale = 1 }: {
             placeholder="Message the team…"
             className="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600"
           />
-          <button
-            onClick={send}
-            disabled={!text.trim()}
-            className="p-1.5 rounded-lg bg-zinc-700 text-zinc-300 hover:bg-zinc-600 disabled:opacity-30 transition-colors shrink-0"
-          >
+          <button onClick={send} disabled={!text.trim()} className="p-1.5 rounded-lg bg-zinc-700 text-zinc-300 hover:bg-zinc-600 disabled:opacity-30 transition-colors shrink-0">
             <Send className="h-3 w-3" />
           </button>
         </div>
