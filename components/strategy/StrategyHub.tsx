@@ -251,6 +251,11 @@ const CARD_COLORS: { value: string | null; label: string }[] = [
 
 const DEFAULT_PREFS: StrategyPrefs = { user_id: "", theme: "dark", bg_color: null, text_color: null, header_color: null, font_scale: 1.1, user_colors: null };
 
+// Context so every sub-component can resolve a user's assigned color without prop drilling
+const UserColorsCtx = React.createContext<(email: string) => string>(
+  (email) => resolveUserColor(email, null)
+);
+
 const USER_COLOR_PALETTE = [
   "#3b82f6", "#10b981", "#f59e0b", "#ef4444",
   "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16",
@@ -584,6 +589,7 @@ export function StrategyHub({
     : "";
 
   return (
+    <UserColorsCtx.Provider value={(email) => resolveUserColor(email, prefs.user_colors)}>
     <div
       className="sh-root flex gap-4"
       style={{ minHeight: "calc(100vh - 10rem)", zoom: activeFontScale !== 1 ? activeFontScale : undefined } as React.CSSProperties}
@@ -762,6 +768,7 @@ export function StrategyHub({
       {/* Chat panel */}
       <ChatPanel messages={messages} userEmail={userEmail} onSend={sendMessage} fontScale={activeFontScale} userColors={prefs.user_colors} onSetUserColor={setUserColor} />
     </div>
+    </UserColorsCtx.Provider>
   );
 }
 
@@ -1462,6 +1469,7 @@ function IdeaCard({
   const [commentsOpen, setCommentsOpen] = useState(true);
   const [newComment, setNewComment] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const resolveColor = React.useContext(UserColorsCtx);
 
   const statusInfo    = CARD_STATUSES.find((s) => s.key === card.status) ?? CARD_STATUSES[0];
   const cardReactions = reactions.filter((r) => r.item_id === card.id && r.item_type === "card");
@@ -1508,7 +1516,7 @@ function IdeaCard({
               </span>
             )}
             {displayName(card.author_email) && (
-              <span className="text-[10px] text-zinc-700 ml-auto">{displayName(card.author_email)}</span>
+              <span className="text-[10px] ml-auto font-medium" style={{ color: resolveColor(card.author_email) }}>{displayName(card.author_email)}</span>
             )}
           </div>
         </div>
@@ -1546,11 +1554,14 @@ function IdeaCard({
           {cardComments.length > 0 && (
             <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
               {cardComments.map((c) => (
-                <div key={c.id} className="group/comment flex items-start gap-2">
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[10px] font-medium text-zinc-500">{displayName(c.author_email)}</span>
-                    <p className="text-xs text-zinc-300 leading-snug mt-0.5 break-words">{c.content}</p>
+                <div key={c.id} className="group/comment flex items-start gap-1.5">
+                  <div
+                    className="h-4 w-4 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0 mt-0.5 text-white"
+                    style={{ background: resolveColor(c.author_email) }}
+                  >
+                    {displayName(c.author_email).charAt(0).toUpperCase()}
                   </div>
+                  <p className="text-xs text-zinc-300 leading-snug break-words flex-1 min-w-0">{c.content}</p>
                   {c.author_email === userEmail && (
                     <button
                       onClick={() => onDeleteComment(c.id)}
@@ -1604,6 +1615,7 @@ function IdeaEditPanel({
   onClose: () => void;
   onToggleChosen: () => Promise<void>;
 }) {
+  const resolveColor = React.useContext(UserColorsCtx);
   const [content, setContent] = useState(card.content);
   const [notes, setNotes]     = useState(card.notes ?? "");
   const [status, setStatus]   = useState(card.status);
@@ -1662,7 +1674,7 @@ function IdeaEditPanel({
             ))}
           </div>
         </div>
-        {displayName(card.author_email) && <p className="text-xs text-zinc-600">Added by {displayName(card.author_email)}</p>}
+        {displayName(card.author_email) && <p className="text-xs font-medium" style={{ color: resolveColor(card.author_email) }}>Added by {displayName(card.author_email)}</p>}
       </div>
       <div className="flex items-center justify-between px-4 py-3 border-t border-zinc-800">
         <button onClick={onDelete} className="text-xs text-red-500 hover:text-red-400 transition-colors">Delete</button>
@@ -1833,6 +1845,7 @@ function TaskEditPanel({ task, onUpdate, onDelete, onClose }: {
   onDelete: () => void;
   onClose: () => void;
 }) {
+  const resolveColor = React.useContext(UserColorsCtx);
   const [title, setTitle]           = useState(task.title);
   const [description, setDescription] = useState(task.description ?? "");
   const [status, setStatus]         = useState(task.status);
@@ -1877,7 +1890,7 @@ function TaskEditPanel({ task, onUpdate, onDelete, onClose }: {
           <label className="text-xs text-zinc-500 mb-1.5 block">Assignee</label>
           <input value={assignee} onChange={(e) => { setAssignee(e.target.value); setDirty(true); }} placeholder="Name or initials..." className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600 transition-colors" />
         </div>
-        {displayName(task.author_email) && <p className="text-xs text-zinc-600">Created by {displayName(task.author_email)}</p>}
+        {displayName(task.author_email) && <p className="text-xs font-medium" style={{ color: resolveColor(task.author_email) }}>Created by {displayName(task.author_email)}</p>}
       </div>
       <div className="flex items-center justify-between px-4 py-3 border-t border-zinc-800">
         <button onClick={onDelete} className="text-xs text-red-500 hover:text-red-400 transition-colors">Delete</button>
@@ -1895,6 +1908,7 @@ function NotesPanel({ notes, onAdd, onUpdate, onDelete }: {
   onUpdate: (id: string, updates: Partial<StrategyNote>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
+  const resolveColor = React.useContext(UserColorsCtx);
   const [selectedId, setSelectedId] = useState<string | null>(notes[0]?.id ?? null);
   const selected = notes.find((n) => n.id === selectedId) ?? null;
 
@@ -1916,7 +1930,7 @@ function NotesPanel({ notes, onAdd, onUpdate, onDelete }: {
           {notes.map((note) => (
             <button key={note.id} onClick={() => setSelectedId(note.id)} className={cn("text-left px-3 py-2.5 rounded-lg text-sm transition-colors", selectedId === note.id ? "bg-zinc-800 text-zinc-100" : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200")}>
               <div className="truncate font-medium text-sm">{note.title || "Untitled"}</div>
-              {note.updated_by_email && <div className="text-[10px] text-zinc-600 mt-0.5">{displayName(note.updated_by_email)}</div>}
+              {note.updated_by_email && <div className="text-[10px] mt-0.5 font-medium" style={{ color: resolveColor(note.updated_by_email) }}>{displayName(note.updated_by_email)}</div>}
             </button>
           ))}
           {notes.length === 0 && <p className="text-xs text-zinc-600 px-3 py-2">No notes yet</p>}
@@ -1940,6 +1954,7 @@ function NoteEditor({ note, onUpdate, onDelete }: {
   onUpdate: (updates: Partial<StrategyNote>) => void;
   onDelete: () => void;
 }) {
+  const resolveColor = React.useContext(UserColorsCtx);
   const [title, setTitle]     = useState(note.title);
   const [content, setContent] = useState(note.content);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -1961,7 +1976,7 @@ function NoteEditor({ note, onUpdate, onDelete }: {
       <div className="px-4 py-2 border-t border-zinc-800 flex items-center justify-between">
         <span className="text-[10px] text-zinc-700">Auto-saves as you type</span>
         {note.updated_by_email && (
-          <span className="text-[10px] text-zinc-700">{displayName(note.updated_by_email)} · {new Date(note.updated_at).toLocaleString()}</span>
+          <span className="text-[10px] font-medium" style={{ color: resolveColor(note.updated_by_email) }}>{displayName(note.updated_by_email)} · {new Date(note.updated_at).toLocaleString()}</span>
         )}
       </div>
     </div>
@@ -2053,6 +2068,7 @@ function ImageCard({ image, signedUrl, onDelete, onUpdateCaption, onExpand }: {
   onUpdateCaption: (caption: string) => void;
   onExpand: () => void;
 }) {
+  const resolveColor = React.useContext(UserColorsCtx);
   const [caption, setCaption] = useState(image.caption);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -2080,7 +2096,7 @@ function ImageCard({ image, signedUrl, onDelete, onUpdateCaption, onExpand }: {
       </div>
       <div className="p-2">
         <input value={caption} onChange={(e) => handleCaptionChange(e.target.value)} placeholder="Add caption..." className="w-full bg-transparent text-xs text-zinc-300 outline-none placeholder:text-zinc-600" />
-        {image.author_email && <p className="text-[10px] text-zinc-700 mt-0.5">{displayName(image.author_email)}</p>}
+        {image.author_email && <p className="text-[10px] mt-0.5 font-medium" style={{ color: resolveColor(image.author_email) }}>{displayName(image.author_email)}</p>}
       </div>
     </div>
   );
