@@ -919,7 +919,7 @@ function DomainAvailabilityPanel({ card, onSaveResult }: {
         <>
           <div className="flex items-center gap-1">
             <AlertCircle className="h-3 w-3 text-zinc-600 shrink-0" />
-            <span className="text-[10px] text-zinc-500 leading-tight">{apiError.length > 22 ? apiError.slice(0, 20) + "…" : apiError}</span>
+            <span className="text-[10px] text-zinc-500 leading-tight break-words">{apiError}</span>
           </div>
           <button onClick={(e) => runCheck(e, true)} className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors text-left">
             Try again

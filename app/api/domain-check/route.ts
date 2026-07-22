@@ -10,7 +10,8 @@ async function checkOne(domain: string, pat: string) {
     );
     const data = await res.json();
     if (!res.ok) {
-      return { domain, available: null, price: null, currency: "USD", error: data.message ?? `GoDaddy error ${res.status}` };
+      console.error("GoDaddy error", res.status, JSON.stringify(data));
+      return { domain, available: null, price: null, currency: "USD", error: data.message ?? data.code ?? `GoDaddy ${res.status}` };
     }
     return {
       domain,
