@@ -2,49 +2,45 @@ import { NextRequest, NextResponse } from "next/server";
 
 const TLDS = [".com", ".io", ".co", ".app", ".net", ".org", ".ai", ".dev", ".tech", ".systems"];
 
-async function checkOne(domain: string, pat: string) {
+// RDAP bootstrap — maps TLD to its registry's RDAP base URL
+const RDAP_SERVERS: Record<string, string> = {
+  ".com":     "https://rdap.verisign.com/com/v1",
+  ".net":     "https://rdap.verisign.com/net/v1",
+  ".org":     "https://rdap.publicinterestregistry.org/rdap",
+  ".io":      "https://rdap.nic.io",
+  ".co":      "https://rdap.nic.co",
+  ".app":     "https://rdap.nic.google/rdap",
+  ".dev":     "https://rdap.nic.google/rdap",
+  ".ai":      "https://rdap.nic.ai",
+  ".tech":    "https://rdap.nic.tech",
+  ".systems": "https://rdap.donuts.co/domain",
+};
+
+async function checkOne(domain: string) {
+  const tld = "." + domain.split(".").slice(1).join(".");
+  const base = RDAP_SERVERS[tld] ?? "https://rdap.org";
   try {
-    const res = await fetch(
-      `https://api.godaddy.com/v1/domains/available?domain=${domain}`,
-      { headers: { Authorization: `sso-key ${pat}` } }
-    );
-    const text = await res.text();
-    console.log("GoDaddy response", res.status, text.slice(0, 200));
-    if (!text) {
-      return { domain, available: null, price: null, currency: "USD", error: `Empty response (HTTP ${res.status})` };
-    }
-    let data: any;
-    try { data = JSON.parse(text); } catch {
-      return { domain, available: null, price: null, currency: "USD", error: `HTTP ${res.status}: ${text.slice(0, 80)}` };
-    }
-    if (!res.ok) {
-      return { domain, available: null, price: null, currency: "USD", error: data.message ?? data.code ?? `GoDaddy ${res.status}` };
-    }
-    return {
-      domain,
-      available: data.available ?? null,
-      price: typeof data.price === "number" ? data.price / 1_000_000 : null,
-      currency: data.currency ?? "USD",
-    };
+    const res = await fetch(`${base}/domain/${domain}`, {
+      headers: { Accept: "application/rdap+json" },
+    });
+    if (res.status === 404) return { domain, available: true };
+    if (res.ok)            return { domain, available: false };
+    // Unexpected status — treat as unknown
+    return { domain, available: null, error: `RDAP ${res.status}` };
   } catch (e: any) {
-    return { domain, available: null, price: null, currency: "USD", error: e?.message ?? "Network error" };
+    return { domain, available: null, error: e?.message ?? "Network error" };
   }
 }
 
 export async function GET(req: NextRequest) {
-  const pat = process.env.GODADDY_PAT;
-  if (!pat) return NextResponse.json({ error: "GODADDY_PAT not configured" }, { status: 500 });
-
-  // Single domain check (from card availability button)
   const singleDomain = req.nextUrl.searchParams.get("domain")?.toLowerCase().trim();
   if (singleDomain) {
-    return NextResponse.json(await checkOne(singleDomain, pat));
+    return NextResponse.json(await checkOne(singleDomain));
   }
 
   const name = req.nextUrl.searchParams.get("name")?.toLowerCase().trim();
   if (!name) return NextResponse.json({ error: "name or domain required" }, { status: 400 });
 
-  const results = await Promise.all(TLDS.map((tld) => checkOne(`${name}${tld}`, pat)));
-
+  const results = await Promise.all(TLDS.map((tld) => checkOne(`${name}${tld}`)));
   return NextResponse.json(results);
 }
