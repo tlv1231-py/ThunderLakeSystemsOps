@@ -1,9 +1,34 @@
 import { createClient } from "@/lib/supabase/server";
 import { NewInvoiceForm } from "@/components/admin/new-invoice-form";
 
-export default async function NewInvoicePage() {
+export default async function NewInvoicePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string; to?: string }>;
+}) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  const { from, to } = await searchParams;
+
+  let timeQuery = supabase
+    .from("time_entries")
+    .select("id, date_worked, hours_decimal, description, client_id, projects(id, name, hourly_rate_override), clients(default_hourly_rate)")
+    .eq("user_id", user!.id)
+    .eq("status", "uninvoiced")
+    .eq("billable", true)
+    .order("date_worked", { ascending: false });
+  if (from) timeQuery = timeQuery.gte("date_worked", from);
+  if (to)   timeQuery = timeQuery.lte("date_worked", to);
+
+  let expenseQuery = supabase
+    .from("expense_entries")
+    .select("id, date_incurred, description, amount, client_id")
+    .eq("user_id", user!.id)
+    .eq("status", "uninvoiced")
+    .eq("billable", true)
+    .order("date_incurred", { ascending: false });
+  if (from) expenseQuery = expenseQuery.gte("date_incurred", from);
+  if (to)   expenseQuery = expenseQuery.lte("date_incurred", to);
 
   const [
     { data: clients },
@@ -18,21 +43,8 @@ export default async function NewInvoicePage() {
       .eq("is_active", true)
       .order("company_name"),
 
-    supabase
-      .from("time_entries")
-      .select("id, date_worked, hours_decimal, description, client_id, projects(id, name, hourly_rate_override), clients(default_hourly_rate)")
-      .eq("user_id", user!.id)
-      .eq("status", "uninvoiced")
-      .eq("billable", true)
-      .order("date_worked", { ascending: false }),
-
-    supabase
-      .from("expense_entries")
-      .select("id, date_incurred, description, amount, client_id")
-      .eq("user_id", user!.id)
-      .eq("status", "uninvoiced")
-      .eq("billable", true)
-      .order("date_incurred", { ascending: false }),
+    timeQuery,
+    expenseQuery,
 
     supabase
       .from("users")

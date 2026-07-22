@@ -44,6 +44,8 @@ interface Props {
   daysUntilMonthEnd: number;
   monthEndLabel: string; // "June 30"
   monthLabel: string;    // "June 2026"
+  monthStart: string;    // "2026-06-01"
+  monthEnd: string;      // "2026-06-30"
   monthHistory: MonthSummary[]; // index 0 = most recent past month (current − 1)
 }
 
@@ -65,6 +67,8 @@ export function InvoiceCycleWidget({
   daysUntilMonthEnd,
   monthEndLabel,
   monthLabel,
+  monthStart,
+  monthEnd,
   monthHistory,
 }: Props) {
   // 0 = current month; -1 = previous; -2 = two months ago; …
@@ -169,6 +173,8 @@ export function InvoiceCycleWidget({
           unbilledClients={unbilledClients}
           daysUntilMonthEnd={daysUntilMonthEnd}
           monthEndLabel={monthEndLabel}
+          monthStart={monthStart}
+          monthEnd={monthEnd}
         />
       )}
 
@@ -187,11 +193,15 @@ function CurrentMonthBody({
   unbilledClients,
   daysUntilMonthEnd,
   monthEndLabel,
+  monthStart,
+  monthEnd,
 }: {
   draftInvoices: DraftInvoice[];
   unbilledClients: UnbilledClient[];
   daysUntilMonthEnd: number;
   monthEndLabel: string;
+  monthStart: string;
+  monthEnd: string;
 }) {
   const [pending, startTransition] = useTransition();
 
@@ -287,7 +297,7 @@ function CurrentMonthBody({
       <div className="px-5 py-3 border-t border-zinc-800 flex items-center justify-between">
         <p className="text-xs text-zinc-600">{countdownText}</p>
         <Link
-          href="/invoices/new"
+          href={`/invoices/new?from=${monthStart}&to=${monthEnd}`}
           className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
         >
           Create now →
@@ -301,6 +311,8 @@ function CurrentMonthBody({
 
 function HistoricalBody({ summary }: { summary: MonthSummary }) {
   const { invoices, unbilledClients } = summary;
+  const histFrom = `${summary.year}-${String(summary.month + 1).padStart(2, "0")}-01`;
+  const histTo   = new Date(summary.year, summary.month + 1, 0).toISOString().split("T")[0];
   const hasSent     = invoices.length > 0;
   const hasUnbilled = unbilledClients.length > 0;
 
@@ -336,7 +348,7 @@ function HistoricalBody({ summary }: { summary: MonthSummary }) {
         </div>
         <div className="px-5 py-3 border-t border-zinc-800 flex items-center gap-4">
           <Link
-            href="/invoices/new"
+            href={`/invoices/new?from=${histFrom}&to=${histTo}`}
             className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
           >
             Create invoice →
@@ -391,7 +403,7 @@ function HistoricalBody({ summary }: { summary: MonthSummary }) {
       <div className="px-5 py-3 border-t border-zinc-800 flex items-center justify-between">
         {hasUnbilled ? (
           <Link
-            href="/invoices/new"
+            href={`/invoices/new?from=${histFrom}&to=${histTo}`}
             className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
           >
             Create invoice →

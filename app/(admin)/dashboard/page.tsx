@@ -257,6 +257,8 @@ export default async function DashboardPage() {
         daysUntilMonthEnd={daysUntilMonthEnd}
         monthEndLabel={monthEndLabel}
         monthLabel={monthLabel}
+        monthStart={monthStart}
+        monthEnd={monthEnd}
         monthHistory={monthHistory}
       />
 
