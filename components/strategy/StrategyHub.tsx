@@ -535,7 +535,7 @@ export function StrategyHub({
   return (
     <div
       className="sh-root flex gap-4"
-      style={{ minHeight: "calc(100vh - 10rem)", zoom: fontScale !== 1 ? fontScale : undefined } as React.CSSProperties}
+      style={{ minHeight: "calc(100vh - 10rem)", zoom: activeFontScale !== 1 ? activeFontScale : undefined } as React.CSSProperties}
     >
       <style dangerouslySetInnerHTML={{ __html: themeCSS }} />
 
