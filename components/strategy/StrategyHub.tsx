@@ -158,10 +158,10 @@ function formatCooldown(ms: number): string {
 // ── Theme CSS ─────────────────────────────────────────────────────────────────
 
 function buildThemeCSS(prefs: StrategyPrefs): string {
-  const light  = prefs.theme === "light";
-  const bg     = prefs.bg_color;
-  const text   = prefs.text_color;
-  const header = prefs.header_color;
+  const light = prefs.theme === "light";
+  const bg    = prefs.bg_color;
+  // Unified text color: default white (dark mode) or black (light mode)
+  const tc    = prefs.text_color ?? (light ? "#000000" : "#ffffff");
   let css = "";
 
   if (light) {
@@ -178,11 +178,6 @@ function buildThemeCSS(prefs: StrategyPrefs): string {
       .sh-root .hover\\:bg-zinc-600:hover{background-color:#94a3b8!important}
       .sh-root .bg-zinc-800\\/50{background-color:rgba(241,245,249,.5)!important}
       .sh-root .bg-zinc-800\\/60{background-color:rgba(241,245,249,.6)!important}
-      .sh-root .text-zinc-100{color:#0f172a!important}
-      .sh-root .text-zinc-200{color:#0f172a!important}
-      .sh-root .text-zinc-300{color:#334155!important}
-      .sh-root .text-zinc-400{color:#475569!important}
-      .sh-root .text-zinc-500{color:#64748b!important}
       .sh-root .text-zinc-600{color:#94a3b8!important}
       .sh-root .text-zinc-700{color:#cbd5e1!important}
       .sh-root .text-zinc-900{color:#f8fafc!important}
@@ -190,9 +185,7 @@ function buildThemeCSS(prefs: StrategyPrefs): string {
       .sh-root .border-zinc-700{border-color:#cbd5e1!important}
       .sh-root .divide-zinc-800>*+*{border-color:#e2e8f0!important}
       .sh-root .placeholder\\:text-zinc-600::placeholder{color:#94a3b8!important}
-      .sh-root textarea,.sh-root select,.sh-root input[type=text],.sh-root input[type=email]{color:#0f172a!important}
       .sh-root select{background-color:#f1f5f9!important}
-      .sh-root h1,.sh-root h2,.sh-root h3,.sh-root .sh-header{color:#0f172a!important}
     `;
   }
 
@@ -200,18 +193,16 @@ function buildThemeCSS(prefs: StrategyPrefs): string {
     css += `.bg-zinc-950{background-color:${bg}!important}.sh-root{background-color:${bg}!important}`;
   }
 
-  if (text) {
-    css += `
-      .sh-root .text-zinc-100{color:${text}!important}
-      .sh-root .text-zinc-200{color:${text}!important}
-      .sh-root .text-zinc-300{color:${text}cc!important}
-      .sh-root textarea,.sh-root input[type=text],.sh-root input[type=email]{color:${text}!important}
-    `;
-  }
-
-  if (header) {
-    css += `.sh-root h1,.sh-root h2,.sh-root h3,.sh-root .sh-header{color:${header}!important}`;
-  }
+  // Unified text — covers all primary text, headers, tabs, chat
+  css += `
+    .sh-root .text-zinc-100{color:${tc}!important}
+    .sh-root .text-zinc-200{color:${tc}!important}
+    .sh-root .text-zinc-300{color:${tc}cc!important}
+    .sh-root .text-zinc-400{color:${tc}99!important}
+    .sh-root .text-zinc-500{color:${tc}70!important}
+    .sh-root textarea,.sh-root select,.sh-root input[type=text],.sh-root input[type=email]{color:${tc}!important}
+    .sh-root h1,.sh-root h2,.sh-root h3,.sh-root .sh-header{color:${tc}!important}
+  `;
 
   return css;
 }
@@ -251,12 +242,9 @@ const CARD_COLORS: { value: string | null; label: string }[] = [
 
 const DEFAULT_PREFS: StrategyPrefs = { user_id: "", theme: "dark", bg_color: null, text_color: null, header_color: null, font_scale: 1.1, user_colors: null };
 
-// Contexts so every sub-component can resolve a user's assigned colors without prop drilling
+// Context so every sub-component can resolve a user's assigned bubble color without prop drilling
 const UserColorsCtx = React.createContext<(email: string) => string>(
   (email) => resolveUserColor(email, null)
-);
-const UserTextColorsCtx = React.createContext<(email: string) => string | null>(
-  () => null
 );
 
 const USER_COLOR_PALETTE = [
@@ -279,9 +267,6 @@ function emailColorIndex(email: string): number {
 
 function resolveUserColor(email: string, userColors: Record<string, string> | null | undefined): string {
   return userColors?.[email] ?? USER_COLOR_PALETTE[emailColorIndex(email)];
-}
-function resolveUserTextColor(email: string, userColors: Record<string, string> | null | undefined): string | null {
-  return userColors?.[email + ":text"] ?? null;
 }
 
 function formatChatTime(dateStr: string): string {
@@ -339,6 +324,7 @@ export function StrategyHub({
   const [viewAsUserId, setViewAsUserId]   = useState<string | null>(null);
   const [themeOpen, setThemeOpen]         = useState(false);
   const [briefCopied, setBriefCopied]     = useState(false);
+  const [onlineEmails, setOnlineEmails]   = useState<Set<string>>(new Set());
 
   const supabase = createClient();
   const db = supabase as unknown as SupabaseClient;
@@ -432,6 +418,19 @@ export function StrategyHub({
 
     return () => { (supabase as any).removeChannel(ch); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Presence ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const ch = (supabase as any).channel("strategy-presence");
+    ch.on("presence", { event: "sync" }, () => {
+      const state = ch.presenceState() as Record<string, { email: string }[]>;
+      setOnlineEmails(new Set(Object.values(state).flat().map((p) => p.email)));
+    })
+    .subscribe(async (status: string) => {
+      if (status === "SUBSCRIBED") await ch.track({ email: userEmail });
+    });
+    return () => { ch.untrack(); (supabase as any).removeChannel(ch); };
+  }, [userEmail]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Card CRUD ─────────────────────────────────────────────────────────────
   async function addCard(category: string, content: string) {
@@ -607,7 +606,6 @@ export function StrategyHub({
 
   return (
     <UserColorsCtx.Provider value={(email) => resolveUserColor(email, prefs.user_colors)}>
-    <UserTextColorsCtx.Provider value={(email) => resolveUserTextColor(email, prefs.user_colors)}>
     <div
       className="sh-root flex gap-4"
       style={{ minHeight: "calc(100vh - 10rem)", zoom: activeFontScale !== 1 ? activeFontScale : undefined } as React.CSSProperties}
@@ -784,9 +782,8 @@ export function StrategyHub({
       </div>
 
       {/* Chat panel */}
-      <ChatPanel messages={messages} userEmail={userEmail} onSend={sendMessage} onDeleteMessage={deleteMessage} fontScale={activeFontScale} userColors={prefs.user_colors} onSetUserColor={setUserColor} />
+      <ChatPanel messages={messages} userEmail={userEmail} onSend={sendMessage} onDeleteMessage={deleteMessage} fontScale={activeFontScale} userColors={prefs.user_colors} onSetUserColor={setUserColor} onlineEmails={onlineEmails} />
     </div>
-    </UserTextColorsCtx.Provider>
     </UserColorsCtx.Provider>
   );
 }
@@ -802,12 +799,10 @@ function renderWithMentions(content: string) {
   );
 }
 
-function ColorPickerPopover({ email, currentBubbleColor, currentTextColor, onPickBubble, onPickText, onClose }: {
+function ColorPickerPopover({ email, currentColor, onPick, onClose }: {
   email: string;
-  currentBubbleColor: string;
-  currentTextColor: string | null;
-  onPickBubble: (color: string) => void;
-  onPickText: (color: string) => void;
+  currentColor: string;
+  onPick: (color: string) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -819,58 +814,47 @@ function ColorPickerPopover({ email, currentBubbleColor, currentTextColor, onPic
     return () => document.removeEventListener("mousedown", handleDown);
   }, [onClose]);
 
-  function SwatchRow({ current, onPick }: { current: string | null; onPick: (c: string) => void }) {
-    return (
-      <>
-        <div className="grid grid-cols-4 gap-1.5">
-          {COLOR_SWATCHES.map((c) => (
-            <button
-              key={c}
-              onClick={() => onPick(c)}
-              className="h-6 w-6 rounded-full transition-transform hover:scale-110"
-              style={{ background: c, outline: c === current ? `2px solid ${c}` : "none", outlineOffset: 2 }}
-            />
-          ))}
-        </div>
-        <div className="mt-1.5 flex items-center gap-2">
-          <input
-            type="color"
-            defaultValue={current ?? "#a1a1aa"}
-            onChange={(e) => onPick(e.target.value)}
-            className="h-5 w-7 cursor-pointer rounded border-0 p-0 bg-transparent"
-            title="Custom"
-          />
-          <span className="text-[9px] text-zinc-500">Custom</span>
-        </div>
-      </>
-    );
-  }
-
   return (
     <div
       ref={ref}
       onClick={(e) => e.stopPropagation()}
       className="absolute left-8 top-0 z-50 rounded-lg border border-zinc-700 bg-zinc-950 shadow-xl p-2.5"
-      style={{ width: 148 }}
+      style={{ width: 140 }}
     >
       <p className="text-[9px] text-zinc-500 uppercase tracking-wide mb-2 leading-none">{displayName(email)}</p>
-      <p className="text-[9px] text-zinc-600 uppercase tracking-wide mb-1">Bubble</p>
-      <SwatchRow current={currentBubbleColor} onPick={onPickBubble} />
-      <div className="my-2 border-t border-zinc-800" />
-      <p className="text-[9px] text-zinc-600 uppercase tracking-wide mb-1">Text</p>
-      <SwatchRow current={currentTextColor} onPick={onPickText} />
+      <div className="grid grid-cols-4 gap-1.5">
+        {COLOR_SWATCHES.map((c) => (
+          <button
+            key={c}
+            onClick={() => onPick(c)}
+            className="h-6 w-6 rounded-full transition-transform hover:scale-110 ring-offset-1 ring-offset-zinc-950"
+            style={{ background: c, outline: c === currentColor ? `2px solid ${c}` : "none", outlineOffset: 2 }}
+          />
+        ))}
+      </div>
+      <div className="mt-2.5 flex items-center gap-2">
+        <input
+          type="color"
+          defaultValue={currentColor}
+          onChange={(e) => onPick(e.target.value)}
+          className="h-6 w-8 cursor-pointer rounded border-0 p-0 bg-transparent"
+          title="Custom color"
+        />
+        <span className="text-[9px] text-zinc-500">Custom</span>
+      </div>
     </div>
   );
 }
 
-function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1, userColors, onSetUserColor }: {
+function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1, userColors, onSetUserColor, onlineEmails }: {
   messages: StrategyMessage[];
   userEmail: string;
   onSend: (content: string) => Promise<void>;
   onDeleteMessage: (id: string) => Promise<void>;
   fontScale?: number;
   userColors?: Record<string, string> | null;
-  onSetUserColor: (email: string, color: string) => Promise<void>;
+  onSetUserColor: (key: string, color: string) => Promise<void>;
+  onlineEmails: Set<string>;
 }) {
   const [text, setText]                     = useState("");
   const [width, setWidth]                   = useState(280);
@@ -900,6 +884,16 @@ function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1
     setSeenCount((n) => n + 1);
   }
 
+  // Unique participants (self first, then others in order of first appearance)
+  const knownUsers = useMemo(() => {
+    const seen = new Set<string>([userEmail]);
+    const list: string[] = [userEmail];
+    for (const m of messages) {
+      if (!seen.has(m.author_email)) { seen.add(m.author_email); list.push(m.author_email); }
+    }
+    return list;
+  }, [messages, userEmail]);
+
   return (
     <div
       className="shrink-0 flex flex-col border-l border-zinc-800 sticky relative"
@@ -909,24 +903,38 @@ function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1
       <div onMouseDown={startResize} className="absolute left-0 top-0 bottom-0 w-3 cursor-col-resize z-10 group/resize" style={{ transform: "translateX(-50%)" }}>
         <div className="absolute inset-y-0 left-1/2 w-px bg-zinc-800 group-hover/resize:bg-zinc-500 transition-colors" />
       </div>
-      <div className="px-4 py-3 border-b border-zinc-800 shrink-0 flex items-center justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Team Chat</h3>
+
+      {/* Header: participant bubbles with online indicators */}
+      <div className="px-3 py-2.5 border-b border-zinc-800 shrink-0 flex items-center gap-2">
+        {knownUsers.slice(0, 8).map((email) => (
+          <div key={email} className="relative" title={displayName(email)}>
+            <div
+              className="h-7 w-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
+              style={{ background: resolveUserColor(email, userColors) }}
+            >
+              {displayName(email).charAt(0).toUpperCase()}
+            </div>
+            <div className={cn(
+              "absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-zinc-900",
+              onlineEmails.has(email) ? "bg-green-500" : "bg-zinc-600"
+            )} />
+          </div>
+        ))}
         {unreadCount > 0 && (
-          <span className="flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-blue-600 text-[9px] font-bold text-white">{unreadCount}</span>
+          <span className="ml-auto flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-blue-600 text-[9px] font-bold text-white shrink-0">{unreadCount}</span>
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto py-3 flex flex-col gap-0.5 min-h-0">
+      <div className="flex-1 overflow-y-auto py-3 flex flex-col gap-0 min-h-0">
         {messages.length === 0 && <p className="px-4 text-xs text-zinc-700">No messages yet. Say hi!</p>}
         {messages.map((m, i) => {
-          const prev     = i > 0 ? messages[i - 1] : null;
-          const isMe      = m.author_email === userEmail;
-          const name      = displayName(m.author_email);
-          const color     = resolveUserColor(m.author_email, userColors);
-          const textColor = resolveUserTextColor(m.author_email, userColors);
-          const gapMs    = prev ? new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() : Infinity;
-          const showStamp = gapMs > 15 * 60 * 1000;
-          const sameAuthor = !showStamp && prev?.author_email === m.author_email;
+          const prev        = i > 0 ? messages[i - 1] : null;
+          const isMe        = m.author_email === userEmail;
+          const name        = displayName(m.author_email);
+          const color       = resolveUserColor(m.author_email, userColors);
+          const gapMs       = prev ? new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() : Infinity;
+          const showStamp   = gapMs > 15 * 60 * 1000;
+          const sameAuthor  = !showStamp && prev?.author_email === m.author_email;
           const isPickingThis = colorPickingMsgId === m.id;
 
           return (
@@ -938,41 +946,52 @@ function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1
                   <div className="flex-1 h-px bg-zinc-800" />
                 </div>
               )}
-              <div className={cn("px-3 flex gap-2 items-start group", sameAuthor ? "mt-0" : "mt-2")}>
-                {sameAuthor ? (
-                  <div className="w-6 shrink-0" />
-                ) : (
-                  <div className="relative shrink-0 mt-0.5">
+              {/* iMessage-style row: own msgs right-align, others left-align */}
+              <div className={cn(
+                "px-3 flex gap-2 items-end group",
+                isMe ? "flex-row-reverse" : "",
+                sameAuthor ? "mt-0.5" : "mt-3"
+              )}>
+                {/* Avatar — shown for first in each group */}
+                {!sameAuthor ? (
+                  <div className="relative shrink-0">
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setColorPickingMsgId(isPickingThis ? null : m.id);
-                      }}
-                      title={isMe ? name : `Set color for ${name}`}
-                      className="h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-opacity hover:opacity-75"
-                      style={{ background: isMe ? "#52525b" : color, color: "#fff" }}
+                      onClick={(e) => { e.stopPropagation(); setColorPickingMsgId(isPickingThis ? null : m.id); }}
+                      title={isMe ? `Your bubble color` : `Set color for ${name}`}
+                      className="h-7 w-7 rounded-full flex items-center justify-center text-[11px] font-bold transition-opacity hover:opacity-80 text-white"
+                      style={{ background: color }}
                     >
                       {name.charAt(0).toUpperCase() || "?"}
                     </button>
-                    {isPickingThis && !isMe && (
+                    {isPickingThis && (
                       <ColorPickerPopover
                         email={m.author_email}
-                        currentBubbleColor={color}
-                        currentTextColor={resolveUserTextColor(m.author_email, userColors)}
-                        onPickBubble={(c) => { onSetUserColor(m.author_email, c); setColorPickingMsgId(null); }}
-                        onPickText={(c) => { onSetUserColor(m.author_email + ":text", c); setColorPickingMsgId(null); }}
+                        currentColor={color}
+                        onPick={(c) => { onSetUserColor(m.author_email, c); setColorPickingMsgId(null); }}
                         onClose={() => setColorPickingMsgId(null)}
                       />
                     )}
                   </div>
+                ) : (
+                  <div className="w-7 shrink-0" />
                 )}
-                <p className="text-xs text-zinc-400 leading-relaxed break-words flex-1 min-w-0" style={textColor ? { color: textColor } : undefined}>
+
+                {/* Message bubble */}
+                <div
+                  className={cn(
+                    "max-w-[72%] px-3 py-1.5 rounded-2xl text-xs leading-relaxed break-words",
+                    isMe ? "text-white rounded-br-sm" : "bg-zinc-800 text-zinc-200 rounded-bl-sm"
+                  )}
+                  style={isMe ? { background: color } : undefined}
+                >
                   {renderWithMentions(m.content)}
-                </p>
+                </div>
+
+                {/* Delete button (own messages only) */}
                 {isMe && (
                   <button
                     onClick={() => onDeleteMessage(m.id)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 text-zinc-700 hover:text-red-500 mt-0.5"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 text-zinc-700 hover:text-red-500 mb-1"
                     title="Delete message"
                   >
                     <Trash2 className="h-3 w-3" />
@@ -1515,8 +1534,7 @@ function IdeaCard({
   const [commentsOpen, setCommentsOpen] = useState(true);
   const [newComment, setNewComment] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const resolveColor     = React.useContext(UserColorsCtx);
-  const resolveTextColor = React.useContext(UserTextColorsCtx);
+  const resolveColor = React.useContext(UserColorsCtx);
 
   const statusInfo    = CARD_STATUSES.find((s) => s.key === card.status) ?? CARD_STATUSES[0];
   const cardReactions = reactions.filter((r) => r.item_id === card.id && r.item_type === "card");
@@ -1608,7 +1626,7 @@ function IdeaCard({
                   >
                     {displayName(c.author_email).charAt(0).toUpperCase()}
                   </div>
-                  <p className="text-xs text-zinc-300 leading-snug break-words flex-1 min-w-0" style={resolveTextColor(c.author_email) ? { color: resolveTextColor(c.author_email)! } : undefined}>{c.content}</p>
+                  <p className="text-xs text-zinc-300 leading-snug break-words flex-1 min-w-0">{c.content}</p>
                   {c.author_email === userEmail && (
                     <button
                       onClick={() => onDeleteComment(c.id)}
@@ -2228,22 +2246,6 @@ function ThemePanel({ prefs, onChange, onClose }: {
         <div className="flex gap-1.5 flex-wrap">
           {TEXT_PRESETS.map(({ label, value }) => (
             <button key={label} onClick={() => set({ text_color: value })} title={label} className={cn("h-6 w-6 rounded-md border transition-all", prefs.text_color === value ? "border-zinc-300 scale-110" : "border-zinc-700 hover:border-zinc-500")} style={{ backgroundColor: value ?? "#f4f4f5" }} />
-          ))}
-        </div>
-      </div>
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs text-zinc-500">Headers</p>
-          <label className="flex items-center gap-1.5 cursor-pointer">
-            <span className="text-xs text-zinc-600">Custom</span>
-            <div className="h-5 w-5 rounded border border-zinc-600 overflow-hidden" style={{ backgroundColor: prefs.header_color ?? "#f4f4f5" }}>
-              <input type="color" value={prefs.header_color ?? "#f4f4f5"} onChange={(e) => set({ header_color: e.target.value })} className="opacity-0 w-full h-full cursor-pointer" />
-            </div>
-          </label>
-        </div>
-        <div className="flex gap-1.5 flex-wrap">
-          {HEADER_PRESETS.map(({ label, value }) => (
-            <button key={label} onClick={() => set({ header_color: value })} title={label} className={cn("h-6 w-6 rounded-md border transition-all", prefs.header_color === value ? "border-zinc-300 scale-110" : "border-zinc-700 hover:border-zinc-500")} style={{ backgroundColor: value ?? "#f4f4f5" }} />
           ))}
         </div>
       </div>
