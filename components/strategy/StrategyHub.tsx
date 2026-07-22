@@ -416,6 +416,9 @@ export function StrategyHub({
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "strategy_chat" }, (p: any) => {
         setMessages((s) => s.find((m) => m.id === p.new.id) ? s : [...s, p.new]);
       })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "strategy_chat" }, (p: any) => {
+        setMessages((s) => s.filter((m) => m.id !== p.old.id));
+      })
       .subscribe();
 
     return () => { (supabase as any).removeChannel(ch); };
@@ -523,6 +526,11 @@ export function StrategyHub({
         }
       }
     }
+  }
+
+  async function deleteMessage(id: string) {
+    setMessages((s) => s.filter((m) => m.id !== id));
+    await db.from("strategy_chat").delete().eq("id", id).eq("author_email", userEmail);
   }
 
   // ── Task CRUD ─────────────────────────────────────────────────────────────
@@ -766,7 +774,7 @@ export function StrategyHub({
       </div>
 
       {/* Chat panel */}
-      <ChatPanel messages={messages} userEmail={userEmail} onSend={sendMessage} fontScale={activeFontScale} userColors={prefs.user_colors} onSetUserColor={setUserColor} />
+      <ChatPanel messages={messages} userEmail={userEmail} onSend={sendMessage} onDeleteMessage={deleteMessage} fontScale={activeFontScale} userColors={prefs.user_colors} onSetUserColor={setUserColor} />
     </div>
     </UserColorsCtx.Provider>
   );
@@ -830,10 +838,11 @@ function ColorPickerPopover({ email, currentColor, onPick, onClose }: {
   );
 }
 
-function ChatPanel({ messages, userEmail, onSend, fontScale = 1, userColors, onSetUserColor }: {
+function ChatPanel({ messages, userEmail, onSend, onDeleteMessage, fontScale = 1, userColors, onSetUserColor }: {
   messages: StrategyMessage[];
   userEmail: string;
   onSend: (content: string) => Promise<void>;
+  onDeleteMessage: (id: string) => Promise<void>;
   fontScale?: number;
   userColors?: Record<string, string> | null;
   onSetUserColor: (email: string, color: string) => Promise<void>;
@@ -903,7 +912,7 @@ function ChatPanel({ messages, userEmail, onSend, fontScale = 1, userColors, onS
                   <div className="flex-1 h-px bg-zinc-800" />
                 </div>
               )}
-              <div className={cn("px-3 flex gap-2 items-start", sameAuthor ? "mt-0" : "mt-2")}>
+              <div className={cn("px-3 flex gap-2 items-start group", sameAuthor ? "mt-0" : "mt-2")}>
                 {sameAuthor ? (
                   <div className="w-6 shrink-0" />
                 ) : (
@@ -932,6 +941,15 @@ function ChatPanel({ messages, userEmail, onSend, fontScale = 1, userColors, onS
                 <p className="text-xs text-zinc-400 leading-relaxed break-words flex-1 min-w-0">
                   {renderWithMentions(m.content)}
                 </p>
+                {isMe && (
+                  <button
+                    onClick={() => onDeleteMessage(m.id)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 text-zinc-700 hover:text-red-500 mt-0.5"
+                    title="Delete message"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                )}
               </div>
             </React.Fragment>
           );
