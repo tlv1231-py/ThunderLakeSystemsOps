@@ -881,7 +881,7 @@ function IdeasBoard({
         const colCards = cards.filter((c) => c.category === col.id);
         const isDomainCol = col.id === domainsColId;
         return (
-          <div key={col.id} className="flex-1 min-w-52 flex flex-col">
+          <div key={col.id} className={cn("flex-1 flex flex-col", isDomainCol ? "min-w-[22rem]" : "min-w-52")}>
             <ColumnHeader
               column={col}
               cardCount={colCards.length}
