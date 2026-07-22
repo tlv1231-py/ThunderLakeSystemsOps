@@ -630,20 +630,23 @@ export function StrategyHub({
               </div>
             )}
             {briefToken && (
-              <button
-                onClick={() => {
-                  const url = `${window.location.origin}/brief/${briefToken}`;
-                  navigator.clipboard.writeText(url).then(() => {
-                    setBriefCopied(true);
-                    setTimeout(() => setBriefCopied(false), 2000);
-                  });
-                }}
-                title="Copy AI brief link — paste into any AI to share the full hub"
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors border border-zinc-700 hover:border-zinc-500"
-              >
-                <Link className="h-3 w-3 shrink-0" />
-                {briefCopied ? "Copied!" : "AI Brief"}
-              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-zinc-600 leading-tight max-w-[160px] text-right">Copies a live link — paste into any AI for full hub context</span>
+                <button
+                  onClick={() => {
+                    const url = `${window.location.origin}/brief/${briefToken}`;
+                    navigator.clipboard.writeText(url).then(() => {
+                      setBriefCopied(true);
+                      setTimeout(() => setBriefCopied(false), 2000);
+                    });
+                  }}
+                  title="Copy AI brief link — paste into any AI to share the full hub"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors border border-zinc-700 hover:border-zinc-500 shrink-0"
+                >
+                  <Link className="h-3 w-3 shrink-0" />
+                  {briefCopied ? "Copied!" : "AI Brief"}
+                </button>
+              </div>
             )}
             <button
               onClick={() => saveFontScale(activeFontScale - 0.05)}
@@ -1494,7 +1497,7 @@ function IdeaCard({
       </button>
       <div className="flex items-stretch">
         <div className="flex-1 p-3 cursor-pointer" onClick={onClick}>
-          <p className={cn("text-sm text-zinc-200 leading-snug pr-4", card.is_chosen ? "pl-4" : "", contentClassName)}>{card.content}</p>
+          <p className={cn("text-sm font-semibold text-zinc-200 leading-snug pr-4", card.is_chosen ? "pl-4" : "", contentClassName)}>{card.content}</p>
           {card.notes && (
             <p className="mt-1 text-xs text-zinc-500 leading-snug line-clamp-2">{card.notes}</p>
           )}
