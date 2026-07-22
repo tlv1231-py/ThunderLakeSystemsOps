@@ -160,8 +160,9 @@ function formatCooldown(ms: number): string {
 function buildThemeCSS(prefs: StrategyPrefs): string {
   const light = prefs.theme === "light";
   const bg    = prefs.bg_color;
-  // Unified text color: default white (dark mode) or black (light mode)
   const tc    = prefs.text_color ?? (light ? "#000000" : "#ffffff");
+  // Borders: full black in light mode, soft white in dark mode
+  const bc    = light ? "#000000" : "rgba(255,255,255,0.25)";
   let css = "";
 
   if (light) {
@@ -181,10 +182,6 @@ function buildThemeCSS(prefs: StrategyPrefs): string {
       .sh-root .text-zinc-600{color:#94a3b8!important}
       .sh-root .text-zinc-700{color:#cbd5e1!important}
       .sh-root .text-zinc-900{color:#f8fafc!important}
-      .sh-root .border-zinc-800{border-color:#e2e8f0!important}
-      .sh-root .border-zinc-700{border-color:#cbd5e1!important}
-      .sh-root .divide-zinc-800>*+*{border-color:#e2e8f0!important}
-      .sh-root .placeholder\\:text-zinc-600::placeholder{color:#94a3b8!important}
       .sh-root select{background-color:#f1f5f9!important}
     `;
   }
@@ -192,6 +189,16 @@ function buildThemeCSS(prefs: StrategyPrefs): string {
   if (bg) {
     css += `.bg-zinc-950{background-color:${bg}!important}.sh-root{background-color:${bg}!important}`;
   }
+
+  // Border & placeholder colors — both modes
+  css += `
+    .sh-root .border-zinc-800{border-color:${bc}!important}
+    .sh-root .border-zinc-700{border-color:${bc}!important}
+    .sh-root .border-zinc-600{border-color:${bc}!important}
+    .sh-root .divide-zinc-800>*+*{border-color:${bc}!important}
+    .sh-root .focus\\:border-zinc-500:focus{border-color:${bc}!important}
+    .sh-root .placeholder\\:text-zinc-600::placeholder{color:${light ? "rgba(0,0,0,0.4)" : "rgba(255,255,255,0.4)"}!important}
+  `;
 
   // Unified text — covers all primary text, headers, tabs, chat
   css += `
@@ -649,6 +656,10 @@ export function StrategyHub({
     ? teamMembers.find((m) => m.id === viewAsUserId)?.email ?? ""
     : "";
 
+  const NAMED_MEMBERS: Record<string, string> = { mark: "Mark", didi: "Didi", kelsea: "Kelsea" };
+  const firstSlug = displayName(userEmail).toLowerCase().split(/[._-]/)[0];
+  const hubTitle  = NAMED_MEMBERS[firstSlug] ? `Strategy Hub — ${NAMED_MEMBERS[firstSlug]}` : "Strategy Hub";
+
   return (
     <UserColorsCtx.Provider value={(email) => resolveUserColor(email, canonicalUserColors)}>
     <div
@@ -677,7 +688,7 @@ export function StrategyHub({
         {/* Header */}
         <div className="mb-6 flex items-start justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-zinc-100">Strategy Hub</h1>
+            <h1 className="text-xl font-semibold text-zinc-100">{hubTitle}</h1>
             <p className="mt-1 text-sm text-zinc-500">
               Shared workspace ·{" "}
               <a
