@@ -653,7 +653,12 @@ export function StrategyHub({
     <UserColorsCtx.Provider value={(email) => resolveUserColor(email, canonicalUserColors)}>
     <div
       className="sh-root flex gap-4"
-      style={{ minHeight: "calc(100vh - 10rem)", zoom: activeFontScale !== 1 ? activeFontScale : undefined } as React.CSSProperties}
+      style={{
+        // Pre-shrink by 1/zoom so the zoomed bounding box equals the container — no overflow, no page scroll
+        minHeight: activeFontScale !== 1 ? `calc((100vh - 10rem) / ${activeFontScale})` : "calc(100vh - 10rem)",
+        width:     activeFontScale !== 1 ? `${(1 / activeFontScale) * 100}%` : undefined,
+        zoom:      activeFontScale !== 1 ? activeFontScale : undefined,
+      } as React.CSSProperties}
     >
       <style dangerouslySetInnerHTML={{ __html: themeCSS }} />
 
