@@ -11,40 +11,22 @@ export default function Icon() {
           width: 32,
           height: 32,
           background: "#000",
-          border: "1.5px solid rgba(255,255,255,0.85)",
-          borderRadius: "5px",
           display: "flex",
-          flexDirection: "column",
-          padding: "3px 3px 2px 3px",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
-        {/* Three terminal chrome dots */}
-        <div style={{ display: "flex", gap: "1.5px" }}>
-          <div style={{ width: 2, height: 2, borderRadius: "50%", background: "rgba(255,255,255,0.65)" }} />
-          <div style={{ width: 2, height: 2, borderRadius: "50%", background: "rgba(255,255,255,0.65)" }} />
-          <div style={{ width: 2, height: 2, borderRadius: "50%", background: "rgba(255,255,255,0.65)" }} />
-        </div>
-
-        {/* tls */}
-        <div
+        <span
           style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
             color: "#fff",
-            fontSize: 13,
+            fontSize: 22,
             fontWeight: 900,
-            letterSpacing: "-0.5px",
+            letterSpacing: "-1px",
+            lineHeight: 1,
           }}
         >
           tls
-        </div>
-
-        {/* prompt */}
-        <div style={{ display: "flex", color: "rgba(255,255,255,0.5)", fontSize: 5, fontWeight: 700 }}>
-          {">"}_
-        </div>
+        </span>
       </div>
     ),
     { ...size }
