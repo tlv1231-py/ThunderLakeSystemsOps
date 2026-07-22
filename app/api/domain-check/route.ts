@@ -5,7 +5,7 @@ const TLDS = [".com", ".io", ".co", ".app", ".net", ".org", ".ai", ".dev", ".tec
 async function checkOne(domain: string, pat: string) {
   try {
     const res = await fetch(
-      `https://api.godaddy.com/v1/domains/available?domain=${domain}&checkType=FULL`,
+      `https://api.godaddy.com/v1/domains/available?domain=${domain}`,
       { headers: { Authorization: `sso-key ${pat}` } }
     );
     const data = await res.json();

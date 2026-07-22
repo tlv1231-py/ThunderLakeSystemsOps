@@ -56,6 +56,7 @@ export type StrategyPrefs = {
   bg_color: string | null;
   text_color: string | null;
   header_color: string | null;
+  font_scale?: number | null;
 };
 
 export type StrategyColumn = {
@@ -227,7 +228,7 @@ const PRIORITY_DOT: Record<string, string> = {
   high:   "bg-red-500",
 };
 
-const DEFAULT_PREFS: StrategyPrefs = { user_id: "", theme: "dark", bg_color: null, text_color: null, header_color: null };
+const DEFAULT_PREFS: StrategyPrefs = { user_id: "", theme: "dark", bg_color: null, text_color: null, header_color: null, font_scale: null };
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
@@ -275,10 +276,17 @@ export function StrategyHub({
 
   const themeCSS = useMemo(() => buildThemeCSS(activePrefs), [activePrefs]);
 
+  const fontScale = prefs.font_scale ?? 1;
+
   const savePrefs = useCallback(async (next: StrategyPrefs) => {
     setPrefs(next);
     await db.from("strategy_preferences").upsert({ ...next, user_id: userId });
   }, [db, userId]);
+
+  const saveFontScale = useCallback(async (scale: number) => {
+    const clamped = Math.round(Math.max(0.7, Math.min(1.5, scale)) * 100) / 100;
+    await savePrefs({ ...prefs, font_scale: clamped });
+  }, [prefs, savePrefs]);
 
   // ── Realtime ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -401,7 +409,8 @@ export function StrategyHub({
 
   // ── Domain availability check ─────────────────────────────────────────────
   async function checkDomain(card: StrategyCard) {
-    if (!canCheckDomain(card.domain_checked_at)) return;
+    const inErrorState = !!card.domain_checked_at && card.domain_available == null;
+    if (!inErrorState && !canCheckDomain(card.domain_checked_at)) return;
     const domain = parseDomainForCheck(card.content);
     try {
       const res = await fetch(`/api/domain-check?domain=${encodeURIComponent(domain)}`);
@@ -505,7 +514,10 @@ export function StrategyHub({
     : "";
 
   return (
-    <div className="sh-root flex gap-4" style={{ minHeight: "calc(100vh - 10rem)" }}>
+    <div
+      className="sh-root flex gap-4"
+      style={{ minHeight: "calc(100vh - 10rem)", zoom: fontScale !== 1 ? fontScale : undefined } as React.CSSProperties}
+    >
       <style dangerouslySetInnerHTML={{ __html: themeCSS }} />
 
       {/* User switcher sidebar — admin only */}
@@ -548,17 +560,29 @@ export function StrategyHub({
             </p>
           </div>
           {!viewAsUserId && (
-            <div className="relative">
+            <div className="flex items-center gap-0.5">
               <button
-                onClick={() => setThemeOpen((o) => !o)}
-                className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
-                title="Customize theme"
-              >
-                <Palette className="h-4 w-4" />
-              </button>
-              {themeOpen && (
-                <ThemePanel prefs={prefs} onChange={savePrefs} onClose={() => setThemeOpen(false)} />
-              )}
+                onClick={() => saveFontScale(fontScale - 0.05)}
+                title="Decrease text size"
+                className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors text-base leading-none font-semibold select-none"
+              >−</button>
+              <button
+                onClick={() => saveFontScale(fontScale + 0.05)}
+                title="Increase text size"
+                className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors text-base leading-none font-semibold select-none"
+              >+</button>
+              <div className="relative">
+                <button
+                  onClick={() => setThemeOpen((o) => !o)}
+                  className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+                  title="Customize theme"
+                >
+                  <Palette className="h-4 w-4" />
+                </button>
+                {themeOpen && (
+                  <ThemePanel prefs={prefs} onChange={savePrefs} onClose={() => setThemeOpen(false)} />
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -790,12 +814,20 @@ function DomainAvailabilityPanel({ card, onCheck }: {
 
   const left     = domainCooldownLeft(card.domain_checked_at);
   const hasData  = card.domain_available !== null && card.domain_available !== undefined;
-  const hadError = !hasData && !!card.domain_checked_at; // checked but got no boolean back
+  const hadError = !hasData && !!card.domain_checked_at;
   const canCheck = !checking && left === 0;
 
   async function handle(e: React.MouseEvent) {
     e.stopPropagation();
     if (!canCheck) return;
+    setChecking(true);
+    await onCheck();
+    setChecking(false);
+  }
+
+  async function handleForce(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (checking) return;
     setChecking(true);
     await onCheck();
     setChecking(false);
@@ -811,7 +843,7 @@ function DomainAvailabilityPanel({ card, onCheck }: {
       ) : hadError ? (
         <>
           <span className="text-[10px] text-zinc-600">No response</span>
-          <button onClick={handle} className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors text-left">
+          <button onClick={handleForce} className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors text-left">
             Try again
           </button>
         </>
@@ -915,6 +947,7 @@ function IdeasBoard({
       {columns.map((col) => {
         const colCards = cards.filter((c) => c.category === col.id);
         const isDomainCol = col.id === domainsColId;
+        const isProtected = ["business names", "domains"].includes(col.name.toLowerCase());
         return (
           <div key={col.id} className={cn("flex-1 flex flex-col", isDomainCol ? "min-w-[22rem]" : "min-w-52")}>
             <ColumnHeader
@@ -922,6 +955,7 @@ function IdeasBoard({
               cardCount={colCards.length}
               onRename={(name) => onUpdateColumn(col.id, { name })}
               onDelete={() => onDeleteColumn(col.id)}
+              isProtected={isProtected}
             />
             <div className="flex flex-col gap-2">
               {colCards.map((card) => (
@@ -937,6 +971,7 @@ function IdeasBoard({
                       onToggleReaction={(r) => onToggleReaction(card.id, "card", r)}
                       onAddComment={(c) => onAddComment(card.id, "card", c)}
                       onDeleteComment={onDeleteComment}
+                      contentClassName={isDomainCol ? "break-all" : ""}
                     />
                   </div>
                   {isDomainCol && (
@@ -1022,12 +1057,13 @@ function IdeasBoard({
 // ── Column Header ─────────────────────────────────────────────────────────────
 
 function ColumnHeader({
-  column, cardCount, onRename, onDelete,
+  column, cardCount, onRename, onDelete, isProtected = false,
 }: {
   column: StrategyColumn;
   cardCount: number;
   onRename: (name: string) => void;
   onDelete: () => void;
+  isProtected?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(column.name);
@@ -1064,13 +1100,15 @@ function ColumnHeader({
       )}
       <div className="flex items-center gap-1.5">
         <span className="text-xs text-zinc-700 font-mono">{cardCount}</span>
-        <button
-          onClick={onDelete}
-          className="opacity-0 group-hover:opacity-100 text-zinc-700 hover:text-red-400 transition-all p-0.5"
-          title="Delete column"
-        >
-          <X className="h-3 w-3" />
-        </button>
+        {!isProtected && (
+          <button
+            onClick={onDelete}
+            className="opacity-0 group-hover:opacity-100 text-zinc-700 hover:text-red-400 transition-all p-0.5"
+            title="Delete column"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1081,6 +1119,7 @@ function ColumnHeader({
 function IdeaCard({
   card, reactions, comments, userEmail,
   onClick, onDelete, onToggleReaction, onAddComment, onDeleteComment,
+  contentClassName = "",
 }: {
   card: StrategyCard;
   reactions: StrategyReaction[];
@@ -1091,6 +1130,7 @@ function IdeaCard({
   onToggleReaction: (reaction: "up" | "down") => Promise<void>;
   onAddComment: (content: string) => Promise<void>;
   onDeleteComment: (id: string) => Promise<void>;
+  contentClassName?: string;
 }) {
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [newComment, setNewComment] = useState("");
@@ -1115,7 +1155,7 @@ function IdeaCard({
   return (
     <div className="group relative rounded-lg border border-zinc-800 bg-zinc-900 transition-colors hover:border-zinc-700">
       <div className="p-3 cursor-pointer" onClick={onClick}>
-        <p className="text-sm text-zinc-200 leading-snug pr-4">{card.content}</p>
+        <p className={cn("text-sm text-zinc-200 leading-snug pr-4", contentClassName)}>{card.content}</p>
         {card.notes && (
           <p className="mt-1 text-xs text-zinc-500 leading-snug line-clamp-2">{card.notes}</p>
         )}
