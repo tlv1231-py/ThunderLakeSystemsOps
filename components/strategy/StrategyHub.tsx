@@ -72,6 +72,13 @@ export type StrategyReaction = {
   created_at: string;
 };
 
+export type StrategyMessage = {
+  id: string;
+  content: string;
+  author_email: string;
+  created_at: string;
+};
+
 export type StrategyComment = {
   id: string;
   item_id: string;
@@ -177,7 +184,7 @@ export function StrategyHub({
   initialCards, initialTasks, initialNotes, initialImages,
   initialColumns, initialReactions, initialComments,
   initialPrefs, allPrefs, teamMembers,
-  userEmail, userId, isAdmin,
+  userEmail, userId, isAdmin, initialMessages,
 }: {
   initialCards: StrategyCard[];
   initialTasks: StrategyTask[];
@@ -192,6 +199,7 @@ export function StrategyHub({
   userEmail: string;
   userId: string;
   isAdmin: boolean;
+  initialMessages: StrategyMessage[];
 }) {
   const [tab, setTab] = useState<"ideas" | "tasks" | "notes" | "moodboard">("ideas");
   const [cards, setCards]       = useState<StrategyCard[]>(initialCards);
@@ -201,6 +209,7 @@ export function StrategyHub({
   const [columns, setColumns]   = useState<StrategyColumn[]>(initialColumns);
   const [reactions, setReactions] = useState<StrategyReaction[]>(initialReactions);
   const [comments, setComments] = useState<StrategyComment[]>(initialComments);
+  const [messages, setMessages] = useState<StrategyMessage[]>(initialMessages);
   const [prefs, setPrefs]       = useState<StrategyPrefs>(initialPrefs ?? { ...DEFAULT_PREFS, user_id: userId });
   const [viewAsUserId, setViewAsUserId] = useState<string | null>(null);
   const [themeOpen, setThemeOpen] = useState(false);
@@ -258,6 +267,9 @@ export function StrategyHub({
         if (p.eventType === "INSERT")      setComments((s) => s.find((c) => c.id === p.new.id) ? s : [...s, p.new]);
         else if (p.eventType === "UPDATE") setComments((s) => s.map((c) => c.id === p.new.id ? p.new : c));
         else if (p.eventType === "DELETE") setComments((s) => s.filter((c) => c.id !== p.old.id));
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "strategy_chat" }, (p: any) => {
+        setMessages((s) => s.find((m) => m.id === p.new.id) ? s : [...s, p.new]);
       })
       .subscribe();
 
@@ -334,6 +346,14 @@ export function StrategyHub({
   async function deleteComment(id: string) {
     setComments((s) => s.filter((c) => c.id !== id));
     await db.from("strategy_comments").delete().eq("id", id);
+  }
+
+  // ── Chat ──────────────────────────────────────────────────────────────────
+  async function sendMessage(content: string) {
+    const id = crypto.randomUUID();
+    const msg: StrategyMessage = { id, content, author_email: userEmail, created_at: new Date().toISOString() };
+    setMessages((s) => [...s, msg]);
+    await db.from("strategy_chat").insert(msg);
   }
 
   // ── Task CRUD ─────────────────────────────────────────────────────────────
@@ -511,6 +531,90 @@ export function StrategyHub({
               getSignedUrl={getSignedUrl}
             />
           )}
+        </div>
+      </div>
+
+      {/* Chat panel */}
+      <ChatPanel messages={messages} userEmail={userEmail} onSend={sendMessage} />
+    </div>
+  );
+}
+
+// ── Chat Panel ────────────────────────────────────────────────────────────────
+
+function ChatPanel({ messages, userEmail, onSend }: {
+  messages: StrategyMessage[];
+  userEmail: string;
+  onSend: (content: string) => Promise<void>;
+}) {
+  const [text, setText] = useState("");
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  async function send() {
+    const t = text.trim();
+    if (!t) return;
+    setText("");
+    await onSend(t);
+  }
+
+  return (
+    <div
+      className="shrink-0 w-64 flex flex-col border-l border-zinc-800 sticky"
+      style={{ top: 0, height: "calc(100vh - 6rem)", alignSelf: "flex-start" }}
+    >
+      <div className="px-4 py-3 border-b border-zinc-800 shrink-0">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Team Chat</h3>
+      </div>
+
+      <div className="flex-1 overflow-y-auto py-3 flex flex-col gap-3 min-h-0">
+        {messages.length === 0 && (
+          <p className="px-4 text-xs text-zinc-700">No messages yet. Say hi!</p>
+        )}
+        {messages.map((m) => {
+          const isMe   = m.author_email === userEmail;
+          const name   = displayName(m.author_email);
+          const time   = new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          return (
+            <div key={m.id} className="px-3 flex gap-2 items-start">
+              <div className={cn(
+                "h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-semibold shrink-0 mt-0.5",
+                isMe ? "bg-zinc-600 text-zinc-100" : "bg-zinc-800 text-zinc-300"
+              )}>
+                {name.charAt(0).toUpperCase() || "?"}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-1.5 mb-0.5">
+                  <span className="text-[11px] font-medium text-zinc-300 truncate">{name}</span>
+                  <span className="text-[9px] text-zinc-600 shrink-0">{time}</span>
+                </div>
+                <p className="text-xs text-zinc-400 leading-relaxed break-words">{m.content}</p>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
+      </div>
+
+      <div className="px-3 pb-3 pt-2 border-t border-zinc-800 shrink-0">
+        <div className="flex gap-1.5 items-center">
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            placeholder="Message the team..."
+            className="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600"
+          />
+          <button
+            onClick={send}
+            disabled={!text.trim()}
+            className="p-1.5 rounded-lg bg-zinc-700 text-zinc-300 hover:bg-zinc-600 disabled:opacity-30 transition-colors shrink-0"
+          >
+            <Send className="h-3 w-3" />
+          </button>
         </div>
       </div>
     </div>

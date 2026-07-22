@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { StrategyHub } from "@/components/strategy/StrategyHub";
 import type {
   StrategyCard, StrategyTask, StrategyNote, StrategyImage,
-  StrategyPrefs, StrategyColumn, StrategyReaction, StrategyComment,
+  StrategyPrefs, StrategyColumn, StrategyReaction, StrategyComment, StrategyMessage,
 } from "@/components/strategy/StrategyHub";
 import { listTeamMembersAction } from "@/app/actions/team";
 import { ADMIN_EMAIL } from "@/lib/constants";
@@ -13,7 +13,7 @@ export default async function StrategyPage() {
   const db = supabase as any;
   const isAdmin = user?.email === ADMIN_EMAIL;
 
-  const [cardsRes, tasksRes, notesRes, imagesRes, prefsRes, colsRes, reactionsRes, commentsRes, allPrefsRes] =
+  const [cardsRes, tasksRes, notesRes, imagesRes, prefsRes, colsRes, reactionsRes, commentsRes, allPrefsRes, chatRes] =
     await Promise.all([
       db.from("strategy_cards").select("*").order("created_at", { ascending: false }),
       db.from("strategy_tasks").select("*").order("created_at", { ascending: false }),
@@ -24,6 +24,7 @@ export default async function StrategyPage() {
       db.from("strategy_reactions").select("*"),
       db.from("strategy_comments").select("*").order("created_at", { ascending: true }),
       db.from("strategy_preferences").select("*"),
+      db.from("strategy_chat").select("*").order("created_at", { ascending: true }).limit(200),
     ]);
 
   const teamMembers = isAdmin ? await listTeamMembersAction().catch(() => []) : [];
@@ -43,6 +44,7 @@ export default async function StrategyPage() {
       userEmail={user?.email ?? ""}
       userId={user?.id ?? ""}
       isAdmin={isAdmin}
+      initialMessages={(chatRes.data ?? []) as StrategyMessage[]}
     />
   );
 }
