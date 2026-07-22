@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, X, Palette, ThumbsUp, ThumbsDown, MessageSquare, Send, Eye } from "lucide-react";
+import { Plus, Trash2, X, Palette, ThumbsUp, ThumbsDown, MessageSquare, Send, Eye, CheckCircle2, XCircle, RefreshCw, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -17,6 +17,8 @@ export type StrategyCard = {
   author_email: string;
   created_at: string;
   updated_at: string;
+  domain_available?: boolean | null;
+  domain_checked_at?: string | null;
 };
 
 export type StrategyTask = {
@@ -92,6 +94,34 @@ export type StrategyComment = {
 
 function displayName(email: string) {
   return email ? email.split("@")[0] : "";
+}
+
+const DOMAIN_COOLDOWN_MS = 15 * 60 * 1000; // 15 min between checks per card
+
+function parseDomainForCheck(content: string): string {
+  let s = content.trim().toLowerCase()
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .split(/[/?#]/)[0];
+  return s.includes(".") ? s : `${s}.com`;
+}
+
+function canCheckDomain(checkedAt?: string | null): boolean {
+  if (!checkedAt) return true;
+  return Date.now() - new Date(checkedAt).getTime() >= DOMAIN_COOLDOWN_MS;
+}
+
+function domainCooldownLeft(checkedAt?: string | null): number {
+  if (!checkedAt) return 0;
+  return Math.max(0, DOMAIN_COOLDOWN_MS - (Date.now() - new Date(checkedAt).getTime()));
+}
+
+function timeAgo(iso: string): string {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60)   return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
 }
 
 // ── Theme CSS ─────────────────────────────────────────────────────────────────
@@ -348,6 +378,22 @@ export function StrategyHub({
     await db.from("strategy_comments").delete().eq("id", id);
   }
 
+  // ── Domain availability check ─────────────────────────────────────────────
+  async function checkDomain(card: StrategyCard) {
+    if (!canCheckDomain(card.domain_checked_at)) return;
+    const domain = parseDomainForCheck(card.content);
+    try {
+      const res = await fetch(`/api/domain-check?domain=${encodeURIComponent(domain)}`);
+      const data = await res.json();
+      await updateCard(card.id, {
+        domain_available: typeof data.available === "boolean" ? data.available : null,
+        domain_checked_at: new Date().toISOString(),
+      });
+    } catch {
+      // don't update checked_at on failure so they can retry immediately
+    }
+  }
+
   // ── Chat ──────────────────────────────────────────────────────────────────
   async function sendMessage(content: string) {
     const id = crypto.randomUUID();
@@ -514,6 +560,7 @@ export function StrategyHub({
               onToggleReaction={toggleReaction}
               onAddComment={addComment}
               onDeleteComment={deleteComment}
+              onCheckDomain={checkDomain}
             />
           )}
           {tab === "tasks" && (
@@ -670,7 +717,7 @@ function IdeasBoard({
   cards, columns, reactions, comments, userEmail,
   onAdd, onUpdate, onDelete,
   onAddColumn, onUpdateColumn, onDeleteColumn,
-  onToggleReaction, onAddComment, onDeleteComment,
+  onToggleReaction, onAddComment, onDeleteComment, onCheckDomain,
 }: {
   cards: StrategyCard[];
   columns: StrategyColumn[];
@@ -686,6 +733,7 @@ function IdeasBoard({
   onToggleReaction: (itemId: string, itemType: string, reaction: "up" | "down") => Promise<void>;
   onAddComment: (itemId: string, itemType: string, content: string) => Promise<void>;
   onDeleteComment: (id: string) => Promise<void>;
+  onCheckDomain: (card: StrategyCard) => Promise<void>;
 }) {
   const [selected, setSelected] = useState<StrategyCard | null>(null);
   const [adding, setAdding]     = useState<string | null>(null);
@@ -707,10 +755,13 @@ function IdeasBoard({
     setAddingCol(false);
   }
 
+  const domainsColId = columns.find((c) => c.name.toLowerCase() === "domains")?.id;
+
   return (
     <div className="flex gap-4 overflow-x-auto pb-4">
       {columns.map((col) => {
         const colCards = cards.filter((c) => c.category === col.id);
+        const isDomainCol = col.id === domainsColId;
         return (
           <div key={col.id} className="flex-1 min-w-52 flex flex-col">
             <ColumnHeader
@@ -727,11 +778,13 @@ function IdeasBoard({
                   reactions={reactions}
                   comments={comments}
                   userEmail={userEmail}
+                  isDomainCard={isDomainCol}
                   onClick={() => setSelected(card)}
                   onDelete={() => onDelete(card.id)}
                   onToggleReaction={(r) => onToggleReaction(card.id, "card", r)}
                   onAddComment={(c) => onAddComment(card.id, "card", c)}
                   onDeleteComment={onDeleteComment}
+                  onCheckDomain={isDomainCol ? () => onCheckDomain(card) : undefined}
                 />
               ))}
             </div>
@@ -869,20 +922,23 @@ function ColumnHeader({
 
 function IdeaCard({
   card, reactions, comments, userEmail,
-  onClick, onDelete, onToggleReaction, onAddComment, onDeleteComment,
+  isDomainCard, onClick, onDelete, onToggleReaction, onAddComment, onDeleteComment, onCheckDomain,
 }: {
   card: StrategyCard;
   reactions: StrategyReaction[];
   comments: StrategyComment[];
   userEmail: string;
+  isDomainCard?: boolean;
   onClick: () => void;
   onDelete: () => void;
   onToggleReaction: (reaction: "up" | "down") => Promise<void>;
   onAddComment: (content: string) => Promise<void>;
   onDeleteComment: (id: string) => Promise<void>;
+  onCheckDomain?: () => Promise<void>;
 }) {
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [newComment, setNewComment] = useState("");
+  const [domainChecking, setDomainChecking] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const statusInfo    = CARD_STATUSES.find((s) => s.key === card.status) ?? CARD_STATUSES[0];
@@ -916,6 +972,70 @@ function IdeaCard({
             <span className="text-[10px] text-zinc-700">{displayName(card.author_email)}</span>
           )}
         </div>
+
+        {/* Domain availability row */}
+        {isDomainCard && (
+          <div className="flex items-center gap-1.5 mt-2 pt-1.5 border-t border-zinc-800/60" onClick={(e) => e.stopPropagation()}>
+            {card.domain_available === true && (
+              <>
+                <CheckCircle2 className="h-3 w-3 text-emerald-400 shrink-0" />
+                <span className="text-[10px] font-medium text-emerald-400">Available</span>
+                {card.domain_checked_at && (
+                  <span className="text-[10px] text-zinc-600">· {timeAgo(card.domain_checked_at)}</span>
+                )}
+              </>
+            )}
+            {card.domain_available === false && (
+              <>
+                <XCircle className="h-3 w-3 text-zinc-600 shrink-0" />
+                <span className="text-[10px] text-zinc-500">Taken</span>
+                {card.domain_checked_at && (
+                  <span className="text-[10px] text-zinc-600">· {timeAgo(card.domain_checked_at)}</span>
+                )}
+              </>
+            )}
+            {(card.domain_available === null || card.domain_available === undefined) && !domainChecking && (
+              <button
+                onClick={async () => {
+                  if (!onCheckDomain) return;
+                  setDomainChecking(true);
+                  await onCheckDomain();
+                  setDomainChecking(false);
+                }}
+                className="text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors"
+              >
+                Check availability
+              </button>
+            )}
+            {domainChecking && (
+              <>
+                <Loader2 className="h-3 w-3 text-zinc-600 animate-spin" />
+                <span className="text-[10px] text-zinc-600">Checking…</span>
+              </>
+            )}
+            {card.domain_available !== null && card.domain_available !== undefined && !domainChecking && (() => {
+              const left = domainCooldownLeft(card.domain_checked_at);
+              return left > 0 ? (
+                <span className="text-[10px] text-zinc-700 ml-auto" title={`Rate limited — can recheck in ${Math.ceil(left / 60000)}m`}>
+                  recheck in {Math.ceil(left / 60000)}m
+                </span>
+              ) : (
+                <button
+                  onClick={async () => {
+                    if (!onCheckDomain) return;
+                    setDomainChecking(true);
+                    await onCheckDomain();
+                    setDomainChecking(false);
+                  }}
+                  className="ml-auto text-[10px] text-zinc-700 hover:text-zinc-500 transition-colors flex items-center gap-0.5"
+                  title="Recheck availability"
+                >
+                  <RefreshCw className="h-2.5 w-2.5" />
+                </button>
+              );
+            })()}
+          </div>
+        )}
       </div>
 
       {/* Reactions bar */}
