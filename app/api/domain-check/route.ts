@@ -8,9 +8,16 @@ async function checkOne(domain: string, pat: string) {
       `https://api.godaddy.com/v1/domains/available?domain=${domain}`,
       { headers: { Authorization: `sso-key ${pat}` } }
     );
-    const data = await res.json();
+    const text = await res.text();
+    console.log("GoDaddy response", res.status, text.slice(0, 200));
+    if (!text) {
+      return { domain, available: null, price: null, currency: "USD", error: `Empty response (HTTP ${res.status})` };
+    }
+    let data: any;
+    try { data = JSON.parse(text); } catch {
+      return { domain, available: null, price: null, currency: "USD", error: `HTTP ${res.status}: ${text.slice(0, 80)}` };
+    }
     if (!res.ok) {
-      console.error("GoDaddy error", res.status, JSON.stringify(data));
       return { domain, available: null, price: null, currency: "USD", error: data.message ?? data.code ?? `GoDaddy ${res.status}` };
     }
     return {
