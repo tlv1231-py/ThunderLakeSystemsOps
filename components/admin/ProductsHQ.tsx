@@ -43,6 +43,9 @@ function formatMetricValue(v: string | number | boolean | null): string {
   if (typeof v === "boolean") return v ? "Yes" : "No";
   if (typeof v === "string" && isIsoTimestamp(v)) return timeAgo(v);
   if (typeof v === "number") return v.toLocaleString();
+  if (typeof v === "string" && (v.startsWith("http://") || v.startsWith("https://"))) {
+    try { return new URL(v).hostname; } catch {}
+  }
   return String(v);
 }
 
@@ -186,10 +189,10 @@ export function ProductsHQ({ initial }: { initial: ProductRow[] }) {
                     {entries.map(([k, v]) => (
                       <div
                         key={k}
-                        className="flex items-center justify-between px-5 py-2 border-b border-zinc-800/50 last:border-0"
+                        className="flex items-start gap-3 px-5 py-2 border-b border-zinc-800/50 last:border-0"
                       >
-                        <span className="text-xs text-zinc-500">{k}</span>
-                        <span className={`text-xs font-medium tabular-nums ${
+                        <span className="text-xs text-zinc-500 shrink-0 leading-5">{k}</span>
+                        <span className={`text-xs font-medium min-w-0 flex-1 text-right leading-5 line-clamp-3 ${
                           typeof v === "boolean"
                             ? v ? "text-emerald-400" : "text-red-400"
                             : "text-zinc-300"
