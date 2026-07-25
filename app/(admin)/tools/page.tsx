@@ -4,7 +4,7 @@ import { ProductsHQ, type ProductRow } from "@/components/admin/ProductsHQ";
 export default async function ProductsPage() {
   const supabase = await createClient();
   const { data } = await (supabase as any)
-    .from("product_status")
+    .from("products")
     .select("*")
     .order("created_at", { ascending: true });
 
