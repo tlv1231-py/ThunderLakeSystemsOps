@@ -348,6 +348,7 @@ export function StrategyHub({
   const [viewAsUserId, setViewAsUserId]   = useState<string | null>(null);
   const [themeOpen, setThemeOpen]         = useState(false);
   const [briefCopied, setBriefCopied]     = useState(false);
+  const [parseOpen, setParseOpen]         = useState(false);
   const [onlineEmails, setOnlineEmails]   = useState<Set<string>>(new Set());
   const chatChannelRef = useRef<any>(null);
 
@@ -492,11 +493,11 @@ export function StrategyHub({
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Card CRUD ─────────────────────────────────────────────────────────────
-  async function addCard(category: string, content: string) {
+  async function addCard(category: string, content: string, notes = "") {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    setCards((s) => [{ id, category, content, notes: "", status: "idea", author_email: userEmail, created_at: now, updated_at: now }, ...s]);
-    await db.from("strategy_cards").insert({ id, category, content, notes: "", status: "idea", author_email: userEmail });
+    setCards((s) => [{ id, category, content, notes, status: "idea", author_email: userEmail, created_at: now, updated_at: now }, ...s]);
+    await db.from("strategy_cards").insert({ id, category, content, notes, status: "idea", author_email: userEmail });
   }
   async function updateCard(id: string, updates: Partial<StrategyCard>) {
     setCards((s) => s.map((c) => c.id === id ? { ...c, ...updates } : c));
@@ -719,6 +720,13 @@ export function StrategyHub({
                 </button>
               </div>
             )}
+            <button
+              onClick={() => setParseOpen(true)}
+              title="Parse a partner or client message into strategy cards"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors border border-zinc-700 hover:border-zinc-500 shrink-0"
+            >
+              ✦ Parse Message
+            </button>
             {briefToken && (
               <div className="flex items-center gap-2">
                 <span className="text-[11px] text-zinc-600 leading-tight max-w-[160px] text-right">Copies a live link — paste into any AI for full hub context</span>
@@ -852,6 +860,14 @@ export function StrategyHub({
       {/* Chat panel */}
       <ChatPanel messages={messages} userEmail={userEmail} onSend={sendMessage} onDeleteMessage={deleteMessage} fontScale={activeFontScale} userColors={canonicalUserColors} onSetUserColor={setUserColor} onlineEmails={onlineEmails} teamMembers={teamMembers} />
     </div>
+
+    {parseOpen && (
+      <ParseMessageModal
+        columns={columns}
+        onAdd={addCard}
+        onClose={() => setParseOpen(false)}
+      />
+    )}
     </UserColorsCtx.Provider>
   );
 }
@@ -2413,6 +2429,210 @@ function ThemePanel({ prefs, onChange, onClose }: {
       <button onClick={() => set({ theme: "dark", bg_color: null, text_color: null, header_color: null })} className="w-full py-1.5 rounded-lg text-xs text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors">
         Reset to default
       </button>
+    </div>
+  );
+}
+
+// ── Parse Message Modal ───────────────────────────────────────────────────────
+
+type ProposedCard = {
+  content: string;
+  notes: string;
+  suggested_column_id: string;
+  selected_column_id: string;
+  adding: boolean;
+  added: boolean;
+};
+
+function ParseMessageModal({
+  columns,
+  onAdd,
+  onClose,
+}: {
+  columns: StrategyColumn[];
+  onAdd: (category: string, content: string, notes?: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [cards, setCards] = useState<ProposedCard[]>([]);
+
+  const fallbackColId = columns[0]?.id ?? "";
+
+  async function extract() {
+    if (!message.trim()) return;
+    setLoading(true);
+    setError(null);
+    setCards([]);
+    try {
+      const res = await fetch("/api/strategy/parse-message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: message.trim(),
+          columns: columns.map((c) => ({ id: c.id, name: c.name })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !Array.isArray(data.cards)) {
+        setError(data.error ?? "Failed to extract action items");
+        return;
+      }
+      setCards(
+        data.cards.map((c: { content: string; notes: string; suggested_column_id: string }) => ({
+          ...c,
+          selected_column_id: columns.some((col) => col.id === c.suggested_column_id) ? c.suggested_column_id : fallbackColId,
+          adding: false,
+          added: false,
+        }))
+      );
+    } catch {
+      setError("Network error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function addOne(idx: number) {
+    const card = cards[idx];
+    if (!card || card.added || card.adding) return;
+    setCards((prev) => prev.map((c, i) => i === idx ? { ...c, adding: true } : c));
+    await onAdd(card.selected_column_id, card.content, card.notes);
+    setCards((prev) => prev.map((c, i) => i === idx ? { ...c, adding: false, added: true } : c));
+  }
+
+  async function addAll() {
+    for (let i = 0; i < cards.length; i++) {
+      if (!cards[i].added && !cards[i].adding) await addOne(i);
+    }
+  }
+
+  const pendingCount = cards.filter((c) => !c.added).length;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+      onClick={onClose}
+    >
+      <div
+        className="relative bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 shrink-0">
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-100">Parse Partner Message</h2>
+            <p className="text-xs text-zinc-500 mt-0.5">Paste a raw message → extract action cards for the board</p>
+          </div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 transition-colors ml-4">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-0">
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1.5">Raw message</label>
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Paste the message from your partner or client here…"
+              rows={6}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600 resize-none"
+            />
+          </div>
+
+          {error && <p className="text-sm text-red-400">{error}</p>}
+
+          {cards.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-zinc-500">
+                  {cards.length} action item{cards.length !== 1 ? "s" : ""} extracted
+                </p>
+                {pendingCount > 1 && (
+                  <button
+                    onClick={addAll}
+                    className="text-xs text-zinc-400 hover:text-zinc-100 transition-colors"
+                  >
+                    Add all ({pendingCount}) →
+                  </button>
+                )}
+              </div>
+              {cards.map((card, idx) => (
+                <div
+                  key={idx}
+                  className={cn(
+                    "rounded-lg border px-4 py-3 space-y-2 transition-colors",
+                    card.added
+                      ? "border-emerald-800/50 bg-emerald-950/20"
+                      : "border-zinc-700 bg-zinc-800"
+                  )}
+                >
+                  <p className={cn("text-sm font-medium", card.added ? "text-emerald-400" : "text-zinc-100")}>
+                    {card.content}
+                  </p>
+                  {card.notes && (
+                    <p className="text-xs text-zinc-500 leading-snug">{card.notes}</p>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={card.selected_column_id}
+                      onChange={(e) =>
+                        setCards((prev) =>
+                          prev.map((c, i) => i === idx ? { ...c, selected_column_id: e.target.value } : c)
+                        )
+                      }
+                      disabled={card.added}
+                      className="flex-1 text-xs bg-zinc-700 border border-zinc-600 rounded px-2 py-1 text-zinc-300 outline-none disabled:opacity-50"
+                    >
+                      {columns.map((col) => (
+                        <option key={col.id} value={col.id}>{col.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => addOne(idx)}
+                      disabled={card.added || card.adding}
+                      className={cn(
+                        "text-xs px-3 py-1 rounded-lg transition-colors shrink-0 disabled:opacity-50",
+                        card.added
+                          ? "bg-emerald-900/40 text-emerald-400 cursor-default"
+                          : "bg-zinc-700 text-zinc-200 hover:bg-zinc-600"
+                      )}
+                    >
+                      {card.added ? "Added ✓" : card.adding ? "Adding…" : "Add"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 border-t border-zinc-800 flex items-center justify-between shrink-0">
+          <p className="text-xs text-zinc-700">Claude Opus 5</p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors px-3 py-1.5"
+            >
+              Close
+            </button>
+            <button
+              onClick={extract}
+              disabled={loading || !message.trim()}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-zinc-700 text-sm font-medium text-zinc-100 hover:bg-zinc-600 transition-colors disabled:opacity-40"
+            >
+              {loading
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" /> Extracting…</>
+                : cards.length > 0 ? "Re-extract" : "Extract Actions"
+              }
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
