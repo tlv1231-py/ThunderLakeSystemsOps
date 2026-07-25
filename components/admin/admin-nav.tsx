@@ -19,7 +19,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Compass,
-  Wrench,
+  Package,
 } from "lucide-react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { createClient } from "@/lib/supabase/client";
@@ -34,7 +34,7 @@ const NAV_ITEMS = [
   { href: "/payments",   label: "Payments",  icon: CreditCard      },
   { href: "/reports",    label: "Reports",   icon: BarChart3       },
   { href: "/strategy",   label: "Strategy",  icon: Compass         },
-  { href: "/tools",      label: "Tools",     icon: Wrench          },
+  { href: "/tools",      label: "Products",  icon: Package         },
 ];
 
 const COLLAPSE_DEFAULT_SLUGS = ["mark", "didi", "kelsea"];

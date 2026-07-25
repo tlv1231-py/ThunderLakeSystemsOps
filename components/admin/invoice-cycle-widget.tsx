@@ -273,14 +273,6 @@ function CurrentMonthBody({
     );
   }
 
-  // ── Unbilled time, countdown ──────────────────────────────────────────────────
-  const countdownText =
-    daysUntilMonthEnd === 0
-      ? "Auto-invoicing runs tonight"
-      : daysUntilMonthEnd === 1
-      ? `Auto-invoicing tomorrow (${monthEndLabel})`
-      : `Auto-invoicing in ${daysUntilMonthEnd} days (${monthEndLabel})`;
-
   return (
     <>
       <div className="px-5 py-3 space-y-1.5">
@@ -294,8 +286,7 @@ function CurrentMonthBody({
           </div>
         ))}
       </div>
-      <div className="px-5 py-3 border-t border-zinc-800 flex items-center justify-between">
-        <p className="text-xs text-zinc-600">{countdownText}</p>
+      <div className="px-5 py-3 border-t border-zinc-800 flex items-center justify-end">
         <Link
           href={`/invoices/new?from=${monthStart}&to=${monthEnd}`}
           className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
