@@ -286,7 +286,12 @@ function CurrentMonthBody({
           </div>
         ))}
       </div>
-      <div className="px-5 py-3 border-t border-zinc-800 flex items-center justify-end">
+      <div className="px-5 py-3 border-t border-zinc-800 flex items-center justify-between">
+        <span className="text-xs text-zinc-500">
+          {daysUntilMonthEnd === 0
+            ? `Due today · ${monthEndLabel}`
+            : `${daysUntilMonthEnd} day${daysUntilMonthEnd === 1 ? "" : "s"} left · ${monthEndLabel}`}
+        </span>
         <Link
           href={`/invoices/new?from=${monthStart}&to=${monthEnd}`}
           className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
