@@ -2437,12 +2437,26 @@ function ThemePanel({ prefs, onChange, onClose }: {
 
 type ProposedCard = {
   content: string;
-  notes: string;
-  suggested_column_id: string;
   selected_column_id: string;
+  selected: boolean;
   adding: boolean;
   added: boolean;
 };
+
+function splitMessage(text: string, defaultColId: string): ProposedCard[] {
+  const segments = text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 12);
+  const src = segments.length > 0 ? segments : [text.trim()];
+  return src.filter((s) => s.length >= 12).map((s) => ({
+    content: s,
+    selected_column_id: defaultColId,
+    selected: true,
+    adding: false,
+    added: false,
+  }));
+}
 
 function ParseMessageModal({
   columns,
@@ -2453,62 +2467,30 @@ function ParseMessageModal({
   onAdd: (category: string, content: string, notes?: string) => Promise<void>;
   onClose: () => void;
 }) {
+  const defaultColId = columns[0]?.id ?? "";
   const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [cards, setCards] = useState<ProposedCard[]>([]);
 
-  const fallbackColId = columns[0]?.id ?? "";
-
-  async function extract() {
-    if (!message.trim()) return;
-    setLoading(true);
-    setError(null);
-    setCards([]);
-    try {
-      const res = await fetch("/api/strategy/parse-message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: message.trim(),
-          columns: columns.map((c) => ({ id: c.id, name: c.name })),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !Array.isArray(data.cards)) {
-        setError(data.error ?? "Failed to extract action items");
-        return;
-      }
-      setCards(
-        data.cards.map((c: { content: string; notes: string; suggested_column_id: string }) => ({
-          ...c,
-          selected_column_id: columns.some((col) => col.id === c.suggested_column_id) ? c.suggested_column_id : fallbackColId,
-          adding: false,
-          added: false,
-        }))
-      );
-    } catch {
-      setError("Network error");
-    } finally {
-      setLoading(false);
-    }
+  function handleMessageChange(text: string) {
+    setMessage(text);
+    setCards(text.trim() ? splitMessage(text, defaultColId) : []);
   }
 
   async function addOne(idx: number) {
     const card = cards[idx];
-    if (!card || card.added || card.adding) return;
+    if (!card || !card.selected || card.added || card.adding) return;
     setCards((prev) => prev.map((c, i) => i === idx ? { ...c, adding: true } : c));
-    await onAdd(card.selected_column_id, card.content, card.notes);
+    await onAdd(card.selected_column_id, card.content);
     setCards((prev) => prev.map((c, i) => i === idx ? { ...c, adding: false, added: true } : c));
   }
 
-  async function addAll() {
+  async function addSelected() {
     for (let i = 0; i < cards.length; i++) {
-      if (!cards[i].added && !cards[i].adding) await addOne(i);
+      if (cards[i].selected && !cards[i].added && !cards[i].adding) await addOne(i);
     }
   }
 
-  const pendingCount = cards.filter((c) => !c.added).length;
+  const selectedCount = cards.filter((c) => c.selected && !c.added).length;
 
   return (
     <div
@@ -2522,8 +2504,8 @@ function ParseMessageModal({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 shrink-0">
           <div>
-            <h2 className="text-sm font-semibold text-zinc-100">Parse Partner Message</h2>
-            <p className="text-xs text-zinc-500 mt-0.5">Paste a raw message → extract action cards for the board</p>
+            <h2 className="text-sm font-semibold text-zinc-100">Message → Cards</h2>
+            <p className="text-xs text-zinc-500 mt-0.5">Paste a message — pick the sentences to add as cards</p>
           </div>
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 transition-colors ml-4">
             <X className="h-4 w-4" />
@@ -2533,65 +2515,65 @@ function ParseMessageModal({
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-0">
           <div>
-            <label className="block text-xs text-zinc-500 mb-1.5">Raw message</label>
+            <label className="block text-xs text-zinc-500 mb-1.5">Paste message</label>
             <textarea
+              autoFocus
               value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              onChange={(e) => handleMessageChange(e.target.value)}
               placeholder="Paste the message from your partner or client here…"
-              rows={6}
+              rows={5}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-zinc-500 placeholder:text-zinc-600 resize-none"
             />
           </div>
 
-          {error && <p className="text-sm text-red-400">{error}</p>}
-
           {cards.length > 0 && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <p className="text-xs text-zinc-500">
-                  {cards.length} action item{cards.length !== 1 ? "s" : ""} extracted
-                </p>
-                {pendingCount > 1 && (
-                  <button
-                    onClick={addAll}
-                    className="text-xs text-zinc-400 hover:text-zinc-100 transition-colors"
-                  >
-                    Add all ({pendingCount}) →
-                  </button>
-                )}
+                <p className="text-xs text-zinc-500">{cards.length} segment{cards.length !== 1 ? "s" : ""} — toggle what to keep</p>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setCards((p) => p.map((c) => ({ ...c, selected: true })))} className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">all</button>
+                  <button onClick={() => setCards((p) => p.map((c) => ({ ...c, selected: false })))} className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">none</button>
+                </div>
               </div>
               {cards.map((card, idx) => (
                 <div
                   key={idx}
                   className={cn(
-                    "rounded-lg border px-4 py-3 space-y-2 transition-colors",
+                    "rounded-lg border px-3 py-2.5 transition-colors",
                     card.added
-                      ? "border-emerald-800/50 bg-emerald-950/20"
-                      : "border-zinc-700 bg-zinc-800"
+                      ? "border-emerald-800/50 bg-emerald-950/20 opacity-60"
+                      : card.selected
+                      ? "border-zinc-600 bg-zinc-800"
+                      : "border-zinc-800 bg-zinc-900 opacity-40"
                   )}
                 >
-                  <p className={cn("text-sm font-medium", card.added ? "text-emerald-400" : "text-zinc-100")}>
-                    {card.content}
-                  </p>
-                  {card.notes && (
-                    <p className="text-xs text-zinc-500 leading-snug">{card.notes}</p>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={card.selected_column_id}
-                      onChange={(e) =>
-                        setCards((prev) =>
-                          prev.map((c, i) => i === idx ? { ...c, selected_column_id: e.target.value } : c)
-                        )
-                      }
+                  <div className="flex items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={card.selected}
                       disabled={card.added}
-                      className="flex-1 text-xs bg-zinc-700 border border-zinc-600 rounded px-2 py-1 text-zinc-300 outline-none disabled:opacity-50"
-                    >
-                      {columns.map((col) => (
-                        <option key={col.id} value={col.id}>{col.name}</option>
-                      ))}
-                    </select>
-                    <button
+                      onChange={(e) => setCards((prev) => prev.map((c, i) => i === idx ? { ...c, selected: e.target.checked } : c))}
+                      className="mt-0.5 shrink-0 accent-zinc-400"
+                    />
+                    <textarea
+                      value={card.content}
+                      onChange={(e) => setCards((prev) => prev.map((c, i) => i === idx ? { ...c, content: e.target.value } : c))}
+                      disabled={card.added}
+                      rows={2}
+                      className="flex-1 min-w-0 bg-transparent text-sm text-zinc-100 outline-none resize-none disabled:opacity-60"
+                    />
+                    <div className="flex items-center gap-2 shrink-0">
+                      <select
+                        value={card.selected_column_id}
+                        onChange={(e) => setCards((prev) => prev.map((c, i) => i === idx ? { ...c, selected_column_id: e.target.value } : c))}
+                        disabled={card.added}
+                        className="text-xs bg-zinc-700 border border-zinc-600 rounded px-1.5 py-1 text-zinc-300 outline-none disabled:opacity-50 max-w-[110px]"
+                      >
+                        {columns.map((col) => (
+                          <option key={col.id} value={col.id}>{col.name}</option>
+                        ))}
+                      </select>
+                      <button
                       onClick={() => addOne(idx)}
                       disabled={card.added || card.adding}
                       className={cn(
@@ -2605,14 +2587,15 @@ function ParseMessageModal({
                     </button>
                   </div>
                 </div>
-              ))}
+              </div>
+            ))}
             </div>
           )}
         </div>
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-zinc-800 flex items-center justify-between shrink-0">
-          <p className="text-xs text-zinc-700">Claude Opus 5</p>
+          <p className="text-xs text-zinc-500">{selectedCount > 0 ? `${selectedCount} selected` : "select items above"}</p>
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
@@ -2621,14 +2604,11 @@ function ParseMessageModal({
               Close
             </button>
             <button
-              onClick={extract}
-              disabled={loading || !message.trim()}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-zinc-700 text-sm font-medium text-zinc-100 hover:bg-zinc-600 transition-colors disabled:opacity-40"
+              onClick={addSelected}
+              disabled={selectedCount === 0}
+              className="px-4 py-1.5 rounded-lg bg-zinc-700 text-sm font-medium text-zinc-100 hover:bg-zinc-600 transition-colors disabled:opacity-40"
             >
-              {loading
-                ? <><Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" /> Extracting…</>
-                : cards.length > 0 ? "Re-extract" : "Extract Actions"
-              }
+              Add {selectedCount > 0 ? `${selectedCount} ` : ""}selected
             </button>
           </div>
         </div>
