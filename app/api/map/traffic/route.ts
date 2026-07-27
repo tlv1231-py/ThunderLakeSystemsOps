@@ -4,9 +4,10 @@ const LAT_MIN = 40.99, LAT_MAX = 41.13;
 const LON_MIN = -73.66, LON_MAX = -73.43;
 
 const EVENT_COLOR: Record<string, string> = {
-  roadwork:             "#f59e0b",
-  closures:             "#ff2244",
+  roadwork:              "#f59e0b",
+  closures:              "#ff2244",
   accidentsAndIncidents: "#ff4444",
+  trafficConditions:     "#fb923c",
 };
 
 function inStamford(lat: number, lon: number) {

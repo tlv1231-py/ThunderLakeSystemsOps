@@ -44,7 +44,7 @@ const LAYER_META: Record<LayerKey, LayerMeta> = {
   alerts:    { label: "NWS Alerts", color: "#f59e0b", section: "atmospheric" },
   transit:   { label: "Transit",    color: "#60a5fa", section: "city"        },
   services:  { label: "Services",   color: "#4ade80", section: "city"        },
-  traffic:   { label: "Road Work",  color: "#f59e0b", section: "city"        },
+  traffic:   { label: "Traffic",    color: "#f59e0b", section: "city"        },
   dispatch:  { label: "Dispatch",   color: "#ff4466", section: "city"        },
 };
 
