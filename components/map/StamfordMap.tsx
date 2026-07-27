@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "services" | "traffic" | "dispatch";
+type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "services" | "traffic" | "dispatch" | "buildings" | "marine";
 type BaseKey  = "satellite" | "hybrid" | "dark";
 interface LogEntry { time: string; icon: string; text: string; color: string; }
 
@@ -46,6 +46,8 @@ const LAYER_META: Record<LayerKey, LayerMeta> = {
   services:  { label: "Services",   color: "#4ade80", section: "city"        },
   traffic:   { label: "Traffic",    color: "#f59e0b", section: "city"        },
   dispatch:  { label: "Dispatch",   color: "#ff4466", section: "city"        },
+  buildings: { label: "City Lights", color: "#fbbf24", section: "city"       },
+  marine:    { label: "Maritime",    color: "#06b6d4", section: "city"       },
 };
 
 const SECTIONS: { key: "overhead" | "atmospheric" | "city"; label: string }[] = [
@@ -119,6 +121,15 @@ function dispatchSVG(callType: string) {
     <div style="position:absolute;inset:5px;border-radius:50%;background:${color};filter:drop-shadow(0 0 5px ${color})"></div>
   </div>`;
 }
+function marineSVG(type: "buoy" | "tide_gauge") {
+  const color  = type === "buoy" ? "#06b6d4" : "#0891b2";
+  const symbol = type === "buoy" ? "⚓" : "≈";
+  return `<div style="width:22px;height:22px;border-radius:50%;
+    background:${color}18;border:1.5px solid ${color};
+    display:flex;align-items:center;justify-content:center;
+    font-size:11px;line-height:1;
+    filter:drop-shadow(0 0 5px ${color}66)">${symbol}</div>`;
+}
 function popupWrap(inner: string) {
   return `<div style="font-family:Menlo,Consolas,monospace;font-size:11px;color:#d8e3f0;background:#07090fee;
     border:1px solid #1e2d44;border-radius:8px;padding:10px 14px;min-width:180px;line-height:1.9;
@@ -138,12 +149,13 @@ export default function StamfordMap() {
   const lightningWsRef      = useRef<WebSocket | null>(null);
   const strikeCountMinRef   = useRef(0);
   const wakeLockRef         = useRef<any>(null);
+  const crosshairLatLngRef  = useRef(STAMFORD);
 
   const [baseKey,       setBaseKey]       = useState<BaseKey>("dark");
   const [enabled,       setEnabled]       = useState<Record<LayerKey, boolean>>({
     aircraft: true, radar: true, iss: true, alerts: true,
     lightning: true, transit: true, services: true,
-    traffic: true, dispatch: true,
+    traffic: true, dispatch: true, buildings: true, marine: true,
   });
   const [weather,       setWeather]       = useState<WeatherNow | null>(null);
   const [iss,           setIss]           = useState<ISSPos | null>(null);
@@ -152,11 +164,13 @@ export default function StamfordMap() {
   const [transitCount,  setTransitCount]  = useState(0);
   const [servicesCount, setServicesCount] = useState(0);
   const [trafficCount,  setTrafficCount]  = useState(0);
-  const [dispatchCount, setDispatchCount] = useState(0);
+  const [dispatchCount,  setDispatchCount]  = useState(0);
+  const [buildingsCount, setBuildingsCount] = useState(0);
+  const [marineCount,    setMarineCount]    = useState(0);
   const [strikeCount,   setStrikeCount]   = useState(0);
   const [strikesPerMin, setStrikesPerMin] = useState(0);
   const [wsStatus,      setWsStatus]      = useState<"connecting" | "live" | "offline">("connecting");
-  const [panelOpen,     setPanelOpen]     = useState(true);
+  const [panelOpen,     setPanelOpen]     = useState(false);
   const [isFullscreen,  setIsFullscreen]  = useState(false);
   const [milClock,      setMilClock]      = useState("");
   const [log,           setLog]           = useState<LogEntry[]>([]);
@@ -206,7 +220,7 @@ export default function StamfordMap() {
       const url = `https://tilecache.rainviewer.com${frames[frames.length - 1].path}/256/{z}/{x}/{y}/4/1_1.png`;
       const g = groupRefs.current.radar;
       g?.clearLayers();
-      g?.addLayer(L.tileLayer(url, { opacity: 0.6, maxNativeZoom: 8, maxZoom: 19 }));
+      g?.addLayer(L.tileLayer(url, { opacity: 0.6, maxNativeZoom: 8, maxZoom: 19, bounds: STAMFORD_BOUNDS }));
     }).catch(() => {});
   }, []);
 
@@ -353,6 +367,58 @@ export default function StamfordMap() {
     }).catch(() => {});
   }, [addLog]);
 
+  const fetchMarine = useCallback((L: any) => {
+    fetch("/api/map/marine").then(r => r.json()).then(data => {
+      const stations: any[] = data.stations ?? [];
+      setMarineCount(stations.length);
+      const g = groupRefs.current.marine;
+      if (!g) return;
+      g.clearLayers();
+      if (!stations.length) return;
+      addLog("⚓", `${stations.length} marine station${stations.length !== 1 ? "s" : ""} reporting`, "#06b6d4");
+      stations.forEach(st => {
+        const icon = L.divIcon({ html: marineSVG(st.type), className: "", iconSize: [22, 22], iconAnchor: [11, 11] });
+        const rows = [
+          st.waterLevel != null ? `<span style="color:#5a7090">TIDE</span><span>${st.waterLevel > 0 ? "+" : ""}${st.waterLevel} ft MLLW</span>` : "",
+          st.waterTemp  != null ? `<span style="color:#5a7090">WTEMP</span><span>${st.waterTemp}°F</span>` : "",
+          st.airTemp    != null ? `<span style="color:#5a7090">ATEMP</span><span>${st.airTemp}°F</span>` : "",
+          st.windSpeed  != null ? `<span style="color:#5a7090">WIND</span><span>${st.windSpeed} kt${st.windDir != null ? " " + degToCompass(st.windDir) : ""}</span>` : "",
+          st.waveHeight != null ? `<span style="color:#5a7090">WAVE</span><span>${st.waveHeight} ft</span>` : "",
+        ].filter(Boolean).join("");
+        L.marker([st.lat, st.lon], { icon })
+          .bindPopup(L.popup({ className: "tl-popup", maxWidth: 230, offset: [0, -4] }).setContent(
+            popupWrap(`<div style="font-size:12px;font-weight:700;color:#06b6d4;margin-bottom:4px">${st.type === "buoy" ? "⚓" : "≈"} ${st.name}</div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px">${rows}</div>
+            ${st.updated ? `<div style="color:#2a3a52;font-size:9px;margin-top:5px">${st.updated} UTC</div>` : ""}`)))
+          .addTo(g);
+      });
+    }).catch(() => {});
+  }, [addLog]);
+
+  const fetchBuildings = useCallback((L: any) => {
+    fetch("/api/map/buildings").then(r => r.json()).then(data => {
+      const buildings: number[][] = data.buildings ?? [];
+      setBuildingsCount(buildings.length);
+      if (!buildings.length) return;
+      const g = groupRefs.current.buildings;
+      if (!g) return;
+      g.clearLayers();
+      addLog("🏙", `${buildings.length.toLocaleString()} city lights mapped`, "#fbbf24");
+      const canvas = L.canvas({ padding: 0.5 });
+      buildings.forEach(([lat, lon]) => {
+        L.circleMarker([lat, lon], {
+          radius: 1.5,
+          color: "#fbbf24",
+          fillColor: "#fbbf24",
+          fillOpacity: 0.55,
+          opacity: 0,
+          weight: 0,
+          renderer: canvas,
+        }).addTo(g);
+      });
+    }).catch(() => {});
+  }, [addLog]);
+
   const fetchWeather = useCallback(() => {
     fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${STAMFORD.lat}&longitude=${STAMFORD.lng}` +
@@ -438,6 +504,8 @@ export default function StamfordMap() {
         services:  L.layerGroup().addTo(map),
         traffic:   L.layerGroup().addTo(map),
         dispatch:  L.layerGroup().addTo(map),
+        buildings: L.layerGroup().addTo(map),
+        marine:    L.layerGroup().addTo(map),
       };
 
       mapInst.current = map;
@@ -445,13 +513,13 @@ export default function StamfordMap() {
       // Stamford city boundary (glowing cyan line)
       fetch("/api/map/boundary").then(r => r.json()).then(data => {
         if (!data.geojson) return;
-        // Outer glow pass
+        // Outer glow pass (very faint)
         L.geoJSON(data.geojson, {
-          style: { color: "#22d3ee", weight: 8, opacity: 0.08, fill: false },
+          style: { color: "#22d3ee", weight: 5, opacity: 0.04, fill: false },
         }).addTo(map);
-        // Inner crisp line
+        // Inner crisp line (subtle dashed)
         const boundaryLayer = L.geoJSON(data.geojson, {
-          style: { color: "#22d3ee", weight: 2, opacity: 0.9, fill: true, fillColor: "#22d3ee", fillOpacity: 0.025, dashArray: "10 7" },
+          style: { color: "#22d3ee", weight: 1, opacity: 0.22, fill: true, fillColor: "#22d3ee", fillOpacity: 0.008, dashArray: "12 9" },
         }).addTo(map);
         boundaryLayer.eachLayer((layer: any) => {
           const el = layer.getElement?.();
@@ -460,17 +528,44 @@ export default function StamfordMap() {
         addLog("◈", "Stamford perimeter established", "#22d3ee");
       }).catch(() => {});
 
-      // Center px tracking for overlay positioning
+      // Center px tracking — follows crosshairLatLngRef (geocoded at startup)
       const updateCenterPx = () => {
-        const pt = map.latLngToContainerPoint([STAMFORD.lat, STAMFORD.lng]);
+        const pos = crosshairLatLngRef.current;
+        const pt = map.latLngToContainerPoint([pos.lat, pos.lng]);
         setCenterPx({ x: pt.x, y: pt.y });
       };
       map.on("move zoom resize", updateCenterPx);
       updateCenterPx();
 
+      // Geocode crosshair (37 Douglas Ave) then blue-dot (150 Butternut Ln)
+      // Chained to respect Nominatim 1 req/sec rate limit
+      const nominatim = (q: string) =>
+        fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`, {
+          headers: { "User-Agent": "ThunderLakeSystems/1.0 (tlevander.py@gmail.com)" },
+        }).then(r => r.json()).then((d: any[]) => d[0] ? { lat: parseFloat(d[0].lat), lng: parseFloat(d[0].lon) } : null).catch(() => null);
+
+      nominatim("37 Douglas Ave, Stamford, CT")
+        .then(pos => {
+          if (pos) { crosshairLatLngRef.current = pos; updateCenterPx(); }
+          return new Promise<void>(res => setTimeout(res, 1200));
+        })
+        .then(() => nominatim("150 Butternut Lane, Stamford, CT"))
+        .then(pos => {
+          if (!pos) return;
+          const icon = L.divIcon({
+            html: `<div style="width:12px;height:12px;border-radius:50%;background:#3b82f6;border:2px solid #93c5fd;box-shadow:0 0 8px #3b82f6,0 0 20px rgba(59,130,246,0.5)"></div>`,
+            className: "", iconSize: [12, 12], iconAnchor: [6, 6],
+          });
+          L.marker([pos.lat, pos.lng], { icon })
+            .bindTooltip("150 Butternut Ln", { className: "tl-tt", sticky: true })
+            .addTo(map);
+        })
+        .catch(() => {});
+
       // Initial fetches
       fetchAircraft(L); fetchRadar(L); fetchISS(L); fetchAlerts(L);
       fetchTransit(L); fetchServices(L); fetchTraffic(L); fetchDispatch(L);
+      fetchMarine(L); fetchBuildings(L); // buildings: one-time load, 24h server cache
 
       // Polling
       intervals.current.push(setInterval(() => fetchAircraft(L), 15_000));
@@ -481,6 +576,7 @@ export default function StamfordMap() {
       intervals.current.push(setInterval(() => fetchServices(L), 15 * 60_000));
       intervals.current.push(setInterval(() => fetchTraffic(L), 5 * 60_000));
       intervals.current.push(setInterval(() => fetchDispatch(L), 30_000));
+      intervals.current.push(setInterval(() => fetchMarine(L), 30 * 60_000));
 
       // Lightning
       setupLightning(L);
@@ -600,6 +696,8 @@ export default function StamfordMap() {
     services:  servicesCount  > 0 ? String(servicesCount)  : undefined,
     traffic:   trafficCount   > 0 ? String(trafficCount)   : undefined,
     dispatch:  dispatchCount  > 0 ? String(dispatchCount)  : "◉",
+    buildings: buildingsCount > 0 ? buildingsCount.toLocaleString() : undefined,
+    marine:    marineCount    > 0 ? String(marineCount)    : undefined,
   };
 
   return (
