@@ -120,7 +120,6 @@ export default function StamfordMap() {
   const lightningWsRef      = useRef<WebSocket | null>(null);
   const strikeCountMinRef   = useRef(0);
   const wakeLockRef         = useRef<any>(null);
-  const animRef             = useRef<number>(0);
 
   const [baseKey,       setBaseKey]       = useState<BaseKey>("dark");
   const [enabled,       setEnabled]       = useState<Record<LayerKey, boolean>>({
@@ -141,7 +140,6 @@ export default function StamfordMap() {
   const [milClock,      setMilClock]      = useState("");
   const [log,           setLog]           = useState<LogEntry[]>([]);
   const [centerPx,      setCenterPx]      = useState<{ x: number; y: number } | null>(null);
-  const [sweepDeg,      setSweepDeg]      = useState(0);
 
   // ── Event log ─────────────────────────────────────────────────────────────
 
@@ -336,18 +334,6 @@ export default function StamfordMap() {
     connect();
   }, [addLog]);
 
-  // ── Radar sweep animation (rAF) ───────────────────────────────────────────
-
-  const startSweep = useCallback(() => {
-    let deg = 0;
-    const tick = () => {
-      deg = (deg + 0.5) % 360; // 0.5° per frame ≈ ~1.5 rpm at 60fps
-      setSweepDeg(deg);
-      animRef.current = requestAnimationFrame(tick);
-    };
-    animRef.current = requestAnimationFrame(tick);
-  }, []);
-
   // ── Main init effect ──────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -452,11 +438,7 @@ export default function StamfordMap() {
     clockTick();
     const clockId = setInterval(clockTick, 1000);
 
-    // Radar sweep rAF
-    startSweep();
-
     return () => {
-      cancelAnimationFrame(animRef.current);
       clearInterval(clockId);
       intervals.current.forEach(clearInterval);
       lightningWsRef.current?.close();
@@ -554,19 +536,6 @@ export default function StamfordMap() {
       {/* ── Radar sweep + city overlays ────────────────────────────────────── */}
       {centerPx && (
         <div className="absolute inset-0 z-6 pointer-events-none overflow-hidden">
-          {/* Radar sweep */}
-          <div style={{
-            position: "absolute",
-            left: centerPx.x,
-            top: centerPx.y,
-            width: 640,
-            height: 640,
-            borderRadius: "50%",
-            transform: `translate(-50%,-50%) rotate(${sweepDeg}deg)`,
-            background: "conic-gradient(from 0deg at 50% 50%, transparent 0deg, transparent 275deg, rgba(57,217,122,0.03) 310deg, rgba(57,217,122,0.12) 345deg, rgba(57,217,122,0.55) 357deg, rgba(57,217,122,0.2) 360deg)",
-            willChange: "transform",
-          }} />
-
           {/* Pulse rings emanating from city center */}
           {[0, 1, 2].map(i => (
             <div key={i} style={{
