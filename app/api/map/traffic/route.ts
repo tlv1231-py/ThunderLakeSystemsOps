@@ -20,7 +20,7 @@ function inStamford(lat: number, lon: number) {
   return lat >= LAT_MIN && lat <= LAT_MAX && lon >= LON_MIN && lon <= LON_MAX;
 }
 
-async function fetchCT511(): Promise<{ ok: true; events: any[] } | { ok: false }> {
+async function fetchCT511(debug = false): Promise<{ ok: true; events: any[]; raw?: any } | { ok: false; raw?: any }> {
   const key = process.env.CT511_KEY;
   if (!key) return { ok: false };
 
@@ -57,7 +57,7 @@ async function fetchCT511(): Promise<{ ok: true; events: any[] } | { ok: false }
         };
       });
 
-    return { ok: true, events };
+    return { ok: true, events, ...(debug ? { raw: raw.slice(0, 3) } : {}) };
   } catch {
     return { ok: false };
   }
@@ -106,12 +106,13 @@ out center tags;`;
   }
 }
 
-export async function GET() {
-  const ct511 = await fetchCT511();
+export async function GET(req: Request) {
+  const debug = new URL(req.url).searchParams.has("debug");
+  const ct511 = await fetchCT511(debug);
   if (ct511.ok && ct511.events.length > 0) {
-    return NextResponse.json({ source: "ct511", events: ct511.events });
+    return NextResponse.json({ source: "ct511", events: ct511.events, ...(debug ? { _raw: ct511.raw } : {}) });
   }
   // Fall back to OSM construction data
   const events = await fetchOverpass();
-  return NextResponse.json({ source: "overpass", events });
+  return NextResponse.json({ source: "overpass", events, ...(debug ? { _ct511_raw: ct511 } : {}) });
 }
