@@ -48,17 +48,16 @@ async function fetchCT511(debug = false): Promise<
   const key = process.env.CT511_KEY;
   if (!key) return { ok: false, reason: "no_key" };
 
-  // GetEventFeeds is the confirmed-existing endpoint (GetEvents 404s).
-  // Try different feed names — CT 511 doesn't publish the valid list.
-  const base = "https://prod-ct.ibi511.com/api/GetEventFeeds";
+  const base = "https://prod-ct.ibi511.com/api";
   const endpoints = [
-    `${base}?feed=incidents&key=${key}&format=Json`,
-    `${base}?feed=Incidents&key=${key}&format=Json`,
-    `${base}?feed=traffic&key=${key}&format=Json`,
-    `${base}?feed=Traffic&key=${key}&format=Json`,
-    `${base}?feed=events&key=${key}&format=Json`,
-    `${base}?feed=all&key=${key}&format=Json`,
-    `${base}?key=${key}&format=Json`,
+    // GetAlerts — different endpoint, no feed param needed
+    `${base}/GetAlerts?key=${key}&format=Json`,
+    // GetEventFeeds with CT-specific feed name patterns used by iBI511 states
+    `${base}/GetEventFeeds?feed=CT_Incidents&key=${key}&format=Json`,
+    `${base}/GetEventFeeds?feed=CT_All&key=${key}&format=Json`,
+    `${base}/GetEventFeeds?feed=CT_Traffic&key=${key}&format=Json`,
+    `${base}/GetEventFeeds?feed=CTDOT&key=${key}&format=Json`,
+    `${base}/GetEventFeeds?feed=CTI&key=${key}&format=Json`,
   ];
 
   let lastStatus = 0;
