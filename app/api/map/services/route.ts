@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 
-// Stamford CT bounding box
 const BBOX = "40.99,-73.66,41.13,-73.43";
 
 export async function GET() {
-  const query = `[out:json][timeout:12];
+  const query = `[out:json][timeout:25];
 (
-  node["amenity"~"fire_station|hospital|police|urgent_care|pharmacy|school"](${BBOX});
+  node["amenity"~"fire_station|hospital|police|urgent_care"](${BBOX});
   way["amenity"~"fire_station|hospital|police|urgent_care"](${BBOX});
   relation["amenity"~"fire_station|hospital|police"](${BBOX});
 );
@@ -18,7 +17,7 @@ out center tags;`;
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: `data=${encodeURIComponent(query)}`,
       next: { revalidate: 900 },
-      signal: AbortSignal.timeout(14000),
+      signal: AbortSignal.timeout(28000),
     });
     if (!res.ok) return NextResponse.json({ elements: [] });
     const data = await res.json();
