@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "services";
+type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "services" | "traffic" | "dispatch";
 type BaseKey  = "satellite" | "hybrid" | "dark";
 interface LogEntry { time: string; icon: string; text: string; color: string; }
 
@@ -44,6 +44,8 @@ const LAYER_META: Record<LayerKey, LayerMeta> = {
   alerts:    { label: "NWS Alerts", color: "#f59e0b", section: "atmospheric" },
   transit:   { label: "Transit",    color: "#60a5fa", section: "city"        },
   services:  { label: "Services",   color: "#4ade80", section: "city"        },
+  traffic:   { label: "Road Work",  color: "#f59e0b", section: "city"        },
+  dispatch:  { label: "Dispatch",   color: "#ff4466", section: "city"        },
 };
 
 const SECTIONS: { key: "overhead" | "atmospheric" | "city"; label: string }[] = [
@@ -101,6 +103,22 @@ function serviceSVG(amenity: string) {
     font-size:9px;color:${s.color};font-weight:900;line-height:1;
     filter:drop-shadow(0 0 5px ${s.color}66)">${s.symbol}</div>`;
 }
+function trafficSVG() {
+  return `<div style="width:15px;height:15px;transform:rotate(45deg);
+    background:#f59e0b15;border:2px solid #f59e0b;
+    filter:drop-shadow(0 0 4px #f59e0b66)"></div>`;
+}
+function dispatchSVG(callType: string) {
+  const t = (callType ?? "").toLowerCase();
+  const color = t.includes("fire") ? "#ff2244"
+    : (t.includes("ems") || t.includes("medical") || t.includes("cardiac") || t.includes("chest") || t.includes("breath")) ? "#ff8c00"
+    : t.includes("police") || t.includes("law") || t.includes("disturbance") || t.includes("assault") ? "#2a8bff"
+    : "#ff4466";
+  return `<div style="position:relative;width:22px;height:22px">
+    <div style="position:absolute;inset:0;border-radius:50%;border:1.5px solid ${color};opacity:0.5;animation:tl-pulse 2s ease-out infinite"></div>
+    <div style="position:absolute;inset:5px;border-radius:50%;background:${color};filter:drop-shadow(0 0 5px ${color})"></div>
+  </div>`;
+}
 function popupWrap(inner: string) {
   return `<div style="font-family:Menlo,Consolas,monospace;font-size:11px;color:#d8e3f0;background:#07090fee;
     border:1px solid #1e2d44;border-radius:8px;padding:10px 14px;min-width:180px;line-height:1.9;
@@ -125,6 +143,7 @@ export default function StamfordMap() {
   const [enabled,       setEnabled]       = useState<Record<LayerKey, boolean>>({
     aircraft: true, radar: true, iss: true, alerts: true,
     lightning: true, transit: true, services: true,
+    traffic: true, dispatch: true,
   });
   const [weather,       setWeather]       = useState<WeatherNow | null>(null);
   const [iss,           setIss]           = useState<ISSPos | null>(null);
@@ -132,6 +151,8 @@ export default function StamfordMap() {
   const [aircraftCount, setAircraftCount] = useState(0);
   const [transitCount,  setTransitCount]  = useState(0);
   const [servicesCount, setServicesCount] = useState(0);
+  const [trafficCount,  setTrafficCount]  = useState(0);
+  const [dispatchCount, setDispatchCount] = useState(0);
   const [strikeCount,   setStrikeCount]   = useState(0);
   const [strikesPerMin, setStrikesPerMin] = useState(0);
   const [wsStatus,      setWsStatus]      = useState<"connecting" | "live" | "offline">("connecting");
@@ -280,6 +301,58 @@ export default function StamfordMap() {
     }).catch(() => {});
   }, [addLog]);
 
+  const fetchTraffic = useCallback((L: any) => {
+    fetch("/api/map/traffic").then(r => r.json()).then(data => {
+      const elements: any[] = data.elements ?? [];
+      setTrafficCount(elements.length);
+      if (elements.length) addLog("🚧", `${elements.length} road work zone${elements.length !== 1 ? "s" : ""} in Stamford`, "#f59e0b");
+      const g = groupRefs.current.traffic;
+      if (!g) return;
+      g.clearLayers();
+      elements.forEach(el => {
+        const lat = el.lat ?? el.center?.lat;
+        const lon = el.lon ?? el.center?.lon;
+        if (!lat || !lon) return;
+        const tags = el.tags ?? {};
+        const name = tags.name ?? tags.description ?? tags.highway ?? "Road work";
+        const icon = L.divIcon({ html: trafficSVG(), className: "", iconSize: [15, 15], iconAnchor: [7, 7] });
+        L.marker([lat, lon], { icon })
+          .bindPopup(L.popup({ className: "tl-popup", maxWidth: 220, offset: [0, -4] }).setContent(
+            popupWrap(`<div style="font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:4px">🚧 ${
+              tags.construction ? tags.construction.replace(/_/g, " ") : "Road Work"
+            }</div>
+            <div style="color:#7a9ab0">${name}</div>
+            ${tags.description ? `<div style="color:#5a7090;font-size:10px;margin-top:3px">${tags.description}</div>` : ""}
+            ${tags["addr:street"] ? `<div style="color:#5a7090;font-size:10px">${tags["addr:street"]}</div>` : ""}`)))
+          .addTo(g);
+      });
+    }).catch(() => {});
+  }, [addLog]);
+
+  const fetchDispatch = useCallback((L: any) => {
+    fetch("/api/map/dispatch").then(r => r.json()).then(data => {
+      const incidents: any[] = data.incidents ?? [];
+      setDispatchCount(incidents.length);
+      const g = groupRefs.current.dispatch;
+      if (!g) return;
+      g.clearLayers();
+      if (incidents.length) {
+        addLog("🚨", `${incidents.length} active dispatch call${incidents.length !== 1 ? "s" : ""}`, "#ff4466");
+        incidents.forEach(inc => {
+          if (!inc.lat || !inc.lon) return;
+          const icon = L.divIcon({ html: dispatchSVG(inc.callType), className: "", iconSize: [22, 22], iconAnchor: [11, 11] });
+          L.marker([inc.lat, inc.lon], { icon })
+            .bindPopup(L.popup({ className: "tl-popup", maxWidth: 220, offset: [0, -4] }).setContent(
+              popupWrap(`<div style="font-size:12px;font-weight:700;color:#ff4466;margin-bottom:4px">🚨 ${inc.callType}</div>
+              <div style="color:#7a9ab0">${inc.address}</div>
+              ${inc.unit ? `<div style="color:#5a7090;font-size:10px">Unit: ${inc.unit}</div>` : ""}
+              ${inc.timestamp ? `<div style="color:#5a7090;font-size:10px">${inc.timestamp}</div>` : ""}`)))
+            .addTo(g);
+        });
+      }
+    }).catch(() => {});
+  }, [addLog]);
+
   const fetchWeather = useCallback(() => {
     fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${STAMFORD.lat}&longitude=${STAMFORD.lng}` +
@@ -363,6 +436,8 @@ export default function StamfordMap() {
         lightning: L.layerGroup().addTo(map),
         transit:   L.layerGroup().addTo(map),
         services:  L.layerGroup().addTo(map),
+        traffic:   L.layerGroup().addTo(map),
+        dispatch:  L.layerGroup().addTo(map),
       };
 
       mapInst.current = map;
@@ -394,7 +469,8 @@ export default function StamfordMap() {
       updateCenterPx();
 
       // Initial fetches
-      fetchAircraft(L); fetchRadar(L); fetchISS(L); fetchAlerts(L); fetchTransit(L); fetchServices(L);
+      fetchAircraft(L); fetchRadar(L); fetchISS(L); fetchAlerts(L);
+      fetchTransit(L); fetchServices(L); fetchTraffic(L); fetchDispatch(L);
 
       // Polling
       intervals.current.push(setInterval(() => fetchAircraft(L), 15_000));
@@ -403,6 +479,8 @@ export default function StamfordMap() {
       intervals.current.push(setInterval(() => fetchAlerts(L), 10 * 60_000));
       intervals.current.push(setInterval(() => fetchTransit(L), 30_000));
       intervals.current.push(setInterval(() => fetchServices(L), 15 * 60_000));
+      intervals.current.push(setInterval(() => fetchTraffic(L), 5 * 60_000));
+      intervals.current.push(setInterval(() => fetchDispatch(L), 30_000));
 
       // Lightning
       setupLightning(L);
@@ -515,11 +593,13 @@ export default function StamfordMap() {
   const panelW = 232;
 
   const layerBadge: Partial<Record<LayerKey, string>> = {
-    aircraft:  aircraftCount  > 0 ? String(aircraftCount) : undefined,
-    alerts:    alertCount     > 0 ? String(alertCount) : undefined,
-    lightning: strikeCount    > 0 ? String(strikeCount) : undefined,
-    transit:   transitCount   > 0 ? String(transitCount) : undefined,
-    services:  servicesCount  > 0 ? String(servicesCount) : undefined,
+    aircraft:  aircraftCount  > 0 ? String(aircraftCount)  : undefined,
+    alerts:    alertCount     > 0 ? String(alertCount)     : undefined,
+    lightning: strikeCount    > 0 ? String(strikeCount)    : undefined,
+    transit:   transitCount   > 0 ? String(transitCount)   : undefined,
+    services:  servicesCount  > 0 ? String(servicesCount)  : undefined,
+    traffic:   trafficCount   > 0 ? String(trafficCount)   : undefined,
+    dispatch:  dispatchCount  > 0 ? String(dispatchCount)  : "◉",
   };
 
   return (
@@ -761,7 +841,7 @@ export default function StamfordMap() {
             {isFullscreen ? "⊠ EXIT FULLSCREEN" : "⊡ FULLSCREEN · WATCH MODE"}
           </button>
           <div style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 8, color: "#111a27", textAlign: "center", marginTop: 5, lineHeight: 1.6 }}>
-            AC 15s · ISS 6s · Bus 30s · Radar 5m
+            AC 15s · ISS 6s · Bus 30s · Dsp 30s · Radar 5m
           </div>
         </div>
       </div>
