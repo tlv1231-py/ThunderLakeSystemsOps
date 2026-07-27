@@ -103,10 +103,10 @@ function serviceSVG(amenity: string) {
     font-size:9px;color:${s.color};font-weight:900;line-height:1;
     filter:drop-shadow(0 0 5px ${s.color}66)">${s.symbol}</div>`;
 }
-function trafficSVG() {
+function trafficSVG(color = "#f59e0b") {
   return `<div style="width:15px;height:15px;transform:rotate(45deg);
-    background:#f59e0b15;border:2px solid #f59e0b;
-    filter:drop-shadow(0 0 4px #f59e0b66)"></div>`;
+    background:${color}15;border:2px solid ${color};
+    filter:drop-shadow(0 0 4px ${color}66)"></div>`;
 }
 function dispatchSVG(callType: string) {
   const t = (callType ?? "").toLowerCase();
@@ -303,27 +303,25 @@ export default function StamfordMap() {
 
   const fetchTraffic = useCallback((L: any) => {
     fetch("/api/map/traffic").then(r => r.json()).then(data => {
-      const elements: any[] = data.elements ?? [];
-      setTrafficCount(elements.length);
-      if (elements.length) addLog("🚧", `${elements.length} road work zone${elements.length !== 1 ? "s" : ""} in Stamford`, "#f59e0b");
+      const events: any[] = data.events ?? [];
+      const source: string = data.source ?? "overpass";
+      setTrafficCount(events.length);
+      if (events.length) {
+        const label = source === "ct511" ? "CT 511" : "OSM";
+        addLog("🚧", `${events.length} road event${events.length !== 1 ? "s" : ""} · ${label}`, "#f59e0b");
+      }
       const g = groupRefs.current.traffic;
       if (!g) return;
       g.clearLayers();
-      elements.forEach(el => {
-        const lat = el.lat ?? el.center?.lat;
-        const lon = el.lon ?? el.center?.lon;
-        if (!lat || !lon) return;
-        const tags = el.tags ?? {};
-        const name = tags.name ?? tags.description ?? tags.highway ?? "Road work";
-        const icon = L.divIcon({ html: trafficSVG(), className: "", iconSize: [15, 15], iconAnchor: [7, 7] });
-        L.marker([lat, lon], { icon })
-          .bindPopup(L.popup({ className: "tl-popup", maxWidth: 220, offset: [0, -4] }).setContent(
-            popupWrap(`<div style="font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:4px">🚧 ${
-              tags.construction ? tags.construction.replace(/_/g, " ") : "Road Work"
-            }</div>
-            <div style="color:#7a9ab0">${name}</div>
-            ${tags.description ? `<div style="color:#5a7090;font-size:10px;margin-top:3px">${tags.description}</div>` : ""}
-            ${tags["addr:street"] ? `<div style="color:#5a7090;font-size:10px">${tags["addr:street"]}</div>` : ""}`)))
+      events.forEach(ev => {
+        if (!ev.lat || !ev.lon) return;
+        const typeLabel = ev.type.replace(/_/g, " ");
+        const icon = L.divIcon({ html: trafficSVG(ev.color), className: "", iconSize: [15, 15], iconAnchor: [7, 7] });
+        L.marker([ev.lat, ev.lon], { icon })
+          .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(
+            popupWrap(`<div style="font-size:12px;font-weight:700;color:${ev.color};margin-bottom:4px">🚧 ${typeLabel}</div>
+            ${ev.road    ? `<div style="color:#7a9ab0">${ev.road}${ev.direction ? " · " + ev.direction : ""}</div>` : ""}
+            ${ev.description ? `<div style="color:#5a7090;font-size:10px;margin-top:3px">${ev.description}</div>` : ""}`)))
           .addTo(g);
       });
     }).catch(() => {});
