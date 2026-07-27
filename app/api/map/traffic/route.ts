@@ -20,16 +20,19 @@ function inStamford(lat: number, lon: number) {
   return lat >= LAT_MIN && lat <= LAT_MAX && lon >= LON_MIN && lon <= LON_MAX;
 }
 
-async function fetchCT511(debug = false): Promise<{ ok: true; events: any[]; raw?: any } | { ok: false; raw?: any }> {
+async function fetchCT511(debug = false): Promise<{ ok: true; events: any[]; raw?: any } | { ok: false; reason?: string; status?: number; raw?: any }> {
   const key = process.env.CT511_KEY;
-  if (!key) return { ok: false };
+  if (!key) return { ok: false, reason: "no_key" };
 
   try {
     const res = await fetch(
       `https://prod-ct.ibi511.com/api/GetEvents?key=${key}&format=json`,
       { next: { revalidate: 0 }, signal: AbortSignal.timeout(8000) }
     );
-    if (!res.ok) return { ok: false };
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      return { ok: false, reason: "http_error", status: res.status, ...(debug ? { raw: body.slice(0, 200) } : {}) };
+    }
 
     const data = await res.json();
     const raw: any[] = data.Events ?? data.events ?? data ?? [];
@@ -58,8 +61,8 @@ async function fetchCT511(debug = false): Promise<{ ok: true; events: any[]; raw
       });
 
     return { ok: true, events, ...(debug ? { raw: raw.slice(0, 3) } : {}) };
-  } catch {
-    return { ok: false };
+  } catch (e: any) {
+    return { ok: false, reason: "exception", raw: debug ? String(e) : undefined };
   }
 }
 
