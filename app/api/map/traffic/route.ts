@@ -49,9 +49,11 @@ async function fetchCT511(debug = false): Promise<
   if (!key) return { ok: false, reason: "no_key" };
 
   const endpoints = [
+    `https://www.ctroads.org/api/GetEvents?key=${key}&format=Json`,
+    `https://www.ctroads.org/api/GetEvents?key=${key}&format=json`,
+    `https://www.ctroads.org/api/GetEvents?key=${key}`,
     `https://prod-ct.ibi511.com/api/GetEvents?key=${key}&format=Json`,
-    `https://prod-ct.ibi511.com/api/GetEvents?key=${key}&format=json`,
-    `https://prod-ct.ibi511.com/api/GetEventFeeds?feed=incidents&key=${key}&format=Json`,
+    `https://prod-ct.ibi511.com/api/GetEvents?key=${key}`,
   ];
 
   let lastStatus = 0;
