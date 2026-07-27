@@ -319,8 +319,10 @@ export default function StamfordMap() {
         const icon = L.divIcon({ html: trafficSVG(ev.color), className: "", iconSize: [15, 15], iconAnchor: [7, 7] });
         L.marker([ev.lat, ev.lon], { icon })
           .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(
-            popupWrap(`<div style="font-size:12px;font-weight:700;color:${ev.color};margin-bottom:4px">🚧 ${typeLabel}</div>
-            ${ev.road    ? `<div style="color:#7a9ab0">${ev.road}${ev.direction ? " · " + ev.direction : ""}</div>` : ""}
+            popupWrap(`<div style="font-size:12px;font-weight:700;color:${ev.color};margin-bottom:4px">🚧 ${ev.subtype || typeLabel}</div>
+            ${ev.road      ? `<div style="color:#7a9ab0">${ev.road}${ev.direction ? " · " + ev.direction : ""}</div>` : ""}
+            ${ev.severity  ? `<div style="color:#5a7090;font-size:10px">Severity: ${ev.severity}</div>` : ""}
+            ${ev.closure   ? `<div style="color:#ff2244;font-size:10px">⛔ Full closure</div>` : ""}
             ${ev.description ? `<div style="color:#5a7090;font-size:10px;margin-top:3px">${ev.description}</div>` : ""}`)))
           .addTo(g);
       });
