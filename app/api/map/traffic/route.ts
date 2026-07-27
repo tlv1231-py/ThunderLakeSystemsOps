@@ -48,12 +48,17 @@ async function fetchCT511(debug = false): Promise<
   const key = process.env.CT511_KEY;
   if (!key) return { ok: false, reason: "no_key" };
 
+  // GetEventFeeds is the confirmed-existing endpoint (GetEvents 404s).
+  // Try different feed names — CT 511 doesn't publish the valid list.
+  const base = "https://prod-ct.ibi511.com/api/GetEventFeeds";
   const endpoints = [
-    `https://www.ctroads.org/api/GetEvents?key=${key}&format=Json`,
-    `https://www.ctroads.org/api/GetEvents?key=${key}&format=json`,
-    `https://www.ctroads.org/api/GetEvents?key=${key}`,
-    `https://prod-ct.ibi511.com/api/GetEvents?key=${key}&format=Json`,
-    `https://prod-ct.ibi511.com/api/GetEvents?key=${key}`,
+    `${base}?feed=incidents&key=${key}&format=Json`,
+    `${base}?feed=Incidents&key=${key}&format=Json`,
+    `${base}?feed=traffic&key=${key}&format=Json`,
+    `${base}?feed=Traffic&key=${key}&format=Json`,
+    `${base}?feed=events&key=${key}&format=Json`,
+    `${base}?feed=all&key=${key}&format=Json`,
+    `${base}?key=${key}&format=Json`,
   ];
 
   let lastStatus = 0;
@@ -61,7 +66,7 @@ async function fetchCT511(debug = false): Promise<
 
   for (const url of endpoints) {
     try {
-      const res = await fetch(url, { next: { revalidate: 0 }, signal: AbortSignal.timeout(8000) });
+      const res = await fetch(url, { next: { revalidate: 0 }, signal: AbortSignal.timeout(5000) });
       if (!res.ok) {
         lastStatus = res.status;
         lastBody = await res.text().catch(() => "");
