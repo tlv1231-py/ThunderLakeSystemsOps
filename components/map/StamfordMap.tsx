@@ -389,10 +389,13 @@ export default function StamfordMap() {
           style: { color: "#22d3ee", weight: 8, opacity: 0.08, fill: false },
         }).addTo(map);
         // Inner crisp line
-        L.geoJSON(data.geojson, {
+        const boundaryLayer = L.geoJSON(data.geojson, {
           style: { color: "#22d3ee", weight: 2, opacity: 0.9, fill: true, fillColor: "#22d3ee", fillOpacity: 0.025, dashArray: "10 7" },
-          className: "stamford-boundary-path",
         }).addTo(map);
+        boundaryLayer.eachLayer((layer: any) => {
+          const el = layer.getElement?.();
+          if (el) el.classList.add("stamford-boundary-path");
+        });
         addLog("◈", "Stamford perimeter established", "#22d3ee");
       }).catch(() => {});
 
