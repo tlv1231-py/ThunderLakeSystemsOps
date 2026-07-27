@@ -20,6 +20,7 @@ import {
   ChevronsRight,
   Compass,
   Package,
+  Map,
 } from "lucide-react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { createClient } from "@/lib/supabase/client";
@@ -35,6 +36,10 @@ const NAV_ITEMS = [
   { href: "/reports",    label: "Reports",   icon: BarChart3       },
   { href: "/strategy",   label: "Strategy",  icon: Compass         },
   { href: "/tools",      label: "Products",  icon: Package         },
+];
+
+const OWNER_ITEMS = [
+  { href: "/map", label: "Live Map", icon: Map },
 ];
 
 const COLLAPSE_DEFAULT_SLUGS = ["mark", "didi", "kelsea"];
@@ -133,6 +138,21 @@ export function AdminNav({ isAdmin, userEmail = "" }: { isAdmin: boolean; userEm
               </li>
             )
           }
+          {/* Owner-only items */}
+          {isAdmin && userEmail === "tlevander.py@gmail.com" && OWNER_ITEMS.map(({ href, label, icon: Icon }) => {
+            const active = pathname === href || pathname.startsWith(href + "/");
+            return (
+              <li key={href}>
+                <NavItem
+                  href={href}
+                  label={label}
+                  icon={<Icon className="h-4 w-4 flex-shrink-0" />}
+                  active={active}
+                  collapsed={collapsed}
+                />
+              </li>
+            );
+          })}
         </ul>
 
         {/* Bottom section */}

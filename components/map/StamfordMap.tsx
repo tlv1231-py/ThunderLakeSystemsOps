@@ -211,7 +211,7 @@ export default function StamfordMap() {
         const latest = frames[frames.length - 1];
         const tileUrl = `https://tilecache.rainviewer.com${latest.path}/256/{z}/{x}/{y}/4/1_1.png`;
 
-        const layer = L.tileLayer(tileUrl, { opacity: 0.55, maxZoom: 18 });
+        const layer = L.tileLayer(tileUrl, { opacity: 0.55, maxNativeZoom: 8, maxZoom: 18 });
 
         const group = groupRefs.current.radar;
         group?.clearLayers();
