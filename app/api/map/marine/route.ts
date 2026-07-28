@@ -1,72 +1,42 @@
 import { NextResponse } from "next/server";
 
-// NOAA CO-OPS tide gauge — Bridgeport, CT (nearest verified station, id confirmed)
-const COOPS = { id: "8467150", name: "Bridgeport, CT", lat: 41.1735, lon: -73.1815 };
-
-// NDBC buoys in western Long Island Sound
-const NDBC_STATIONS = [
-  { id: "44022", name: "Execution Rocks Light", lat: 40.883, lon: -73.728 },
+// NOAA CO-OPS tide/met stations — both confirmed live
+const COOPS_TIDE = [
+  { id: "8467150", name: "Bridgeport, CT",  lat: 41.1735, lon: -73.1815 },
+  { id: "8465705", name: "New Haven, CT",   lat: 41.2833, lon: -72.9167 },
 ];
 
-async function fetchCOOPS() {
-  try {
-    const url =
-      `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter` +
-      `?date=latest&station=${COOPS.id}&product=water_level` +
-      `&datum=MLLW&time_zone=gmt&units=english&format=json&application=ThunderLakeSystems`;
-    const res = await fetch(url, { next: { revalidate: 300 }, signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const readings: any[] = data.data ?? [];
-    const latest = readings[readings.length - 1];
-    if (!latest) return null;
-    return {
-      ...COOPS,
-      type: "tide_gauge" as const,
-      waterLevel: Math.round(parseFloat(latest.v) * 10) / 10,
-      updated: latest.t,
-    };
-  } catch {
-    return null;
-  }
+function coopsUrl(stationId: string, product: string) {
+  return (
+    `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter` +
+    `?date=latest&station=${stationId}&product=${product}` +
+    `&datum=MLLW&time_zone=gmt&units=english&format=json&application=ThunderLakeSystems`
+  );
 }
 
-async function fetchNDBC(station: (typeof NDBC_STATIONS)[0]) {
+async function fetchStation(s: (typeof COOPS_TIDE)[0]) {
   try {
-    const res = await fetch(
-      `https://www.ndbc.noaa.gov/data/latest_obs/${station.id}.txt`,
-      { next: { revalidate: 1800 }, signal: AbortSignal.timeout(8000) }
-    );
-    if (!res.ok) return null;
-    const text = await res.text();
-    const lines = text.split("\n");
-    const headerLine = lines.find(l => l.startsWith("#YY"));
-    const dataLine   = lines.find(l => l.trim() && !l.startsWith("#"));
-    if (!headerLine || !dataLine) return null;
+    const [tideRes, windRes] = await Promise.all([
+      fetch(coopsUrl(s.id, "water_level"), { next: { revalidate: 300 }, signal: AbortSignal.timeout(8000) }),
+      fetch(coopsUrl(s.id, "wind"),        { next: { revalidate: 300 }, signal: AbortSignal.timeout(8000) }),
+    ]);
 
-    const fields = headerLine.replace(/^#/, "").trim().split(/\s+/);
-    const values = dataLine.trim().split(/\s+/);
-    const get = (f: string): number | null => {
-      const i = fields.indexOf(f);
-      if (i < 0) return null;
-      const v = values[i];
-      return v === "MM" || v === "999" || v === "9999" ? null : parseFloat(v);
-    };
+    const tideData = tideRes.ok ? await tideRes.json() : null;
+    const windData = windRes.ok ? await windRes.json() : null;
 
-    const wspd = get("WSPD"); // m/s
-    const wvht = get("WVHT"); // m
-    const atmp = get("ATMP"); // °C
-    const wtmp = get("WTMP"); // °C
+    const tidePt   = tideData?.data?.slice(-1)?.[0];
+    const windPt   = windData?.data?.slice(-1)?.[0];
+
+    if (!tidePt) return null;
 
     return {
-      ...station,
-      type: "buoy" as const,
-      windSpeed:  wspd != null ? Math.round(wspd * 1.944) : null,           // → knots
-      windDir:    get("WDIR"),
-      waveHeight: wvht != null ? Math.round(wvht * 3.281 * 10) / 10 : null, // → ft
-      airTemp:    atmp != null ? Math.round(atmp * 9 / 5 + 32) : null,       // → °F
-      waterTemp:  wtmp != null ? Math.round(wtmp * 9 / 5 + 32) : null,       // → °F
-      updated:    null as string | null,
+      ...s,
+      type: "tide_gauge" as const,
+      waterLevel: Math.round(parseFloat(tidePt.v) * 10) / 10,
+      windSpeed:  windPt?.s != null ? Math.round(parseFloat(windPt.s) * 1.944 * 10) / 10 : null, // m/s → knots
+      windDir:    windPt?.d  != null ? parseFloat(windPt.d)  : null, // degrees
+      windGust:   windPt?.g != null ? Math.round(parseFloat(windPt.g) * 1.944 * 10) / 10 : null,
+      updated:    tidePt.t,
     };
   } catch {
     return null;
@@ -74,10 +44,7 @@ async function fetchNDBC(station: (typeof NDBC_STATIONS)[0]) {
 }
 
 export async function GET() {
-  const [coops, ...ndbcResults] = await Promise.all([
-    fetchCOOPS(),
-    ...NDBC_STATIONS.map(s => fetchNDBC(s)),
-  ]);
-  const stations = [coops, ...ndbcResults].filter(Boolean);
+  const results = await Promise.all(COOPS_TIDE.map(fetchStation));
+  const stations = results.filter(Boolean);
   return NextResponse.json({ stations });
 }

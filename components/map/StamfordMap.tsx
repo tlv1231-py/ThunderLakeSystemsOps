@@ -287,7 +287,6 @@ export default function StamfordMap() {
 
   const trackGroupRef   = useRef<any>(null);
   const trainMarkersRef = useRef<Map<string, any>>(new Map());
-  const trainAnimRef    = useRef<Map<string, { prevLat: number; prevLon: number; prevDepMs: number; nextLat: number; nextLon: number; nextArrMs: number }>>(new Map());
   const [trackOpacity, setTrackOpacity] = useState(() => {
     if (typeof window === "undefined") return 0.35;
     const s = parseFloat(localStorage.getItem("tl-track-opacity") ?? "0.35");
@@ -576,22 +575,11 @@ export default function StamfordMap() {
         if (!incomingIds.has(id)) {
           g.removeLayer(trainMarkersRef.current.get(id));
           trainMarkersRef.current.delete(id);
-          trainAnimRef.current.delete(id);
         }
       });
 
       trains.forEach(t => {
         const id = String(t.id);
-        // Store animation data for clockTick interpolation
-        if (t.prevLat != null && t.nextLat != null && t.prevDepMs != null && t.nextArrMs != null) {
-          trainAnimRef.current.set(id, {
-            prevLat: t.prevLat, prevLon: t.prevLon, prevDepMs: t.prevDepMs,
-            nextLat: t.nextLat, nextLon: t.nextLon, nextArrMs: t.nextArrMs,
-          });
-        } else {
-          trainAnimRef.current.delete(id);
-        }
-
         const depStr = t.depMs ? new Date(t.depMs).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }) : "?";
         const popupContent = popupWrap(`<div style="font-size:13px;font-weight:700;color:#4488ff;margin-bottom:5px">Train ${t.tripId}</div>
           <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 14px">
@@ -602,8 +590,9 @@ export default function StamfordMap() {
           </div>`);
 
         if (trainMarkersRef.current.has(id)) {
-          // Update popup content; position is animated by clockTick
-          trainMarkersRef.current.get(id).getPopup()?.setContent(popupContent);
+          const m = trainMarkersRef.current.get(id);
+          m.setLatLng([t.lat, t.lon]);
+          m.getPopup()?.setContent(popupContent);
         } else {
           // New train: create marker with tactical SVG icon
           const icon = L.divIcon({
@@ -770,7 +759,7 @@ export default function StamfordMap() {
             st.waterLevel != null ? `<span style="color:#5a7090">TIDE</span><span>${st.waterLevel > 0 ? "+" : ""}${st.waterLevel} ft MLLW</span>` : "",
             st.waterTemp  != null ? `<span style="color:#5a7090">WTEMP</span><span>${st.waterTemp}°F</span>` : "",
             st.airTemp    != null ? `<span style="color:#5a7090">ATEMP</span><span>${st.airTemp}°F</span>` : "",
-            st.windSpeed  != null ? `<span style="color:#5a7090">WIND</span><span>${st.windSpeed} kt${st.windDir != null ? " " + degToCompass(st.windDir) : ""}</span>` : "",
+            st.windSpeed  != null ? `<span style="color:#5a7090">WIND</span><span>${st.windSpeed} kt${st.windGust != null ? " G" + st.windGust : ""}${st.windDir != null ? " " + degToCompass(st.windDir) : ""}</span>` : "",
             st.waveHeight != null ? `<span style="color:#5a7090">WAVE</span><span>${st.waveHeight} ft</span>` : "",
           ].filter(Boolean).join("");
           L.marker([st.lat, st.lon], { icon })
@@ -1076,16 +1065,6 @@ export default function StamfordMap() {
       document.querySelectorAll<HTMLElement>("[data-tl-mkr-onset]").forEach(el => {
         const onset = parseInt(el.dataset.tlMkrOnset ?? "0");
         if (onset) el.textContent = fmtElapsed(now - onset);
-      });
-      // Animate train markers between GTFS-RT poll cycles
-      trainAnimRef.current.forEach((anim, id) => {
-        const marker = trainMarkersRef.current.get(id);
-        if (!marker) return;
-        const { prevLat, prevLon, prevDepMs, nextLat, nextLon, nextArrMs } = anim;
-        if (nextArrMs > prevDepMs) {
-          const t = Math.min(1, Math.max(0, (now - prevDepMs) / (nextArrMs - prevDepMs)));
-          marker.setLatLng([prevLat + (nextLat - prevLat) * t, prevLon + (nextLon - prevLon) * t]);
-        }
       });
     };
     clockTick();

@@ -9,7 +9,7 @@ const RADIUS_NM  = 70;
 export async function GET() {
   try {
     const res = await fetch(
-      `https://api.adsb.fi/v1/aircraft?lat=${CENTER_LAT}&lon=${CENTER_LON}&radius=${RADIUS_NM}`,
+      `https://api.airplanes.live/v2/point/${CENTER_LAT}/${CENTER_LON}/${RADIUS_NM}`,
       {
         headers: { "User-Agent": "ThunderLakeSystems/1.0 (tlevander.py@gmail.com)" },
         next: { revalidate: 0 },
