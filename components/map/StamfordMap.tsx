@@ -460,12 +460,12 @@ export default function StamfordMap() {
       g.clearLayers();
       const items: { text: string; color: string }[] = [];
       stations.forEach((st: any) => {
-        const color = fltColor(st.fltcat ?? "");
+        const color = fltColor(st.fltCat ?? "");
         // Log when the observation time changes (new METAR or SPECI received)
         const prev = metarObsRef.current[st.icaoId];
         if (prev !== st.obsTime) {
           metarObsRef.current[st.icaoId] = st.obsTime;
-          addLog("⛅", `${st.icaoId} ${st.fltcat ?? "?"} · ${st.wspd ?? 0}kt ${st.wdir != null ? degToCompass(st.wdir) : ""}`.trim(), color);
+          addLog("⛅", `${st.icaoId} ${st.fltCat ?? "?"} · ${st.wspd ?? 0}kt ${st.wdir != null ? degToCompass(st.wdir) : ""}`.trim(), color);
         }
         const cToF = (c: number | null) => c != null ? Math.round(c * 9 / 5 + 32) : null;
         const wind = st.wspd != null
@@ -484,25 +484,25 @@ export default function StamfordMap() {
           <div style="font-size:12px;font-weight:700;color:${color};margin-bottom:2px">${st.icaoId} · ${st.name ?? ""}</div>
           <div style="color:#2a3a52;font-size:8px;margin-bottom:6px">${obsZ}</div>
           <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin-bottom:6px">
-            <span style="color:#5a7090">CAT</span><span style="color:${color};font-weight:700">${st.fltcat ?? "?"}</span>
+            <span style="color:#5a7090">CAT</span><span style="color:${color};font-weight:700">${st.fltCat ?? "?"}</span>
             <span style="color:#5a7090">WIND</span><span>${wind}</span>
             <span style="color:#5a7090">VIS</span><span>${st.visib != null ? st.visib + " SM" : "?"}</span>
             <span style="color:#5a7090">SKY</span><span>${skyLayers}</span>
             ${cToF(st.temp) != null ? `<span style="color:#5a7090">T/DP</span><span>${cToF(st.temp)}°F / ${cToF(st.dewp) ?? "?"}°F</span>` : ""}
-            ${st.altim != null ? `<span style="color:#5a7090">ALT</span><span>${Number(st.altim).toFixed(2)} inHg</span>` : ""}
+            ${st.altim != null ? `<span style="color:#5a7090">ALT</span><span>${(st.altim * 0.02953).toFixed(2)} inHg</span>` : ""}
             ${st.wxString ? `<span style="color:#5a7090">WX</span><span>${st.wxString}</span>` : ""}
           </div>
           <div style="color:#2a3a52;font-size:7.5px;word-break:break-all;border-top:1px solid #0d1a26;padding-top:4px;line-height:1.6">${st.rawOb ?? ""}</div>
         `);
         const icon = L.divIcon({
-          html: metarSVG(st.icaoId, st.fltcat ?? "?", windShort),
+          html: metarSVG(st.icaoId, st.fltCat ?? "?", windShort),
           className: "", iconSize: [84, 32], iconAnchor: [42, 32],
         });
         L.marker([st.lat, st.lon], { icon })
           .bindPopup(L.popup({ className: "tl-popup", maxWidth: 270, offset: [0, -4] }).setContent(popup))
           .addTo(g);
         items.push({
-          text: `⛅ ${st.icaoId} ${st.fltcat} · ${wind} · Vis ${st.visib ?? "?"}SM · ${skyLayers}${cToF(st.temp) != null ? ` · ${cToF(st.temp)}°F` : ""}`,
+          text: `⛅ ${st.icaoId} ${st.fltCat} · ${wind} · Vis ${st.visib ?? "?"}SM · ${skyLayers}${cToF(st.temp) != null ? ` · ${cToF(st.temp)}°F` : ""}`,
           color,
         });
       });
