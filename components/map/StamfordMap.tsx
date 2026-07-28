@@ -129,13 +129,14 @@ function dispatchSVG(callType: string) {
 const fltColor = (cat: string) =>
   cat === "VFR" ? "#22c55e" : cat === "MVFR" ? "#60a5fa" : cat === "IFR" ? "#ef4444" : cat === "LIFR" ? "#a855f7" : "#5a7090";
 
-function metarSVG(icao: string, fltcat: string, wind: string) {
+function metarSVG(icao: string, fltcat: string, wind: string, obsMs: number | null) {
   const c = fltColor(fltcat);
   return `<div style="font-family:Menlo,Consolas,monospace;background:rgba(7,9,15,0.9);
-    border:1.5px solid ${c};border-radius:4px;padding:3px 7px;
-    box-shadow:0 0 8px ${c}55;white-space:nowrap;line-height:1.35;min-width:72px">
+    border-left:2px solid ${c};border-radius:0 3px 3px 0;padding:3px 7px 3px 5px;
+    box-shadow:0 0 8px ${c}44;white-space:nowrap;line-height:1.35">
     <div style="font-size:calc(9px * var(--tl-mk-scale,1));color:${c};letter-spacing:0.1em;font-weight:700">${icao}</div>
     <div style="font-size:calc(7.5px * var(--tl-mk-scale,1));color:${c}bb">${fltcat} · ${wind}</div>
+    ${obsMs ? `<span data-tl-mkr-onset="${obsMs}" style="display:block;font-size:calc(7px * var(--tl-mk-scale,1));color:${c}66;font-variant-numeric:tabular-nums;letter-spacing:0.04em;margin-top:1px">${fmtElapsed(Date.now() - obsMs)}</span>` : ""}
   </div>`;
 }
 function geoCenter(geom: any): [number, number] | null {
@@ -682,9 +683,11 @@ export default function StamfordMap() {
           </div>
           <div style="color:#2a3a52;font-size:7.5px;word-break:break-all;border-top:1px solid #0d1a26;padding-top:4px;line-height:1.6">${st.rawOb ?? ""}</div>
         `);
+        const obsMs = st.obsTime ? st.obsTime * 1000 : null;
+        const mkH = obsMs ? 46 : 32;
         const icon = L.divIcon({
-          html: `<div class="tl-anim">${metarSVG(st.icaoId, st.fltCat ?? "?", windShort)}</div>`,
-          className: "", iconSize: [84, 32], iconAnchor: [42, 32],
+          html: `<div class="tl-anim">${metarSVG(st.icaoId, st.fltCat ?? "?", windShort, obsMs)}</div>`,
+          className: "", iconSize: [84, mkH], iconAnchor: [42, mkH],
         });
         L.marker([st.lat, st.lon], { icon })
           .bindPopup(L.popup({ className: "tl-popup", maxWidth: 270, offset: [0, -4] }).setContent(popup))
