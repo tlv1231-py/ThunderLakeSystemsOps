@@ -47,7 +47,7 @@ const LAYER_META: Record<LayerKey, LayerMeta> = {
   lightning: { label: "Lightning",  color: "#ffe066", section: "atmospheric" },
   alerts:    { label: "NWS Alerts", color: "#f59e0b", section: "atmospheric" },
   transit:   { label: "Transit",    color: "#60a5fa", section: "city"        },
-  rail:      { label: "Metro-North", color: "#ee2244", section: "city"        },
+  rail:      { label: "Metro-North", color: "#4488ff", section: "city"        },
   services:  { label: "Services",   color: "#4ade80", section: "city"        },
   traffic:   { label: "Traffic",    color: "#f59e0b", section: "city"        },
   dispatch:  { label: "Dispatch",   color: "#ff4466", section: "city"        },
@@ -195,11 +195,11 @@ function popupWrap(inner: string) {
 function trainMarkerSVG(dir: "outbound" | "inbound"): string {
   const flip = dir === "inbound" ? "transform:scaleX(-1);" : "";
   return `<div style="width:28px;height:16px;display:flex;align-items:center;justify-content:center;overflow:visible;${flip}">
-    <div style="filter:drop-shadow(0 0 4px rgba(204,34,68,0.9))">
+    <div style="filter:drop-shadow(0 0 4px rgba(26,90,204,0.9))">
       <svg viewBox="0 0 22 10" width="22" height="10" xmlns="http://www.w3.org/2000/svg">
-        <rect x="1" y="2" width="14" height="6" rx="1.5" fill="#cc2244"/>
+        <rect x="1" y="2" width="14" height="6" rx="1.5" fill="#1a5acd"/>
         <rect x="2.5" y="3.5" width="11" height="3" rx="0.5" fill="rgba(255,255,255,0.15)"/>
-        <polygon points="15,2 21,5 15,8" fill="#dd3355"/>
+        <polygon points="15,2 21,5 15,8" fill="#2266ee"/>
       </svg>
     </div>
   </div>`;
@@ -536,7 +536,7 @@ export default function StamfordMap() {
       // Draw track polylines
       ways.forEach(w => {
         L.polyline(w.coords, {
-          color: "#cc3355",
+          color: "#2255bb",
           weight: 2,
           opacity: op,
           interactive: false,
@@ -547,13 +547,13 @@ export default function StamfordMap() {
       MNR_STOPS.forEach(st => {
         L.circleMarker([st.lat, st.lon], {
           radius: 4,
-          color: "#cc3355",
-          fillColor: "#ff5577",
+          color: "#2255bb",
+          fillColor: "#4488ee",
           fillOpacity: op * 0.85,
           opacity: op,
           weight: 1.5,
         }).bindPopup(L.popup({ className: "tl-popup", maxWidth: 200, offset: [0, -6] }).setContent(
-            popupWrap(`<div style="font-size:13px;font-weight:700;color:#ee2244">${st.name}</div>
+            popupWrap(`<div style="font-size:13px;font-weight:700;color:#4488ff">${st.name}</div>
               <div style="color:#5a7090;font-size:10px;margin-top:2px">Metro-North Station</div>`)
           )).addTo(g);
       });
@@ -568,7 +568,7 @@ export default function StamfordMap() {
       setRailCount(trains.length);
       const g = groupRefs.current.rail;
       if (!g) return;
-      if (trains.length) addLog("🚆", `${trains.length} Metro-North trains active`, "#ee2244");
+      if (trains.length) addLog("🚆", `${trains.length} Metro-North trains active`, "#4488ff");
 
       // Remove markers for trains no longer in the feed
       const incomingIds = new Set(trains.map((t: any) => String(t.id)));
@@ -593,7 +593,7 @@ export default function StamfordMap() {
         }
 
         const depStr = t.depMs ? new Date(t.depMs).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }) : "?";
-        const popupContent = popupWrap(`<div style="font-size:13px;font-weight:700;color:#ee2244;margin-bottom:5px">Train ${t.tripId}</div>
+        const popupContent = popupWrap(`<div style="font-size:13px;font-weight:700;color:#4488ff;margin-bottom:5px">Train ${t.tripId}</div>
           <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 14px">
             <span style="color:#5a7090">LINE</span><span>${t.line}</span>
             <span style="color:#5a7090">DIR</span><span>${t.dir === "outbound" ? "→ New Haven" : "← Grand Central"}</span>
