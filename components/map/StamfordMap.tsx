@@ -802,7 +802,7 @@ export default function StamfordMap() {
   };
 
   return (
-    <div className="relative w-full h-screen overflow-hidden" style={{ background: "#07090f" }}>
+    <div className="relative w-full overflow-hidden tl-fullvp" style={{ background: "#07090f" }}>
       {/* Map canvas */}
       <div ref={mapRef} className="absolute inset-0 z-0" />
 
@@ -861,8 +861,8 @@ export default function StamfordMap() {
       )}
 
       {/* ── Top bar ────────────────────────────────────────────────────────── */}
-      <div className="absolute top-0 left-0 right-0 z-10 flex items-center gap-4 px-5 py-2"
-        style={{ background: "linear-gradient(to bottom, rgba(7,9,15,0.95) 0%, transparent 100%)" }}>
+      <div className="absolute top-0 left-0 right-0 z-10 flex items-center gap-3 px-3 py-2"
+        style={{ background: "linear-gradient(to bottom, rgba(7,9,15,0.95) 0%, transparent 100%)", overflow: "hidden" }}>
 
         <div className="flex items-center gap-1.5 shrink-0">
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d97a", display: "inline-block", animation: "tl-blink 1.4s ease-in-out infinite" }} />
@@ -870,7 +870,7 @@ export default function StamfordMap() {
         </div>
 
         {/* Lightning WS */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1 shrink-0 tl-mob-hide">
           <span style={{ fontSize: 10, color: wsStatus === "live" ? "#ffe066" : "#2a3a52" }}>⚡</span>
           <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 9, color: wsStatus === "live" ? "#ffe066" : "#2a3a52", letterSpacing: "0.1em" }}>
             {wsStatus === "live" ? (strikesPerMin > 0 ? `${strikesPerMin}/min` : "live") : wsStatus}
@@ -879,15 +879,15 @@ export default function StamfordMap() {
 
         {weather ? (
           <>
-            <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 11, color: "#e2ecff" }}>{Math.round(weather.temp)}°F</span>
-            <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 11, color: "#5a7090" }}>{cond}</span>
-            <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 11, color: "#5a7090" }}>{Math.round(weather.wind_speed)} mph {degToCompass(weather.wind_dir)}</span>
-            <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 11, color: "#5a7090" }}>{weather.humidity}% RH</span>
+            <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 11, color: "#e2ecff" }}>{Math.round(weather.temp)}°F</span>
+            <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 11, color: "#5a7090" }}>{cond}</span>
+            <span className="shrink-0 tl-mob-hide" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 11, color: "#5a7090" }}>{Math.round(weather.wind_speed)} mph {degToCompass(weather.wind_dir)}</span>
+            <span className="shrink-0 tl-mob-hide" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 11, color: "#5a7090" }}>{weather.humidity}% RH</span>
           </>
         ) : null}
 
         {alertCount > 0 && (
-          <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 9, color: "#f59e0b",
+          <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 9, color: "#f59e0b",
             background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.28)",
             borderRadius: 4, padding: "1px 6px", letterSpacing: "0.08em" }}>
             {alertCount} ALERT{alertCount !== 1 ? "S" : ""}
@@ -895,10 +895,7 @@ export default function StamfordMap() {
         )}
 
         {/* Military clock — right side */}
-        <div className="ml-auto flex items-center gap-3">
-          <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 9, color: "#2a3a52", letterSpacing: "0.1em" }}>
-            41.05°N 73.54°W
-          </span>
+        <div className="ml-auto flex items-center gap-2 shrink-0">
           <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 13, color: "#39d97a", letterSpacing: "0.12em", fontWeight: 700 }}>
             {milClock}
           </span>
@@ -1047,8 +1044,8 @@ export default function StamfordMap() {
 
       {/* ── Live ticker — bottom of map ───────────────────────────────────── */}
       {tickerItems.length > 0 && (
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 20,
-          height: 28, overflow: "hidden", pointerEvents: "none",
+        <div className="tl-ticker-wrap" style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 20,
+          overflow: "hidden", pointerEvents: "none",
           borderTop: "1px solid #0d1a26",
           background: "rgba(7,9,15,0.92)", display: "flex", alignItems: "center" }}>
           {/* Label */}
@@ -1105,6 +1102,20 @@ export default function StamfordMap() {
 
       {/* ── Global CSS ─────────────────────────────────────────────────────── */}
       <style>{`
+        /* Full viewport — svh accounts for mobile browser chrome */
+        .tl-fullvp { height: 100vh; height: 100svh; }
+
+        /* Ticker: 28px content area + safe-area inset for Android/iOS nav bars */
+        .tl-ticker-wrap {
+          height: calc(28px + env(safe-area-inset-bottom, 0px));
+          padding-bottom: env(safe-area-inset-bottom, 0px);
+          align-items: flex-start !important;
+          padding-top: 5px;
+        }
+
+        /* Hide secondary top-bar items on narrow screens */
+        @media (max-width: 540px) { .tl-mob-hide { display: none !important; } }
+
         @keyframes tl-ticker {
           from { transform: translateX(0); }
           to   { transform: translateX(-50%); }
