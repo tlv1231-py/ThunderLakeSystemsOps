@@ -131,12 +131,11 @@ const fltColor = (cat: string) =>
 
 function metarSVG(icao: string, fltcat: string, wind: string, obsMs: number | null) {
   const c = fltColor(fltcat);
-  return `<div style="font-family:Menlo,Consolas,monospace;background:rgba(7,9,15,0.9);
-    border-left:2px solid ${c};border-radius:0 3px 3px 0;padding:3px 7px 3px 5px;
-    box-shadow:0 0 8px ${c}44;white-space:nowrap;line-height:1.35">
+  return `<div style="font-family:Menlo,Consolas,monospace;white-space:nowrap;line-height:1.4;
+    text-shadow:0 0 6px rgba(0,0,0,0.95),0 0 12px rgba(0,0,0,0.8)">
     <div style="font-size:calc(9px * var(--tl-mk-scale,1));color:${c};letter-spacing:0.1em;font-weight:700">${icao}</div>
-    <div style="font-size:calc(7.5px * var(--tl-mk-scale,1));color:${c}bb">${fltcat} · ${wind}</div>
-    ${obsMs ? `<span data-tl-mkr-onset="${obsMs}" style="display:block;font-size:calc(7px * var(--tl-mk-scale,1));color:${c}66;font-variant-numeric:tabular-nums;letter-spacing:0.04em;margin-top:1px">${fmtElapsed(Date.now() - obsMs)}</span>` : ""}
+    <div style="font-size:calc(7.5px * var(--tl-mk-scale,1));color:${c}cc">${fltcat} · ${wind}</div>
+    ${obsMs ? `<span data-tl-mkr-onset="${obsMs}" style="display:block;font-size:calc(7px * var(--tl-mk-scale,1));color:${c}77;font-variant-numeric:tabular-nums;letter-spacing:0.04em;margin-top:1px">${fmtElapsed(Date.now() - obsMs)}</span>` : ""}
   </div>`;
 }
 function geoCenter(geom: any): [number, number] | null {
