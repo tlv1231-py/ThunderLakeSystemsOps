@@ -1087,18 +1087,18 @@ export default function StamfordMap() {
           </span>
         )}
 
-        {/* UI scale slider + Military clock — right side */}
-        <div className="ml-auto flex items-center gap-3 shrink-0">
+        {/* Military clock + UI scale slider — right side, stacked */}
+        <div className="ml-auto flex flex-col items-end gap-0.5 shrink-0">
+          <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(13 * uiScale), color: "#39d97a", letterSpacing: "0.12em", fontWeight: 700 }}>
+            {milClock}
+          </span>
           <input
             type="range" min="50" max="250" step="5"
             value={Math.round(uiScale * 100)}
             onChange={e => applyScale(Number(e.target.value) / 100)}
-            style={{ width: 52, cursor: "pointer", accentColor: "#22d3ee", opacity: 0.45, verticalAlign: "middle" }}
+            style={{ width: 52, cursor: "pointer", accentColor: "#22d3ee", opacity: 0.5 }}
             title={`UI scale ${Math.round(uiScale * 100)}%`}
           />
-          <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(13 * uiScale), color: "#39d97a", letterSpacing: "0.12em", fontWeight: 700 }}>
-            {milClock}
-          </span>
         </div>
       </div>
 
