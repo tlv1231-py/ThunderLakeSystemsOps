@@ -7,6 +7,10 @@ import { useEffect, useRef, useState, useCallback } from "react";
 type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "services" | "traffic" | "dispatch" | "buildings" | "marine" | "metar";
 type BaseKey  = "satellite" | "hybrid" | "dark";
 interface LogEntry { time: string; icon: string; text: string; color: string; }
+interface OngoingItem {
+  id: string; evtType: string; detail: string; color: string;
+  startMs: number; serverNow?: number; fetchTime?: number;
+}
 
 interface WeatherNow {
   temp: number; wind_speed: number; wind_dir: number;
@@ -184,16 +188,15 @@ function popupWrap(inner: string) {
     backdrop-filter:blur(8px)">${inner}</div>`;
 }
 
-// Animate existing layer markers out, then run callback to rebuild.
-// Uses CSS class so the GPU handles the transition; canvas-rendered markers (buildings)
-// have no DOM elements so eachLayer() just yields nothing and cb() fires immediately.
+// Animate the INNER wrapper div out (not the outer Leaflet positioning element,
+// which uses translate3d — overwriting that transform would move markers off-screen).
 function animateOut(g: any, cb: () => void) {
-  const els: HTMLElement[] = [];
+  const inners: Element[] = [];
   g.eachLayer?.((layer: any) => {
-    const el = layer.getElement?.();
-    if (el?.classList) { el.classList.add("tl-marker-out"); els.push(el); }
+    const inner = layer.getElement?.()?.firstElementChild as Element | undefined;
+    if (inner?.classList) { inner.classList.add("tl-anim-out"); inners.push(inner); }
   });
-  if (!els.length) { cb(); return; }
+  if (!inners.length) { cb(); return; }
   setTimeout(cb, 250);
 }
 
@@ -240,8 +243,11 @@ export default function StamfordMap() {
   const [panelOpen,     setPanelOpen]     = useState(false);
   const [isFullscreen,  setIsFullscreen]  = useState(false);
   const [milClock,      setMilClock]      = useState("");
+  const [nowMs,         setNowMs]         = useState(Date.now());
   const [log,           setLog]           = useState<LogEntry[]>([]);
   const [centerPx,      setCenterPx]      = useState<{ x: number; y: number } | null>(null);
+
+  const [ongoingItems, setOngoingItems] = useState<OngoingItem[]>([]);
 
   // ── Event log ─────────────────────────────────────────────────────────────
 
@@ -266,7 +272,7 @@ export default function StamfordMap() {
           if (lat == null || lon == null) return;
           const alt = baroAlt ?? geoAlt ?? 0;
           const cs  = (callsign as string)?.trim() || icao;
-          const icon = L.divIcon({ html: aircraftSVG(hdg ?? 0), className: "tl-marker", iconSize: [22, 22], iconAnchor: [11, 11] });
+          const icon = L.divIcon({ html: `<div class="tl-anim">${aircraftSVG(hdg ?? 0)}</div>`, className: "", iconSize: [22, 22], iconAnchor: [11, 11] });
           L.marker([lat, lon], { icon })
             .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(
               popupWrap(`<div style="font-size:13px;font-weight:700;color:#2a8bff;margin-bottom:5px">${cs}</div>
@@ -300,7 +306,7 @@ export default function StamfordMap() {
       if (!g) return;
       animateOut(g, () => {
       g.clearLayers();
-      const icon = L.divIcon({ html: issSVG(), className: "tl-marker", iconSize: [26, 26], iconAnchor: [13, 13] });
+      const icon = L.divIcon({ html: `<div class="tl-anim">${issSVG()}</div>`, className: "", iconSize: [26, 26], iconAnchor: [13, 13] });
       L.marker([d.latitude, d.longitude], { icon })
         .bindPopup(L.popup({ className: "tl-popup", maxWidth: 220, offset: [0, -4] }).setContent(
           popupWrap(`<div style="font-size:13px;font-weight:700;color:#a78bfa;margin-bottom:5px">ISS · Intl Space Station</div>
@@ -323,6 +329,24 @@ export default function StamfordMap() {
       setAlertTexts(features.map((f: any) =>
         [f.properties.event, f.properties.headline].filter(Boolean).join(" — ")
       ));
+      setOngoingItems(prev => {
+        const alertItems = features.map((f: any) => {
+          const sent = f.properties.sent ?? f.properties.onset ?? f.properties.effective;
+          const startMs = sent ? new Date(sent).getTime() : serverNow;
+          const headline = f.properties.headline ?? f.properties.event ?? "Alert";
+          return {
+            id: String(f.id ?? startMs),
+            evtType: (f.properties.event ?? "ALERT").toUpperCase(),
+            detail: headline.replace(/\..*$/, "").slice(0, 60),
+            color: "#f59e0b",
+            startMs,
+            serverNow,
+            fetchTime,
+          };
+        });
+        const nonAlerts = prev.filter(it => it.color !== "#f59e0b");
+        return [...alertItems, ...nonAlerts];
+      });
       if (features.length) addLog("⚠", `${features.length} NWS alert${features.length > 1 ? "s" : ""} active`, "#f59e0b");
       const g = groupRefs.current.alerts;
       if (!g) return;
@@ -382,7 +406,7 @@ export default function StamfordMap() {
         g.clearLayers();
         if (vehicles.length) addLog("🚌", `${vehicles.length} CT Transit buses active`, "#60a5fa");
         vehicles.forEach(v => {
-          const icon = L.divIcon({ html: transitSVG(v.routeTag, v.heading), className: "tl-marker", iconSize: [26, 26], iconAnchor: [13, 13] });
+          const icon = L.divIcon({ html: `<div class="tl-anim">${transitSVG(v.routeTag, v.heading)}</div>`, className: "", iconSize: [26, 26], iconAnchor: [13, 13] });
           L.marker([v.lat, v.lon], { icon })
             .bindPopup(L.popup({ className: "tl-popup", maxWidth: 220, offset: [0, -4] }).setContent(
               popupWrap(`<div style="font-size:13px;font-weight:700;color:#60a5fa;margin-bottom:5px">Route ${v.routeTag}</div>
@@ -433,6 +457,19 @@ export default function StamfordMap() {
       setTrafficTexts(events.filter(ev => ev.lat && ev.lon).map(ev =>
         [ev.subtype || ev.type.replace(/_/g, " "), ev.road, ev.direction ? `(${ev.direction})` : null].filter(Boolean).join(" · ")
       ));
+      const ft = Date.now();
+      setOngoingItems(prev => {
+        const trafficItems = events.map((ev: any, i: number) => ({
+          id: `traffic-${ev.id || i}`,
+          evtType: (ev.type ?? "TRAFFIC").replace(/_/g, " ").toUpperCase(),
+          detail: [ev.subtype || ev.type.replace(/_/g, " "), ev.road, ev.direction ? `(${ev.direction})` : null].filter(Boolean).join(" · ").slice(0, 60),
+          color: ev.color ?? "#f59e0b",
+          startMs: ft,
+          fetchTime: ft,
+        }));
+        const nonTraffic = prev.filter(it => !it.id.startsWith("traffic-"));
+        return [...nonTraffic, ...trafficItems];
+      });
       const g = groupRefs.current.traffic;
       if (!g) return;
       animateOut(g, () => {
@@ -444,7 +481,7 @@ export default function StamfordMap() {
         events.forEach(ev => {
           if (!ev.lat || !ev.lon) return;
           const typeLabel = ev.type.replace(/_/g, " ");
-          const icon = L.divIcon({ html: trafficSVG(ev.color), className: "tl-marker", iconSize: [18, 18], iconAnchor: [9, 9] });
+          const icon = L.divIcon({ html: `<div class="tl-anim">${trafficSVG(ev.color)}</div>`, className: "", iconSize: [18, 18], iconAnchor: [9, 9] });
           L.marker([ev.lat, ev.lon], { icon })
             .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(
               popupWrap(`<div style="font-size:12px;font-weight:700;color:${ev.color};margin-bottom:4px">🚧 ${ev.subtype || typeLabel}</div>
@@ -462,6 +499,19 @@ export default function StamfordMap() {
     fetch("/api/map/dispatch").then(r => r.json()).then(data => {
       const incidents: any[] = data.incidents ?? [];
       setDispatchCount(incidents.length);
+      const dspFt = Date.now();
+      setOngoingItems(prev => {
+        const dspItems = incidents.map((inc: any, i: number) => ({
+          id: `dispatch-${inc.id || i}`,
+          evtType: "DISPATCH",
+          detail: [inc.callType, inc.address].filter(Boolean).join(" · ").slice(0, 60),
+          color: "#ff4466",
+          startMs: inc.timestamp ? new Date(inc.timestamp).getTime() || dspFt : dspFt,
+          fetchTime: dspFt,
+        }));
+        const nonDsp = prev.filter(it => !it.id.startsWith("dispatch-"));
+        return [...nonDsp, ...dspItems];
+      });
       const g = groupRefs.current.dispatch;
       if (!g) return;
       animateOut(g, () => {
@@ -470,7 +520,7 @@ export default function StamfordMap() {
           addLog("🚨", `${incidents.length} active dispatch call${incidents.length !== 1 ? "s" : ""}`, "#ff4466");
           incidents.forEach(inc => {
             if (!inc.lat || !inc.lon) return;
-            const icon = L.divIcon({ html: dispatchSVG(inc.callType), className: "tl-marker", iconSize: [22, 22], iconAnchor: [11, 11] });
+            const icon = L.divIcon({ html: `<div class="tl-anim">${dispatchSVG(inc.callType)}</div>`, className: "", iconSize: [22, 22], iconAnchor: [11, 11] });
             L.marker([inc.lat, inc.lon], { icon })
               .bindPopup(L.popup({ className: "tl-popup", maxWidth: 220, offset: [0, -4] }).setContent(
                 popupWrap(`<div style="font-size:12px;font-weight:700;color:#ff4466;margin-bottom:4px">🚨 ${inc.callType}</div>
@@ -502,7 +552,7 @@ export default function StamfordMap() {
         if (!stations.length) return;
         addLog("⚓", `${stations.length} marine station${stations.length !== 1 ? "s" : ""} reporting`, "#06b6d4");
         stations.forEach(st => {
-          const icon = L.divIcon({ html: marineSVG(st.type), className: "tl-marker", iconSize: [22, 22], iconAnchor: [11, 11] });
+          const icon = L.divIcon({ html: `<div class="tl-anim">${marineSVG(st.type)}</div>`, className: "", iconSize: [22, 22], iconAnchor: [11, 11] });
           const rows = [
             st.waterLevel != null ? `<span style="color:#5a7090">TIDE</span><span>${st.waterLevel > 0 ? "+" : ""}${st.waterLevel} ft MLLW</span>` : "",
             st.waterTemp  != null ? `<span style="color:#5a7090">WTEMP</span><span>${st.waterTemp}°F</span>` : "",
@@ -590,8 +640,8 @@ export default function StamfordMap() {
           <div style="color:#2a3a52;font-size:7.5px;word-break:break-all;border-top:1px solid #0d1a26;padding-top:4px;line-height:1.6">${st.rawOb ?? ""}</div>
         `);
         const icon = L.divIcon({
-          html: metarSVG(st.icaoId, st.fltCat ?? "?", windShort),
-          className: "tl-marker", iconSize: [84, 32], iconAnchor: [42, 32],
+          html: `<div class="tl-anim">${metarSVG(st.icaoId, st.fltCat ?? "?", windShort)}</div>`,
+          className: "", iconSize: [84, 32], iconAnchor: [42, 32],
         });
         L.marker([st.lat, st.lon], { icon })
           .bindPopup(L.popup({ className: "tl-popup", maxWidth: 270, offset: [0, -4] }).setContent(popup))
@@ -740,10 +790,15 @@ export default function StamfordMap() {
         .then(() => nominatim("150 Butternut Lane, Stamford, CT"))
         .then(pos => {
           if (!pos) return;
-          const icon = L.divIcon({
-            html: `<div style="width:12px;height:12px;border-radius:50%;background:#3b82f6;border:2px solid #93c5fd;box-shadow:0 0 8px #3b82f6,0 0 20px rgba(59,130,246,0.5)"></div>`,
-            className: "", iconSize: [12, 12], iconAnchor: [6, 6],
-          });
+          const bnHtml = `<div style="position:relative;width:28px;height:28px">
+            <div style="position:absolute;top:50%;left:12px;width:12px;height:1px;background:rgba(59,130,246,0.7)"></div>
+            <div style="position:absolute;top:50%;right:12px;width:12px;height:1px;background:rgba(59,130,246,0.7);transform:translateX(100%)"></div>
+            <div style="position:absolute;left:50%;top:12px;width:1px;height:12px;background:rgba(59,130,246,0.7)"></div>
+            <div style="position:absolute;left:50%;bottom:12px;width:1px;height:12px;background:rgba(59,130,246,0.7);transform:translateY(100%)"></div>
+            <div style="position:absolute;top:50%;left:50%;width:5px;height:5px;border-radius:50%;background:#3b82f6;transform:translate(-50%,-50%);box-shadow:0 0 6px #3b82f6,0 0 14px rgba(59,130,246,0.6)"></div>
+            <div style="position:absolute;top:calc(50% + 6px);left:calc(50% + 6px);font-family:Menlo,Consolas,monospace;font-size:7.5px;color:rgba(59,130,246,0.75);letter-spacing:0.14em">BN</div>
+          </div>`;
+          const icon = L.divIcon({ html: bnHtml, className: "", iconSize: [28, 28], iconAnchor: [14, 14] });
           L.marker([pos.lat, pos.lng], { icon })
             .bindTooltip("150 Butternut Ln", { className: "tl-tt", sticky: true })
             .addTo(map);
@@ -790,13 +845,14 @@ export default function StamfordMap() {
       }, 60_000));
     });
 
-    // Military clock
+    // Military clock + live elapsed timer
     const clockTick = () => {
       const n = new Date();
       const h = String(n.getUTCHours()).padStart(2, "0");
       const m = String(n.getUTCMinutes()).padStart(2, "0");
       const s = String(n.getUTCSeconds()).padStart(2, "0");
       setMilClock(`${h}${m}${s}Z`);
+      setNowMs(Date.now());
     };
     clockTick();
     const clockId = setInterval(clockTick, 1000);
@@ -936,8 +992,45 @@ export default function StamfordMap() {
             textTransform: "uppercase",
             pointerEvents: "none",
           }}>
-            STAMFORD
+            TLS
           </div>
+        </div>
+      )}
+
+      {/* ── ONGOING events overlay (top-left, below top bar, tactical style) ─ */}
+      {ongoingItems.length > 0 && (
+        <div className="tl-ongoing absolute pointer-events-none" style={{ zIndex: 15,
+          top: 40, left: panelOpen ? 240 : 12,
+          transition: "left 0.3s",
+          fontFamily: "Menlo,Consolas,monospace",
+        }}>
+          <div style={{ fontSize: 7, color: "#22d3ee55", letterSpacing: "0.22em", marginBottom: 6, textTransform: "uppercase" }}>
+            ◈ ONGOING
+          </div>
+          {ongoingItems.map(item => {
+            const elapsedMs = item.serverNow != null && item.fetchTime != null
+              ? (item.serverNow - item.startMs) + (nowMs - item.fetchTime)
+              : (nowMs - item.startMs);
+            const clampedMs = Math.max(0, elapsedMs);
+            const elapsedStr = fmtElapsed(clampedMs);
+            return (
+              <div key={item.id} style={{
+                display: "flex", alignItems: "baseline", gap: 6,
+                marginBottom: 4,
+                animation: "tl-slide-in 0.3s ease",
+              }}>
+                <span style={{ fontSize: 8, color: item.color, letterSpacing: "0.12em", minWidth: 72, opacity: 0.9 }}>
+                  {item.evtType.slice(0, 10)}
+                </span>
+                <span style={{ fontSize: 8, color: "rgba(200,215,235,0.55)", letterSpacing: "0.03em", flex: 1, maxWidth: 200 }}>
+                  {item.detail}
+                </span>
+                <span style={{ fontSize: 8, color: item.color, letterSpacing: "0.08em", fontVariantNumeric: "tabular-nums", opacity: 0.75 }}>
+                  {elapsedStr}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -945,10 +1038,11 @@ export default function StamfordMap() {
       <div className="absolute top-0 left-0 right-0 z-10 flex items-center gap-3 px-3 py-2"
         style={{ background: "linear-gradient(to bottom, rgba(7,9,15,0.95) 0%, transparent 100%)", overflow: "hidden" }}>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        <button onClick={toggleFullscreen} className="flex items-center gap-1.5 shrink-0"
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d97a", display: "inline-block", animation: "tl-blink 1.4s ease-in-out infinite" }} />
           <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 9, color: "#39d97a", letterSpacing: "0.16em" }}>LIVE</span>
-        </div>
+        </button>
 
         {/* Lightning WS */}
         <div className="flex items-center gap-1 shrink-0 tl-mob-hide">
@@ -985,7 +1079,7 @@ export default function StamfordMap() {
 
       {/* ── Panel toggle tab ───────────────────────────────────────────────── */}
       <button onClick={() => setPanelOpen(p => !p)}
-        className="absolute z-20 top-1/2 -translate-y-1/2 transition-all duration-300"
+        className="absolute z-20 top-1/2 -translate-y-1/2 transition-all duration-300 tl-panel-hide"
         style={{ left: panelOpen ? panelW : 0,
           background: "rgba(7,9,15,0.88)", border: "1px solid #1e2d44", borderLeft: "none",
           borderRadius: "0 6px 6px 0", padding: "10px 4px", cursor: "pointer" }}>
@@ -995,7 +1089,7 @@ export default function StamfordMap() {
       </button>
 
       {/* ── Left panel ─────────────────────────────────────────────────────── */}
-      <div className="absolute top-0 bottom-0 left-0 z-10 flex flex-col transition-transform duration-300"
+      <div className="absolute top-0 bottom-0 left-0 z-10 flex flex-col transition-transform duration-300 tl-panel-hide"
         style={{ width: panelW, transform: panelOpen ? "translateX(0)" : `translateX(-${panelW}px)`,
           background: "rgba(7,9,15,0.92)", backdropFilter: "blur(18px)", borderRight: "1px solid #0f1d2e" }}>
 
@@ -1186,6 +1280,15 @@ export default function StamfordMap() {
         /* Full viewport — svh accounts for mobile browser chrome */
         .tl-fullvp { height: 100vh; height: 100svh; }
 
+        /* Fullscreen: hide side panel and suppress all scrollbars */
+        :fullscreen .tl-panel-hide { display: none !important; }
+        :-webkit-full-screen .tl-panel-hide { display: none !important; }
+        :fullscreen ::-webkit-scrollbar { display: none; }
+        :-webkit-full-screen ::-webkit-scrollbar { display: none; }
+
+        /* Ongoing overlay */
+        .tl-ongoing { text-shadow: 0 0 8px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,1); }
+
         /* Ticker: 28px content area + safe-area inset for Android/iOS nav bars */
         .tl-ticker-wrap {
           height: calc(28px + env(safe-area-inset-bottom, 0px));
@@ -1218,23 +1321,23 @@ export default function StamfordMap() {
           to   { opacity: 1; transform: translateX(0); }
         }
 
-        /* ── Marker appear / disappear ───────────────────────────────────────── */
+        /* ── Marker appear / disappear (applied to inner wrapper, not Leaflet position div) */
         @keyframes tl-pop-in {
-          0%   { transform: scale(0.15) translateY(8px); opacity: 0;   filter: brightness(4) saturate(2); }
-          45%  { transform: scale(1.18) translateY(-2px); opacity: 1;  filter: brightness(1.6) saturate(1.4); }
-          70%  { transform: scale(0.94) translateY(1px);  opacity: 1;  filter: brightness(1.1); }
-          100% { transform: scale(1)    translateY(0);    opacity: 1;  filter: brightness(1); }
+          0%   { transform: scale(0.1) translateY(10px); opacity: 0; }
+          50%  { transform: scale(1.2) translateY(-3px); opacity: 1; }
+          75%  { transform: scale(0.93) translateY(1px); opacity: 1; }
+          100% { transform: scale(1) translateY(0);      opacity: 1; }
         }
         @keyframes tl-pop-out {
-          0%   { transform: scale(1)    translateY(0);    opacity: 1;  filter: brightness(1); }
-          30%  { transform: scale(1.1)  translateY(-2px); opacity: 0.7; filter: brightness(1.8) saturate(1.5); }
-          100% { transform: scale(0)    translateY(6px);  opacity: 0;  filter: brightness(3) blur(1px); }
+          0%   { transform: scale(1) translateY(0);    opacity: 1; }
+          40%  { transform: scale(1.15) translateY(-2px); opacity: 0.7; }
+          100% { transform: scale(0) translateY(8px);  opacity: 0; }
         }
-        .tl-marker {
-          animation: tl-pop-in 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        .tl-anim {
+          animation: tl-pop-in 0.44s cubic-bezier(0.34, 1.56, 0.64, 1) both;
         }
-        .tl-marker-out {
-          animation: tl-pop-out 0.24s ease-in both;
+        .tl-anim-out {
+          animation: tl-pop-out 0.22s ease-in both;
           pointer-events: none;
         }
 
