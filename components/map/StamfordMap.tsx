@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "rail" | "services" | "traffic" | "dispatch" | "buildings" | "marine" | "metar" | "storm";
+type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "rail" | "services" | "traffic" | "dispatch" | "buildings" | "marine" | "metar" | "storm" | "outages";
 type BaseKey  = "satellite" | "hybrid" | "dark";
 interface LogEntry { icon: string; text: string; color: string; loggedAt: number; }
 interface OngoingItem {
@@ -55,6 +55,7 @@ const LAYER_META: Record<LayerKey, LayerMeta> = {
   marine:    { label: "Maritime",    color: "#06b6d4", section: "city"       },
   metar:     { label: "METAR",       color: "#22c55e", section: "atmospheric" },
   storm:     { label: "Storm Obs",   color: "#38bdf8", section: "atmospheric" },
+  outages:   { label: "Power Outages", color: "#facc15", section: "city" },
 };
 
 const SECTIONS: { key: "overhead" | "atmospheric" | "city"; label: string }[] = [
@@ -62,6 +63,63 @@ const SECTIONS: { key: "overhead" | "atmospheric" | "city"; label: string }[] = 
   { key: "atmospheric", label: "Atmospheric" },
   { key: "city",        label: "City Intel"  },
 ];
+
+// CT town centroids for Eversource service territory (hardcoded — doesn't change)
+const CT_TOWNS: Record<string, [number, number]> = {
+  ASHFORD:[41.869,-72.136],BARKHAMSTED:[41.926,-72.944],BERLIN:[41.621,-72.750],
+  BETHLEHEM:[41.639,-73.199],BLOOMFIELD:[41.815,-72.719],BOLTON:[41.765,-72.435],
+  BOZRAH:[41.553,-72.155],BRIDGEPORT:[41.187,-73.195],BRISTOL:[41.671,-72.950],
+  BROOKFIELD:[41.462,-73.400],BROOKLYN:[41.784,-71.946],BURLINGTON:[41.760,-72.963],
+  CANTON:[41.859,-72.898],CHAPLIN:[41.797,-72.136],CHESHIRE:[41.499,-72.900],
+  CLINTON:[41.277,-72.528],COLCHESTER:[41.574,-72.332],COLUMBIA:[41.701,-72.301],
+  CORNWALL:[41.839,-73.329],COVENTRY:[41.784,-72.351],DANBURY:[41.395,-73.454],
+  DARIEN:[41.078,-73.469],DEEP_RIVER:[41.377,-72.434],DERBY:[41.327,-73.088],
+  DURHAM:[41.489,-72.681],EAST_HADDAM:[41.457,-72.461],EAST_HAMPTON:[41.576,-72.503],
+  EAST_HARTFORD:[41.782,-72.611],EAST_HAVEN:[41.276,-72.868],EAST_WINDSOR:[41.915,-72.612],
+  EASTFORD:[41.897,-72.090],EASTON:[41.254,-73.296],ELLINGTON:[41.905,-72.452],
+  ENFIELD:[41.976,-72.590],ESSEX:[41.349,-72.397],FAIRFIELD:[41.141,-73.264],
+  FARMINGTON:[41.718,-72.832],FRANKLIN:[41.618,-72.166],GLASTONBURY:[41.702,-72.608],
+  GRANBY:[41.961,-72.825],GREENWICH:[41.026,-73.628],GROTON:[41.350,-72.078],
+  GUILFORD:[41.289,-72.682],HADDAM:[41.455,-72.501],HAMDEN:[41.396,-72.896],
+  HARTFORD:[41.766,-72.673],HARWINTON:[41.755,-73.056],HEBRON:[41.663,-72.366],
+  KENT:[41.728,-73.478],KILLINGLY:[41.833,-71.873],KILLINGWORTH:[41.366,-72.534],
+  LEBANON:[41.637,-72.216],LEDYARD:[41.441,-72.004],LISBON:[41.589,-72.011],
+  LITCHFIELD:[41.748,-73.188],LYME:[41.376,-72.363],MADISON:[41.279,-72.598],
+  MANCHESTER:[41.776,-72.521],MANSFIELD:[41.777,-72.233],MARLBOROUGH:[41.633,-72.458],
+  MERIDEN:[41.538,-72.807],MIDDLEBURY:[41.530,-73.113],MIDDLEFIELD:[41.512,-72.689],
+  MIDDLETOWN:[41.562,-72.650],MILFORD:[41.223,-73.057],MONROE:[41.332,-73.210],
+  MONTVILLE:[41.471,-72.150],MORRIS:[41.685,-73.191],NAUGATUCK:[41.486,-73.051],
+  NEW_BRITAIN:[41.661,-72.779],NEW_CANAAN:[41.147,-73.495],NEW_FAIRFIELD:[41.468,-73.482],
+  NEW_HARTFORD:[41.877,-72.976],NEW_HAVEN:[41.308,-72.928],NEW_MILFORD:[41.577,-73.408],
+  NEWINGTON:[41.696,-72.723],NEWTOWN:[41.414,-73.309],NORFOLK:[41.993,-73.199],
+  NORTH_BRANFORD:[41.331,-72.774],NORTH_CANAAN:[42.014,-73.333],NORTH_HAVEN:[41.392,-72.859],
+  NORTH_STONINGTON:[41.434,-71.895],NORWICH:[41.524,-72.076],NORWALK:[41.118,-73.408],
+  OLD_LYME:[41.315,-72.334],OLD_SAYBROOK:[41.296,-72.375],ORANGE:[41.279,-73.033],
+  OXFORD:[41.433,-73.116],PLAINFIELD:[41.679,-71.917],PLAINVILLE:[41.673,-72.858],
+  PLYMOUTH:[41.654,-73.030],POMFRET:[41.889,-71.965],PORTLAND:[41.573,-72.638],
+  PROSPECT:[41.501,-72.978],PUTNAM:[41.907,-71.908],REDDING:[41.303,-73.387],
+  RIDGEFIELD:[41.281,-73.498],ROCKY_HILL:[41.665,-72.650],ROXBURY:[41.553,-73.298],
+  SALEM:[41.490,-72.270],SALISBURY:[41.987,-73.419],SCOTLAND:[41.700,-72.082],
+  SEYMOUR:[41.395,-73.071],SHARON:[41.876,-73.480],SHELTON:[41.317,-73.088],
+  SHERMAN:[41.582,-73.480],SIMSBURY:[41.876,-72.808],SOMERS:[41.983,-72.451],
+  SOUTHBURY:[41.477,-73.213],SOUTHINGTON:[41.586,-72.878],SPRAGUE:[41.621,-72.056],
+  STAFFORD:[41.978,-72.298],STAMFORD:[41.053,-73.539],STERLING:[41.708,-71.832],
+  STONINGTON:[41.342,-71.920],STRATFORD:[41.184,-73.133],SUFFIELD:[41.982,-72.652],
+  THOMASTON:[41.672,-73.071],THOMPSON:[41.971,-71.869],TOLLAND:[41.870,-72.366],
+  TORRINGTON:[41.801,-73.122],TRUMBULL:[41.243,-73.201],UNION:[42.006,-72.156],
+  VERNON:[41.834,-72.450],VOLUNTOWN:[41.573,-71.853],WALLINGFORD:[41.457,-72.823],
+  WARREN:[41.741,-73.387],WASHINGTON:[41.630,-73.311],WATERBURY:[41.558,-73.052],
+  WATERFORD:[41.360,-72.124],WATERTOWN:[41.601,-73.115],WESTBROOK:[41.288,-72.447],
+  WEST_HARTFORD:[41.762,-72.742],WEST_HAVEN:[41.271,-72.947],WESTON:[41.200,-73.379],
+  WESTPORT:[41.142,-73.358],WETHERSFIELD:[41.714,-72.652],WILLINGTON:[41.876,-72.266],
+  WILTON:[41.195,-73.437],WINCHESTER:[41.929,-73.060],WINDHAM:[41.702,-72.156],
+  WINDSOR:[41.852,-72.643],WINDSOR_LOCKS:[41.929,-72.627],WOLCOTT:[41.601,-72.980],
+  WOODBRIDGE:[41.354,-73.003],WOODBURY:[41.549,-73.208],WOODSTOCK:[41.961,-71.973],
+};
+const outageColor = (pct: number) =>
+  pct >= 10 ? "#ef4444" : pct >= 2 ? "#f97316" : pct >= 0.5 ? "#facc15" : "#86efac";
+const outageRadius = (n: number) =>
+  n >= 200 ? 18 : n >= 50 ? 14 : n >= 10 ? 10 : 7;
 
 const SERVICE_CFG: Record<string, { color: string; symbol: string }> = {
   fire_station: { color: "#ff4466", symbol: "▲" },
@@ -251,7 +309,7 @@ export default function StamfordMap() {
   const [enabled,       setEnabled]       = useState<Record<LayerKey, boolean>>({
     aircraft: true, radar: true, iss: true, alerts: true,
     lightning: true, transit: true, rail: true, services: true,
-    traffic: true, dispatch: true, buildings: true, marine: true, metar: true, storm: true,
+    traffic: true, dispatch: true, buildings: true, marine: true, metar: true, storm: true, outages: true,
   });
   const [weather,       setWeather]       = useState<WeatherNow | null>(null);
   const [iss,           setIss]           = useState<ISSPos | null>(null);
@@ -265,6 +323,8 @@ export default function StamfordMap() {
   const [marineCount,    setMarineCount]    = useState(0);
   const [metarCount,    setMetarCount]    = useState(0);
   const [stormCount,    setStormCount]    = useState(0);
+  const [outagesCount,  setOutagesCount]  = useState(0);
+  const [outagesTotal,  setOutagesTotal]  = useState(0);
   const [railCount,     setRailCount]     = useState(0);
   const [alertTexts,    setAlertTexts]    = useState<string[]>([]);
   const [trafficTexts,  setTrafficTexts]  = useState<string[]>([]);
@@ -918,6 +978,42 @@ export default function StamfordMap() {
     }).catch(() => {});
   }, [addLog]);
 
+  const fetchOutages = useCallback((L: any) => {
+    fetch("/api/map/outages").then(r => r.json()).then(data => {
+      const towns: any[] = data.outages ?? [];
+      const summary = data.summary;
+      const total: number = summary?.totalAffected ?? towns.reduce((s: number, t: any) => s + (t.custAffected ?? 0), 0);
+      setOutagesCount(towns.length);
+      setOutagesTotal(total);
+      const g = groupRefs.current.outages;
+      if (!g) return;
+      if (total > 0) addLog("⚡", `Eversource: ${total.toLocaleString()} customers without power (CT)`, "#facc15");
+      animateOut(g, () => {
+        g.clearLayers();
+        towns.forEach((t: any) => {
+          // Normalize town name: replace spaces with underscores for lookup
+          const key = (t.town as string).toUpperCase().replace(/ /g, "_");
+          const coords = CT_TOWNS[key];
+          if (!coords) return;
+          const color = outageColor(t.pct ?? 0);
+          const popup = popupWrap(`
+            <div style="font-size:13px;font-weight:700;color:${color};margin-bottom:4px">⚡ ${t.town}</div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 12px">
+              <span style="color:#5a7090">AFFECTED</span><span style="color:${color};font-weight:700">${(t.custAffected ?? 0).toLocaleString()}</span>
+              <span style="color:#5a7090">SERVED</span><span>${(t.custServed ?? 0).toLocaleString()}</span>
+              <span style="color:#5a7090">PCT OUT</span><span style="color:${color}">${t.pct ?? "?"}%</span>
+            </div>`);
+          L.circleMarker(coords, {
+            radius: outageRadius(t.custAffected ?? 0),
+            color, weight: 1.5, fillColor: color, fillOpacity: 0.25, opacity: 0.9,
+          })
+            .bindPopup(L.popup({ className: "tl-popup", maxWidth: 220, offset: [0, -4] }).setContent(popup))
+            .addTo(g);
+        });
+      });
+    }).catch(() => {});
+  }, [addLog]);
+
   const fetchWeather = useCallback(() => {
     fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${STAMFORD.lat}&longitude=${STAMFORD.lng}` +
@@ -1008,6 +1104,7 @@ export default function StamfordMap() {
         marine:    L.layerGroup().addTo(map),
         metar:     L.layerGroup().addTo(map),
         storm:     L.layerGroup().addTo(map),
+        outages:   L.layerGroup().addTo(map),
       };
 
       mapInst.current = map;
@@ -1073,7 +1170,7 @@ export default function StamfordMap() {
       fetchAircraft(L); fetchRadar(L); fetchISS(L); fetchAlerts(L);
       fetchRailTrack(L);
       fetchTransit(L); fetchRail(L); fetchServices(L); fetchTraffic(L); fetchDispatch(L);
-      fetchMarine(L); fetchBuildings(L); fetchMetar(L); fetchStorm(L); // buildings: one-time load, 24h server cache
+      fetchMarine(L); fetchBuildings(L); fetchMetar(L); fetchStorm(L); fetchOutages(L); // buildings: one-time load, 24h server cache
 
       // Polling
       intervals.current.push(setInterval(() => fetchAircraft(L), 15_000));
@@ -1088,6 +1185,7 @@ export default function StamfordMap() {
       intervals.current.push(setInterval(() => fetchMarine(L), 30 * 60_000));
       intervals.current.push(setInterval(() => fetchMetar(L), 60_000));
       intervals.current.push(setInterval(() => fetchStorm(L), 15 * 60_000));
+      intervals.current.push(setInterval(() => fetchOutages(L), 15 * 60_000));
 
       // Lightning
       setupLightning(L);
@@ -1226,6 +1324,7 @@ export default function StamfordMap() {
     marine:    marineCount    > 0 ? String(marineCount)    : undefined,
     metar:     metarCount     > 0 ? String(metarCount)     : undefined,
     storm:     stormCount     > 0 ? String(stormCount)     : undefined,
+    outages:   outagesTotal   > 0 ? outagesTotal.toLocaleString() : undefined,
   };
 
   return (
