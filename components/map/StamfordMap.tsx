@@ -173,7 +173,7 @@ function alertPingSVG(label: string, onsetMs: number) {
       letter-spacing:0.14em;white-space:nowrap;
       text-shadow:0 0 5px rgba(245,158,11,0.9),0 0 10px rgba(245,158,11,0.5)">${label}</div>
     <span data-tl-mkr-onset="${onsetMs}" style="position:absolute;bottom:1px;left:0;right:0;display:block;text-align:center;
-      font-family:Menlo,Consolas,monospace;font-size:7px;color:#f59e0baa;
+      font-family:Menlo,Consolas,monospace;font-size:9px;color:#f59e0bcc;
       font-variant-numeric:tabular-nums;letter-spacing:0.06em;white-space:nowrap">${init}</span>
   </div>`;
 }
@@ -497,17 +497,17 @@ export default function StamfordMap() {
           const typeLabel = ev.type.replace(/_/g, " ");
           const evStartMs: number | null = ev.startMs ?? null;
           const markerHtml = evStartMs
-            ? `<div class="tl-anim" style="position:relative;width:52px;height:28px">
+            ? `<div class="tl-anim" style="position:relative;width:64px;height:34px">
                 <div style="position:absolute;top:0;left:50%;transform:translateX(-50%)">${trafficSVG(ev.color)}</div>
                 <span data-tl-mkr-onset="${evStartMs}" style="position:absolute;bottom:1px;left:0;right:0;display:block;text-align:center;
-                  font-family:Menlo,Consolas,monospace;font-size:6.5px;color:${ev.color}bb;
+                  font-family:Menlo,Consolas,monospace;font-size:10px;color:${ev.color}cc;
                   font-variant-numeric:tabular-nums;letter-spacing:0.06em;white-space:nowrap">${fmtElapsed(Date.now() - evStartMs)}</span>
               </div>`
             : `<div class="tl-anim">${trafficSVG(ev.color)}</div>`;
           const icon = L.divIcon({
             html: markerHtml, className: "",
-            iconSize:   evStartMs ? [52, 28] : [18, 18],
-            iconAnchor: evStartMs ? [26, 9]  : [9, 9],
+            iconSize:   evStartMs ? [64, 34] : [18, 18],
+            iconAnchor: evStartMs ? [32, 9]  : [9, 9],
           });
           L.marker([ev.lat, ev.lon], { icon })
             .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(
