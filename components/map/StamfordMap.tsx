@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "services" | "traffic" | "dispatch" | "buildings" | "marine" | "metar";
+type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "rail" | "services" | "traffic" | "dispatch" | "buildings" | "marine" | "metar";
 type BaseKey  = "satellite" | "hybrid" | "dark";
 interface LogEntry { icon: string; text: string; color: string; loggedAt: number; }
 interface OngoingItem {
@@ -47,6 +47,7 @@ const LAYER_META: Record<LayerKey, LayerMeta> = {
   lightning: { label: "Lightning",  color: "#ffe066", section: "atmospheric" },
   alerts:    { label: "NWS Alerts", color: "#f59e0b", section: "atmospheric" },
   transit:   { label: "Transit",    color: "#60a5fa", section: "city"        },
+  rail:      { label: "Metro-North", color: "#ee2244", section: "city"        },
   services:  { label: "Services",   color: "#4ade80", section: "city"        },
   traffic:   { label: "Traffic",    color: "#f59e0b", section: "city"        },
   dispatch:  { label: "Dispatch",   color: "#ff4466", section: "city"        },
@@ -223,7 +224,7 @@ export default function StamfordMap() {
   const [baseKey,       setBaseKey]       = useState<BaseKey>("dark");
   const [enabled,       setEnabled]       = useState<Record<LayerKey, boolean>>({
     aircraft: true, radar: true, iss: true, alerts: true,
-    lightning: true, transit: true, services: true,
+    lightning: true, transit: true, rail: true, services: true,
     traffic: true, dispatch: true, buildings: true, marine: true, metar: true,
   });
   const [weather,       setWeather]       = useState<WeatherNow | null>(null);
@@ -237,6 +238,7 @@ export default function StamfordMap() {
   const [buildingsCount, setBuildingsCount] = useState(0);
   const [marineCount,    setMarineCount]    = useState(0);
   const [metarCount,    setMetarCount]    = useState(0);
+  const [railCount,     setRailCount]     = useState(0);
   const [alertTexts,    setAlertTexts]    = useState<string[]>([]);
   const [trafficTexts,  setTrafficTexts]  = useState<string[]>([]);
   const [marineTexts,   setMarineTexts]   = useState<string[]>([]);
@@ -447,6 +449,37 @@ export default function StamfordMap() {
               </div>`)))
             .addTo(g);
         });
+      });
+    }).catch(() => {});
+  }, [addLog]);
+
+  const fetchRail = useCallback((L: any) => {
+    fetch("/api/map/transit-rail").then(r => r.json()).then(data => {
+      const trains: any[] = data.trains ?? [];
+      setRailCount(trains.length);
+      const g = groupRefs.current.rail;
+      if (!g) return;
+      g.clearLayers();
+      if (trains.length) addLog("🚆", `${trains.length} Metro-North trains active`, "#ee2244");
+      trains.forEach(t => {
+        const arrow = t.dir === "outbound" ? "▶" : "◀";
+        const html = `<div style="font-family:Menlo,Consolas,monospace;white-space:nowrap;line-height:1.4;
+          text-shadow:0 0 6px rgba(0,0,0,0.95),0 0 12px rgba(0,0,0,0.8)">
+          <div style="font-size:calc(8px * var(--tl-mk-scale,1));color:#ee2244;font-weight:700;letter-spacing:0.08em">${arrow} ${t.tripId}</div>
+          <div style="font-size:calc(7px * var(--tl-mk-scale,1));color:#ee224499">${t.line}</div>
+        </div>`;
+        const icon = L.divIcon({ html: `<div class="tl-anim">${html}</div>`, className: "", iconSize: [40, 24], iconAnchor: [20, 12] });
+        const depStr = t.depMs ? new Date(t.depMs).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }) : "?";
+        L.marker([t.lat, t.lon], { icon })
+          .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(
+            popupWrap(`<div style="font-size:13px;font-weight:700;color:#ee2244;margin-bottom:5px">Train ${t.tripId}</div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 14px">
+              <span style="color:#5a7090">LINE</span><span>${t.line}</span>
+              <span style="color:#5a7090">DIR</span><span>${t.dir === "outbound" ? "→ New Haven" : "← Grand Central"}</span>
+              <span style="color:#5a7090">NEXT</span><span>${t.stopName}</span>
+              <span style="color:#5a7090">DEP</span><span>${depStr}</span>
+            </div>`)))
+          .addTo(g);
       });
     }).catch(() => {});
   }, [addLog]);
@@ -783,6 +816,7 @@ export default function StamfordMap() {
         alerts:    L.layerGroup().addTo(map),
         lightning: L.layerGroup().addTo(map),
         transit:   L.layerGroup().addTo(map),
+        rail:      L.layerGroup().addTo(map),
         services:  L.layerGroup().addTo(map),
         traffic:   L.layerGroup().addTo(map),
         dispatch:  L.layerGroup().addTo(map),
@@ -852,7 +886,7 @@ export default function StamfordMap() {
 
       // Initial fetches
       fetchAircraft(L); fetchRadar(L); fetchISS(L); fetchAlerts(L);
-      fetchTransit(L); fetchServices(L); fetchTraffic(L); fetchDispatch(L);
+      fetchTransit(L); fetchRail(L); fetchServices(L); fetchTraffic(L); fetchDispatch(L);
       fetchMarine(L); fetchBuildings(L); fetchMetar(L); // buildings: one-time load, 24h server cache
 
       // Polling
@@ -861,6 +895,7 @@ export default function StamfordMap() {
       intervals.current.push(setInterval(() => fetchRadar(L), 5 * 60_000));
       intervals.current.push(setInterval(() => fetchAlerts(L), 10 * 60_000));
       intervals.current.push(setInterval(() => fetchTransit(L), 30_000));
+      intervals.current.push(setInterval(() => fetchRail(L), 30_000));
       intervals.current.push(setInterval(() => fetchServices(L), 15 * 60_000));
       intervals.current.push(setInterval(() => fetchTraffic(L), 5 * 60_000));
       intervals.current.push(setInterval(() => fetchDispatch(L), 30_000));
@@ -996,6 +1031,7 @@ export default function StamfordMap() {
     alerts:    alertCount     > 0 ? String(alertCount)     : undefined,
     lightning: strikeCount    > 0 ? String(strikeCount)    : undefined,
     transit:   transitCount   > 0 ? String(transitCount)   : undefined,
+    rail:      railCount      > 0 ? String(railCount)      : undefined,
     services:  servicesCount  > 0 ? String(servicesCount)  : undefined,
     traffic:   trafficCount   > 0 ? String(trafficCount)   : undefined,
     dispatch:  dispatchCount  > 0 ? String(dispatchCount)  : "◉",
