@@ -246,6 +246,7 @@ export default function StamfordMap() {
   const [nowMs,         setNowMs]         = useState(Date.now());
   const [log,           setLog]           = useState<LogEntry[]>([]);
   const [centerPx,      setCenterPx]      = useState<{ x: number; y: number } | null>(null);
+  const [uiScale,       setUiScale]       = useState(1.0);
 
   const [ongoingItems, setOngoingItems] = useState<OngoingItem[]>([]);
 
@@ -1004,6 +1005,7 @@ export default function StamfordMap() {
           top: 44, left: panelOpen ? 244 : 12, right: 12,
           transition: "left 0.3s",
           fontFamily: "Menlo,Consolas,monospace",
+          transform: `scale(${uiScale})`, transformOrigin: "top left",
         }}>
           <div style={{ fontSize: 8, color: "#22d3ee44", letterSpacing: "0.22em", marginBottom: 5, textTransform: "uppercase" }}>
             ◈ ONGOING
@@ -1077,8 +1079,15 @@ export default function StamfordMap() {
           </span>
         )}
 
-        {/* Military clock — right side */}
-        <div className="ml-auto flex items-center gap-2 shrink-0">
+        {/* UI scale slider + Military clock — right side */}
+        <div className="ml-auto flex items-center gap-3 shrink-0">
+          <input
+            type="range" min="70" max="160" step="5"
+            value={Math.round(uiScale * 100)}
+            onChange={e => setUiScale(Number(e.target.value) / 100)}
+            style={{ width: 52, cursor: "pointer", accentColor: "#22d3ee", opacity: 0.45, verticalAlign: "middle" }}
+            title={`UI scale ${Math.round(uiScale * 100)}%`}
+          />
           <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 13, color: "#39d97a", letterSpacing: "0.12em", fontWeight: 700 }}>
             {milClock}
           </span>
@@ -1260,7 +1269,8 @@ export default function StamfordMap() {
 
       {/* ── Event log — bottom right ───────────────────────────────────────── */}
       {log.length > 0 && (
-        <div style={{ position: "absolute", right: 56, bottom: 36, zIndex: 15, maxWidth: 340, pointerEvents: "none" }}>
+        <div style={{ position: "absolute", right: 56, bottom: 36, zIndex: 15, maxWidth: 340, pointerEvents: "none",
+          transform: `scale(${uiScale})`, transformOrigin: "bottom right" }}>
           {log.slice(0, 7).map((entry, i) => (
             <div key={i} style={{
               display: "flex", alignItems: "center", gap: 7,
