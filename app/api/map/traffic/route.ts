@@ -37,15 +37,32 @@ async function fetchCT511(debug = false): Promise<
       return { ok: false, reason: "unexpected_shape", ...(debug ? { raw: JSON.stringify(raw).slice(0, 300) } : {}) };
     }
 
-    // Parse Microsoft /Date(ms)/ format or ISO strings from CT511
+    // Parse CT511 date fields — handles ISO strings, Unix seconds, Unix ms,
+    // and Microsoft /Date(...)/ format. Values < 1e10 are treated as seconds.
     const parseApiDate = (v: any): number | null => {
-      if (!v) return null;
+      if (v == null || v === "" || v === false) return null;
+      if (typeof v === "number") {
+        if (v <= 0) return null;
+        return v < 1e10 ? v * 1000 : v;
+      }
       if (typeof v === "string") {
-        const msMatch = v.match(/\/Date\((\d+)/);
-        if (msMatch) return parseInt(msMatch[1]);
+        // Microsoft /Date(epoch)/ — may be seconds or ms
+        const msMatch = v.match(/\/Date\((-?\d+)/);
+        if (msMatch) {
+          const n = parseInt(msMatch[1]);
+          return n <= 0 ? null : n < 1e10 ? n * 1000 : n;
+        }
+        // Pure numeric string (Unix timestamp)
+        if (/^\d+$/.test(v)) {
+          const n = parseInt(v);
+          return n > 0 ? (n < 1e10 ? n * 1000 : n) : null;
+        }
       }
       const d = new Date(v);
-      return isNaN(d.getTime()) ? null : d.getTime();
+      if (isNaN(d.getTime())) return null;
+      const ms = d.getTime();
+      // Guard against sentinel "zero" dates (e.g. "0001-01-01") returned by some APIs
+      return ms > -31536000000 ? ms : null; // reject dates before 1969
     };
 
     const events = raw

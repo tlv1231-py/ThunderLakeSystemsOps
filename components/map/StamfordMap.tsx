@@ -513,17 +513,17 @@ export default function StamfordMap() {
           const typeLabel = ev.type.replace(/_/g, " ");
           const evStartMs: number | null = ev.startMs ?? null;
           const markerHtml = evStartMs
-            ? `<div class="tl-anim" style="position:relative;width:64px;height:34px">
-                <div style="position:absolute;top:0;left:50%;transform:translateX(-50%)">${trafficSVG(ev.color)}</div>
-                <span data-tl-mkr-onset="${evStartMs}" style="position:absolute;bottom:1px;left:0;right:0;display:block;text-align:center;
+            ? `<div class="tl-anim" style="position:relative;width:18px;height:18px;overflow:visible">
+                ${trafficSVG(ev.color)}
+                <span data-tl-mkr-onset="${evStartMs}" style="position:absolute;top:20px;left:50%;transform:translateX(-50%);
                   font-family:Menlo,Consolas,monospace;font-size:calc(10px * var(--tl-mk-scale,1));color:${ev.color}cc;
                   font-variant-numeric:tabular-nums;letter-spacing:0.06em;white-space:nowrap">${fmtElapsed(Date.now() - evStartMs)}</span>
               </div>`
             : `<div class="tl-anim">${trafficSVG(ev.color)}</div>`;
           const icon = L.divIcon({
             html: markerHtml, className: "",
-            iconSize:   evStartMs ? [64, 34] : [18, 18],
-            iconAnchor: evStartMs ? [32, 9]  : [9, 9],
+            iconSize:   [18, 18],
+            iconAnchor: [9, 9],
           });
           L.marker([ev.lat, ev.lon], { icon })
             .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(
