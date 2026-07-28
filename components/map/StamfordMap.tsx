@@ -134,8 +134,8 @@ function metarSVG(icao: string, fltcat: string, wind: string) {
   return `<div style="font-family:Menlo,Consolas,monospace;background:rgba(7,9,15,0.9);
     border:1.5px solid ${c};border-radius:4px;padding:3px 7px;
     box-shadow:0 0 8px ${c}55;white-space:nowrap;line-height:1.35;min-width:72px">
-    <div style="font-size:9px;color:${c};letter-spacing:0.1em;font-weight:700">${icao}</div>
-    <div style="font-size:7.5px;color:${c}bb">${fltcat} · ${wind}</div>
+    <div style="font-size:calc(9px * var(--tl-mk-scale,1));color:${c};letter-spacing:0.1em;font-weight:700">${icao}</div>
+    <div style="font-size:calc(7.5px * var(--tl-mk-scale,1));color:${c}bb">${fltcat} · ${wind}</div>
   </div>`;
 }
 function geoCenter(geom: any): [number, number] | null {
@@ -173,7 +173,7 @@ function alertPingSVG(label: string, onsetMs: number) {
       letter-spacing:0.14em;white-space:nowrap;
       text-shadow:0 0 5px rgba(245,158,11,0.9),0 0 10px rgba(245,158,11,0.5)">${label}</div>
     <span data-tl-mkr-onset="${onsetMs}" style="position:absolute;bottom:1px;left:0;right:0;display:block;text-align:center;
-      font-family:Menlo,Consolas,monospace;font-size:9px;color:#f59e0bcc;
+      font-family:Menlo,Consolas,monospace;font-size:calc(9px * var(--tl-mk-scale,1));color:#f59e0bcc;
       font-variant-numeric:tabular-nums;letter-spacing:0.06em;white-space:nowrap">${init}</span>
   </div>`;
 }
@@ -260,9 +260,25 @@ export default function StamfordMap() {
     if (typeof window !== "undefined") localStorage.setItem("tl-ui-scale", String(v));
   }, []);
 
+  const [markerScale, setMarkerScale] = useState(() => {
+    if (typeof window === "undefined") return 1.0;
+    const s = parseFloat(localStorage.getItem("tl-mk-scale") ?? "1");
+    return isNaN(s) || s < 0.5 || s > 3 ? 1.0 : s;
+  });
+  const applyMarkerScale = useCallback((v: number) => {
+    setMarkerScale(v);
+    document.documentElement.style.setProperty("--tl-mk-scale", String(v));
+    if (typeof window !== "undefined") localStorage.setItem("tl-mk-scale", String(v));
+  }, []);
+
   const [ongoingItems, setOngoingItems] = useState<OngoingItem[]>([]);
 
   // ── Event log ─────────────────────────────────────────────────────────────
+
+  // Sync marker text scale CSS var on mount and whenever it changes
+  useEffect(() => {
+    document.documentElement.style.setProperty("--tl-mk-scale", String(markerScale));
+  }, [markerScale]);
 
   // serverNow: pass the server's Date.now() when the API response includes one,
   // so the timer is anchored to the server clock rather than the client's system time.
@@ -500,7 +516,7 @@ export default function StamfordMap() {
             ? `<div class="tl-anim" style="position:relative;width:64px;height:34px">
                 <div style="position:absolute;top:0;left:50%;transform:translateX(-50%)">${trafficSVG(ev.color)}</div>
                 <span data-tl-mkr-onset="${evStartMs}" style="position:absolute;bottom:1px;left:0;right:0;display:block;text-align:center;
-                  font-family:Menlo,Consolas,monospace;font-size:10px;color:${ev.color}cc;
+                  font-family:Menlo,Consolas,monospace;font-size:calc(10px * var(--tl-mk-scale,1));color:${ev.color}cc;
                   font-variant-numeric:tabular-nums;letter-spacing:0.06em;white-space:nowrap">${fmtElapsed(Date.now() - evStartMs)}</span>
               </div>`
             : `<div class="tl-anim">${trafficSVG(ev.color)}</div>`;
@@ -1110,7 +1126,7 @@ export default function StamfordMap() {
           </span>
         )}
 
-        {/* Military clock + UI scale slider — right side, stacked */}
+        {/* Military clock + UI scale slider + marker text slider — right side, stacked */}
         <div className="ml-auto flex flex-col items-end gap-0.5 shrink-0">
           <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(13 * uiScale), color: "#39d97a", letterSpacing: "0.12em", fontWeight: 700 }}>
             {milClock}
@@ -1121,6 +1137,13 @@ export default function StamfordMap() {
             onChange={e => applyScale(Number(e.target.value) / 100)}
             style={{ width: 52, cursor: "pointer", accentColor: "#22d3ee", opacity: 0.5 }}
             title={`UI scale ${Math.round(uiScale * 100)}%`}
+          />
+          <input
+            type="range" min="50" max="300" step="5"
+            value={Math.round(markerScale * 100)}
+            onChange={e => applyMarkerScale(Number(e.target.value) / 100)}
+            style={{ width: 52, cursor: "pointer", accentColor: "#f59e0b", opacity: 0.5 }}
+            title={`Marker text ${Math.round(markerScale * 100)}%`}
           />
         </div>
       </div>
