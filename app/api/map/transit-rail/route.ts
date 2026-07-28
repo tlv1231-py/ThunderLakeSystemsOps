@@ -95,38 +95,67 @@ export async function GET(req: Request) {
       const updates = tu.stopTimeUpdate ?? [];
       if (!updates.length) continue;
 
-      // Find first stop whose departure is still in the future; fall back to last update
-      let target = updates[updates.length - 1];
-      for (const u of updates) {
-        const dep = Number(u.departure?.time ?? u.arrival?.time ?? 0);
-        if (dep > now) { target = u; break; }
-      }
-
-      const stopId = String(target.stopId ?? "");
-      const stop = STOPS[stopId];
-      const depSec = Number(target.departure?.time ?? target.arrival?.time ?? 0);
       const dirId = Number(tu.trip?.directionId ?? 0);
+
+      // Find prev stop (last departed) and next stop (next upcoming) for position interpolation
+      let prevStop: { lat: number; lon: number; depSec: number } | null = null;
+      let nextStop: { lat: number; lon: number; arrSec: number; depSec: number; name: string } | null = null;
+
+      for (const u of updates) {
+        const dep = Number(u.departure?.time ?? 0);
+        const arr = Number(u.arrival?.time ?? 0);
+        const sid = String(u.stopId ?? "");
+        const s = STOPS[sid];
+        if (!s) continue;
+        if (dep > 0 && dep <= now) {
+          prevStop = { lat: s.lat, lon: s.lon, depSec: dep };
+        } else if (!nextStop) {
+          const eff = arr > 0 ? arr : dep;
+          if (eff > now) nextStop = { lat: s.lat, lon: s.lon, arrSec: eff, depSec: dep, name: s.name };
+        }
+      }
+      // Fallback: use last stop if no future stop found
+      if (!nextStop) {
+        const last = updates[updates.length - 1];
+        const s = STOPS[String(last.stopId ?? "")];
+        if (s) {
+          const d = Number(last.departure?.time ?? last.arrival?.time ?? 0);
+          nextStop = { lat: s.lat, lon: s.lon, arrSec: d, depSec: d, name: s.name };
+        }
+      }
+      if (!nextStop) continue;
+
+      // Interpolate current position between prev and next stop
+      let lat = nextStop.lat, lon = nextStop.lon;
+      if (prevStop && nextStop.arrSec > prevStop.depSec) {
+        const t = Math.min(1, Math.max(0, (now - prevStop.depSec) / (nextStop.arrSec - prevStop.depSec)));
+        lat = prevStop.lat + (nextStop.lat - prevStop.lat) * t;
+        lon = prevStop.lon + (nextStop.lon - prevStop.lon) * t;
+      }
 
       if (debug) {
         debugRows.push({
           id: entity.id, routeId, tripId: tu.trip?.tripId,
-          stopId, stopName: stop?.name ?? "?", depSec,
+          stopName: nextStop.name, depSec: nextStop.depSec,
+          hasPrev: !!prevStop, lat, lon,
         });
       }
-
-      if (!stop) continue;
 
       trains.push({
         id: entity.id,
         tripId: String(tu.trip?.tripId ?? ""),
         routeId,
         line: ROUTE_LABEL[routeId] ?? routeId,
-        stopId,
-        stopName: stop.name,
-        lat: stop.lat,
-        lon: stop.lon,
-        depMs: depSec * 1000,
-        dir: dirId === 0 ? "outbound" : "inbound", // 0 = to New Haven, 1 = to GCT
+        lat, lon,
+        stopName: nextStop.name,
+        depMs: nextStop.depSec * 1000,
+        dir: dirId === 0 ? "outbound" : "inbound",
+        prevLat: prevStop?.lat ?? null,
+        prevLon: prevStop?.lon ?? null,
+        prevDepMs: prevStop ? prevStop.depSec * 1000 : null,
+        nextLat: nextStop.lat,
+        nextLon: nextStop.lon,
+        nextArrMs: nextStop.arrSec * 1000,
       });
     }
 

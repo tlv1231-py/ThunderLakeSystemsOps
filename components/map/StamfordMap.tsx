@@ -192,6 +192,18 @@ function popupWrap(inner: string) {
     border:1px solid #1e2d44;border-radius:8px;padding:10px 14px;min-width:180px;line-height:1.9;
     backdrop-filter:blur(8px)">${inner}</div>`;
 }
+function trainMarkerSVG(dir: "outbound" | "inbound"): string {
+  const flip = dir === "inbound" ? "transform:scaleX(-1);" : "";
+  return `<div style="width:28px;height:16px;display:flex;align-items:center;justify-content:center;overflow:visible;${flip}">
+    <div style="filter:drop-shadow(0 0 4px rgba(204,34,68,0.9))">
+      <svg viewBox="0 0 22 10" width="22" height="10" xmlns="http://www.w3.org/2000/svg">
+        <rect x="1" y="2" width="14" height="6" rx="1.5" fill="#cc2244"/>
+        <rect x="2.5" y="3.5" width="11" height="3" rx="0.5" fill="rgba(255,255,255,0.15)"/>
+        <polygon points="15,2 21,5 15,8" fill="#dd3355"/>
+      </svg>
+    </div>
+  </div>`;
+}
 
 // Animate the INNER wrapper div out (not the outer Leaflet positioning element,
 // which uses translate3d — overwriting that transform would move markers off-screen).
@@ -273,7 +285,9 @@ export default function StamfordMap() {
     if (typeof window !== "undefined") localStorage.setItem("tl-mk-scale", String(v));
   }, []);
 
-  const trackGroupRef = useRef<any>(null);
+  const trackGroupRef   = useRef<any>(null);
+  const trainMarkersRef = useRef<Map<string, any>>(new Map());
+  const trainAnimRef    = useRef<Map<string, { prevLat: number; prevLon: number; prevDepMs: number; nextLat: number; nextLon: number; nextArrMs: number }>>(new Map());
   const [trackOpacity, setTrackOpacity] = useState(() => {
     if (typeof window === "undefined") return 0.35;
     const s = parseFloat(localStorage.getItem("tl-track-opacity") ?? "0.35");
@@ -538,7 +552,10 @@ export default function StamfordMap() {
           fillOpacity: op * 0.85,
           opacity: op,
           weight: 1.5,
-        }).bindTooltip(st.name, { permanent: false, direction: "top", className: "tl-tooltip" }).addTo(g);
+        }).bindPopup(L.popup({ className: "tl-popup", maxWidth: 200, offset: [0, -6] }).setContent(
+            popupWrap(`<div style="font-size:13px;font-weight:700;color:#ee2244">${st.name}</div>
+              <div style="color:#5a7090;font-size:10px;margin-top:2px">Metro-North Station</div>`)
+          )).addTo(g);
       });
 
       trackGroupRef.current = g;
@@ -551,27 +568,55 @@ export default function StamfordMap() {
       setRailCount(trains.length);
       const g = groupRefs.current.rail;
       if (!g) return;
-      g.clearLayers();
       if (trains.length) addLog("🚆", `${trains.length} Metro-North trains active`, "#ee2244");
+
+      // Remove markers for trains no longer in the feed
+      const incomingIds = new Set(trains.map((t: any) => String(t.id)));
+      trainMarkersRef.current.forEach((_marker, id) => {
+        if (!incomingIds.has(id)) {
+          g.removeLayer(trainMarkersRef.current.get(id));
+          trainMarkersRef.current.delete(id);
+          trainAnimRef.current.delete(id);
+        }
+      });
+
       trains.forEach(t => {
-        const arrow = t.dir === "outbound" ? "▶" : "◀";
-        const html = `<div style="font-family:Menlo,Consolas,monospace;white-space:nowrap;line-height:1.4;
-          text-shadow:0 0 6px rgba(0,0,0,0.95),0 0 12px rgba(0,0,0,0.8)">
-          <div style="font-size:calc(8px * var(--tl-mk-scale,1));color:#ee2244;font-weight:700;letter-spacing:0.08em">${arrow} ${t.tripId}</div>
-          <div style="font-size:calc(7px * var(--tl-mk-scale,1));color:#ee224499">${t.line}</div>
-        </div>`;
-        const icon = L.divIcon({ html: `<div class="tl-anim">${html}</div>`, className: "", iconSize: [40, 24], iconAnchor: [20, 12] });
+        const id = String(t.id);
+        // Store animation data for clockTick interpolation
+        if (t.prevLat != null && t.nextLat != null && t.prevDepMs != null && t.nextArrMs != null) {
+          trainAnimRef.current.set(id, {
+            prevLat: t.prevLat, prevLon: t.prevLon, prevDepMs: t.prevDepMs,
+            nextLat: t.nextLat, nextLon: t.nextLon, nextArrMs: t.nextArrMs,
+          });
+        } else {
+          trainAnimRef.current.delete(id);
+        }
+
         const depStr = t.depMs ? new Date(t.depMs).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }) : "?";
-        L.marker([t.lat, t.lon], { icon })
-          .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(
-            popupWrap(`<div style="font-size:13px;font-weight:700;color:#ee2244;margin-bottom:5px">Train ${t.tripId}</div>
-            <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 14px">
-              <span style="color:#5a7090">LINE</span><span>${t.line}</span>
-              <span style="color:#5a7090">DIR</span><span>${t.dir === "outbound" ? "→ New Haven" : "← Grand Central"}</span>
-              <span style="color:#5a7090">NEXT</span><span>${t.stopName}</span>
-              <span style="color:#5a7090">DEP</span><span>${depStr}</span>
-            </div>`)))
-          .addTo(g);
+        const popupContent = popupWrap(`<div style="font-size:13px;font-weight:700;color:#ee2244;margin-bottom:5px">Train ${t.tripId}</div>
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 14px">
+            <span style="color:#5a7090">LINE</span><span>${t.line}</span>
+            <span style="color:#5a7090">DIR</span><span>${t.dir === "outbound" ? "→ New Haven" : "← Grand Central"}</span>
+            <span style="color:#5a7090">NEXT</span><span>${t.stopName}</span>
+            <span style="color:#5a7090">DEP</span><span>${depStr}</span>
+          </div>`);
+
+        if (trainMarkersRef.current.has(id)) {
+          // Update popup content; position is animated by clockTick
+          trainMarkersRef.current.get(id).getPopup()?.setContent(popupContent);
+        } else {
+          // New train: create marker with tactical SVG icon
+          const icon = L.divIcon({
+            html: `<div class="tl-anim">${trainMarkerSVG(t.dir)}</div>`,
+            className: "",
+            iconSize: [28, 16],
+            iconAnchor: [14, 8],
+          });
+          const marker = L.marker([t.lat, t.lon], { icon })
+            .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupContent))
+            .addTo(g);
+          trainMarkersRef.current.set(id, marker);
+        }
       });
     }).catch(() => {});
   }, [addLog]);
@@ -1031,6 +1076,16 @@ export default function StamfordMap() {
       document.querySelectorAll<HTMLElement>("[data-tl-mkr-onset]").forEach(el => {
         const onset = parseInt(el.dataset.tlMkrOnset ?? "0");
         if (onset) el.textContent = fmtElapsed(now - onset);
+      });
+      // Animate train markers between GTFS-RT poll cycles
+      trainAnimRef.current.forEach((anim, id) => {
+        const marker = trainMarkersRef.current.get(id);
+        if (!marker) return;
+        const { prevLat, prevLon, prevDepMs, nextLat, nextLon, nextArrMs } = anim;
+        if (nextArrMs > prevDepMs) {
+          const t = Math.min(1, Math.max(0, (now - prevDepMs) / (nextArrMs - prevDepMs)));
+          marker.setLatLng([prevLat + (nextLat - prevLat) * t, prevLon + (nextLon - prevLon) * t]);
+        }
       });
     };
     clockTick();
