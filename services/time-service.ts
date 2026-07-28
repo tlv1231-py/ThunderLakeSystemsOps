@@ -18,7 +18,7 @@ export async function getTimeEntries(filters?: {
   const supabase = await createClient();
   let query = supabase
     .from("time_entries")
-    .select("*, clients(company_name), projects(name)")
+    .select("id,client_id,project_id,date_worked,hours_decimal,billable,status,description,created_at,clients(company_name),projects(name)")
     .order("date_worked", { ascending: false });
 
   if (filters?.clientId) query = query.eq("client_id", filters.clientId);
@@ -37,7 +37,7 @@ export async function getUninvoicedBillableTime(clientId?: string) {
   const supabase = await createClient();
   let query = supabase
     .from("time_entries")
-    .select("*, clients(company_name, default_hourly_rate, currency), projects(name, hourly_rate_override)")
+    .select("id,client_id,project_id,date_worked,hours_decimal,billable,status,description,clients(company_name,default_hourly_rate,currency),projects(name,hourly_rate_override)")
     .eq("status", "uninvoiced")
     .eq("billable", true)
     .order("date_worked");

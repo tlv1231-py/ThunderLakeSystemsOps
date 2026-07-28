@@ -48,7 +48,7 @@ export function QuickLinks({ userId }: { userId: string }) {
   // ── Load + realtime ──────────────────────────────────────────────────────
   useEffect(() => {
     db.from("dashboard_links")
-      .select("*").eq("user_id", userId).order("created_at", { ascending: true })
+      .select("id,name,fields,user_id,created_at").eq("user_id", userId).order("created_at", { ascending: true })
       .then(({ data }: any) => { if (data) setGroups(data); });
 
     const ch = db.channel("dashboard-links")

@@ -10,7 +10,7 @@ export async function getClients(activeOnly = false) {
   const supabase = await createClient();
   let query = supabase
     .from("clients")
-    .select("*")
+    .select("id,company_name,contact_name,contact_email,currency,is_active,user_id")
     .order("company_name");
 
   if (activeOnly) {

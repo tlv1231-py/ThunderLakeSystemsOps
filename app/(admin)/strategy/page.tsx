@@ -21,8 +21,8 @@ export default async function StrategyPage() {
       db.from("strategy_images").select("*").order("created_at", { ascending: false }),
       db.from("strategy_preferences").select("*").eq("user_id", user!.id).maybeSingle(),
       db.from("strategy_columns").select("*").order("position", { ascending: true }),
-      db.from("strategy_reactions").select("*"),
-      db.from("strategy_comments").select("*").order("created_at", { ascending: true }),
+      db.from("strategy_reactions").select("id,item_id,reaction,user_id"),
+      db.from("strategy_comments").select("id,item_id,item_type,content,author_email,created_at").order("created_at", { ascending: true }),
       db.from("strategy_preferences").select("*"),
       db.from("strategy_chat").select("*").order("created_at", { ascending: true }).limit(300),
     ]);

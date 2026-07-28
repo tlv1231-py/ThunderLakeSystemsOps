@@ -1,5 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 
+// force-dynamic so the token check always runs server-side;
+// Cache-Control lets Vercel's edge cache the response 5 min so DB isn't hit on every view
 export const dynamic = "force-dynamic";
 
 function esc(s: string) {
@@ -21,13 +23,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const db = createAdminClient() as any;
 
   const [cardsRes, tasksRes, notesRes, imagesRes, colsRes, reactionsRes, commentsRes] = await Promise.all([
-    db.from("strategy_cards").select("*").order("position", { ascending: true }),
-    db.from("strategy_tasks").select("*").order("position", { ascending: true }),
-    db.from("strategy_notes").select("*").order("updated_at", { ascending: false }),
-    db.from("strategy_images").select("*").order("created_at", { ascending: true }),
-    db.from("strategy_columns").select("*").order("position", { ascending: true }),
-    db.from("strategy_reactions").select("*"),
-    db.from("strategy_comments").select("*").order("created_at", { ascending: true }),
+    db.from("strategy_cards").select("id,content,position,category,color,is_chosen,status,notes,domain_available,author_email,created_at").order("position", { ascending: true }),
+    db.from("strategy_tasks").select("id,title,status,assignee,description,author_email,position").order("position", { ascending: true }),
+    db.from("strategy_notes").select("id,title,content,updated_at,updated_by_email").order("updated_at", { ascending: false }),
+    db.from("strategy_images").select("id,storage_path,caption,author_email,created_at").order("created_at", { ascending: true }),
+    db.from("strategy_columns").select("id,name,position").order("position", { ascending: true }),
+    db.from("strategy_reactions").select("item_id,reaction"),
+    db.from("strategy_comments").select("id,item_id,item_type,content,author_email,created_at").order("created_at", { ascending: true }),
   ]);
 
   const cards     = cardsRes.data     ?? [];
@@ -153,6 +155,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   html += `<p class="footer">ThunderLake Systems · Strategy Hub AI Brief · ${esc(now)}</p>\n</body>\n</html>`;
 
   return new Response(html, {
-    headers: { "Content-Type": "text/html; charset=utf-8" },
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+    },
   });
 }
