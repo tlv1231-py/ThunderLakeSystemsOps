@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "rail" | "services" | "traffic" | "dispatch" | "buildings" | "marine" | "metar";
+type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "rail" | "services" | "traffic" | "dispatch" | "buildings" | "marine" | "metar" | "storm";
 type BaseKey  = "satellite" | "hybrid" | "dark";
 interface LogEntry { icon: string; text: string; color: string; loggedAt: number; }
 interface OngoingItem {
@@ -54,6 +54,7 @@ const LAYER_META: Record<LayerKey, LayerMeta> = {
   buildings: { label: "City Lights", color: "#fbbf24", section: "city"       },
   marine:    { label: "Maritime",    color: "#06b6d4", section: "city"       },
   metar:     { label: "METAR",       color: "#22c55e", section: "atmospheric" },
+  storm:     { label: "Storm Obs",   color: "#38bdf8", section: "atmospheric" },
 };
 
 const SECTIONS: { key: "overhead" | "atmospheric" | "city"; label: string }[] = [
@@ -187,6 +188,19 @@ function marineSVG(type: "buoy" | "tide_gauge") {
     font-size:11px;line-height:1;
     filter:drop-shadow(0 0 5px ${color}66)">${symbol}</div>`;
 }
+function stormSVG(icao: string, precip1hIn: number | null, windKt: number | null, windDir: number | null): string {
+  const hasRain = precip1hIn != null && precip1hIn > 0.005;
+  const color   = hasRain ? "#38bdf8" : "#4a7a8a";
+  const precipStr = hasRain ? precip1hIn!.toFixed(2) + '"' : "0.00\"";
+  const windStr = windKt != null
+    ? `${windKt}kt${windDir != null ? " " + ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"][Math.round(windDir / 22.5) % 16] : ""}`
+    : "--";
+  return `<div style="font-family:Menlo,Consolas,monospace;white-space:nowrap;line-height:1.4;
+    text-shadow:0 0 6px rgba(0,0,0,0.95),0 0 12px rgba(0,0,0,0.8)">
+    <div style="font-size:calc(9px * var(--tl-mk-scale,1));color:${color};letter-spacing:0.1em;font-weight:700">${icao}</div>
+    <div style="font-size:calc(7.5px * var(--tl-mk-scale,1));color:${color}cc">💧${precipStr} · ${windStr}</div>
+  </div>`;
+}
 function popupWrap(inner: string) {
   return `<div style="font-family:Menlo,Consolas,monospace;font-size:11px;color:#d8e3f0;background:#07090fee;
     border:1px solid #1e2d44;border-radius:8px;padding:10px 14px;min-width:180px;line-height:1.9;
@@ -237,7 +251,7 @@ export default function StamfordMap() {
   const [enabled,       setEnabled]       = useState<Record<LayerKey, boolean>>({
     aircraft: true, radar: true, iss: true, alerts: true,
     lightning: true, transit: true, rail: true, services: true,
-    traffic: true, dispatch: true, buildings: true, marine: true, metar: true,
+    traffic: true, dispatch: true, buildings: true, marine: true, metar: true, storm: true,
   });
   const [weather,       setWeather]       = useState<WeatherNow | null>(null);
   const [iss,           setIss]           = useState<ISSPos | null>(null);
@@ -250,6 +264,7 @@ export default function StamfordMap() {
   const [buildingsCount, setBuildingsCount] = useState(0);
   const [marineCount,    setMarineCount]    = useState(0);
   const [metarCount,    setMetarCount]    = useState(0);
+  const [stormCount,    setStormCount]    = useState(0);
   const [railCount,     setRailCount]     = useState(0);
   const [alertTexts,    setAlertTexts]    = useState<string[]>([]);
   const [trafficTexts,  setTrafficTexts]  = useState<string[]>([]);
@@ -860,6 +875,49 @@ export default function StamfordMap() {
     }).catch(() => {});
   }, [addLog]);
 
+  const fetchStorm = useCallback((L: any) => {
+    fetch("/api/map/storm").then(r => r.json()).then(data => {
+      const stations: any[] = data.stations ?? [];
+      setStormCount(stations.length);
+      const g = groupRefs.current.storm;
+      if (!g) return;
+      const raining = stations.filter((s: any) => s.precip1hIn != null && s.precip1hIn > 0.005);
+      if (raining.length) addLog("🌧", `Precip: ${raining.map((s: any) => `${s.id} ${s.precip1hIn.toFixed(2)}"`)  .join(", ")}`, "#38bdf8");
+      animateOut(g, () => {
+        g.clearLayers();
+        stations.forEach((st: any) => {
+          const color = (st.precip1hIn ?? 0) > 0.005 ? "#38bdf8" : "#4a7a8a";
+          const precipStr = st.precip1hIn != null ? st.precip1hIn.toFixed(3) + '"' : "n/a";
+          const precip6Str = st.precip6hIn != null ? st.precip6hIn.toFixed(2) + '"' : "n/a";
+          const precip24Str = st.precip24hIn != null ? st.precip24hIn.toFixed(2) + '"' : "n/a";
+          const windRow = st.windKt != null
+            ? `${st.windKt}kt${st.windGustKt != null ? " G" + st.windGustKt : ""}${st.windDir != null ? " " + degToCompass(st.windDir) : ""}`
+            : "calm";
+          const obsStr = st.obsTime ? new Date(st.obsTime).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }) + "Z" : "";
+          const popup = popupWrap(`
+            <div style="font-size:13px;font-weight:700;color:${color};margin-bottom:2px">${st.id} · ${st.name}</div>
+            <div style="color:#2a3a52;font-size:8px;margin-bottom:6px">${st.description ?? ""} ${obsStr}</div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 12px">
+              <span style="color:#5a7090">TEMP</span><span>${st.tempF != null ? st.tempF + "°F" : "—"}${st.dewpF != null ? " / Dp " + st.dewpF + "°F" : ""}</span>
+              <span style="color:#5a7090">WIND</span><span>${windRow}</span>
+              ${st.slpInHg != null ? `<span style="color:#5a7090">PRES</span><span>${st.slpInHg.toFixed(2)} inHg</span>` : ""}
+              <span style="color:#5a7090">PCPN 1H</span><span style="color:${color}">${precipStr}</span>
+              <span style="color:#5a7090">PCPN 6H</span><span>${precip6Str}</span>
+              <span style="color:#5a7090">PCPN 24H</span><span>${precip24Str}</span>
+              ${st.humidity != null ? `<span style="color:#5a7090">RH</span><span>${Math.round(st.humidity)}%</span>` : ""}
+            </div>`);
+          const icon = L.divIcon({
+            html: `<div class="tl-anim">${stormSVG(st.id, st.precip1hIn, st.windKt, st.windDir)}</div>`,
+            className: "", iconSize: [84, 32], iconAnchor: [42, 32],
+          });
+          L.marker([st.lat, st.lon], { icon })
+            .bindPopup(L.popup({ className: "tl-popup", maxWidth: 260, offset: [0, -4] }).setContent(popup))
+            .addTo(g);
+        });
+      });
+    }).catch(() => {});
+  }, [addLog]);
+
   const fetchWeather = useCallback(() => {
     fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${STAMFORD.lat}&longitude=${STAMFORD.lng}` +
@@ -949,6 +1007,7 @@ export default function StamfordMap() {
         buildings: L.layerGroup().addTo(map),
         marine:    L.layerGroup().addTo(map),
         metar:     L.layerGroup().addTo(map),
+        storm:     L.layerGroup().addTo(map),
       };
 
       mapInst.current = map;
@@ -1014,7 +1073,7 @@ export default function StamfordMap() {
       fetchAircraft(L); fetchRadar(L); fetchISS(L); fetchAlerts(L);
       fetchRailTrack(L);
       fetchTransit(L); fetchRail(L); fetchServices(L); fetchTraffic(L); fetchDispatch(L);
-      fetchMarine(L); fetchBuildings(L); fetchMetar(L); // buildings: one-time load, 24h server cache
+      fetchMarine(L); fetchBuildings(L); fetchMetar(L); fetchStorm(L); // buildings: one-time load, 24h server cache
 
       // Polling
       intervals.current.push(setInterval(() => fetchAircraft(L), 15_000));
@@ -1028,6 +1087,7 @@ export default function StamfordMap() {
       intervals.current.push(setInterval(() => fetchDispatch(L), 30_000));
       intervals.current.push(setInterval(() => fetchMarine(L), 30 * 60_000));
       intervals.current.push(setInterval(() => fetchMetar(L), 60_000));
+      intervals.current.push(setInterval(() => fetchStorm(L), 15 * 60_000));
 
       // Lightning
       setupLightning(L);
@@ -1165,6 +1225,7 @@ export default function StamfordMap() {
     buildings: buildingsCount > 0 ? buildingsCount.toLocaleString() : undefined,
     marine:    marineCount    > 0 ? String(marineCount)    : undefined,
     metar:     metarCount     > 0 ? String(metarCount)     : undefined,
+    storm:     stormCount     > 0 ? String(stormCount)     : undefined,
   };
 
   return (
