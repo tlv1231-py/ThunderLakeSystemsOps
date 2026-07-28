@@ -26,10 +26,10 @@ interface ISSPos {
 const STAMFORD_BOUNDS: [[number, number], [number, number]] = [[40.990, -73.657], [41.125, -73.432]];
 const STAMFORD = { lat: 41.0534, lng: -73.5387 };
 
-const BASE_LAYERS: Record<BaseKey, { label: string; url: string; subdomains?: string; maxNativeZoom: number }> = {
-  satellite: { label: "Satellite", url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", maxNativeZoom: 19 },
-  hybrid:    { label: "Hybrid",    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", maxNativeZoom: 19 },
-  dark:      { label: "Dark",      url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", subdomains: "abcd", maxNativeZoom: 18 },
+const BASE_LAYERS: Record<BaseKey, { label: string; url: string; subdomains?: string; minNativeZoom: number; maxNativeZoom: number }> = {
+  satellite: { label: "Satellite", url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", minNativeZoom: 2, maxNativeZoom: 19 },
+  hybrid:    { label: "Hybrid",    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", minNativeZoom: 2, maxNativeZoom: 19 },
+  dark:      { label: "Dark",      url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", subdomains: "abcd", minNativeZoom: 0, maxNativeZoom: 18 },
 };
 
 const WMO: Record<number, string> = {
@@ -429,7 +429,7 @@ export default function StamfordMap() {
       const url = `https://tilecache.rainviewer.com${frames[frames.length - 1].path}/256/{z}/{x}/{y}/4/1_1.png`;
       const g = groupRefs.current.radar;
       g?.clearLayers();
-      g?.addLayer(L.tileLayer(url, { opacity: 0.6, maxNativeZoom: 8, maxZoom: 19, bounds: STAMFORD_BOUNDS }));
+      g?.addLayer(L.tileLayer(url, { opacity: 0.6, maxNativeZoom: 8, maxZoom: 19 }));
     }).catch(() => {});
   }, []);
 
@@ -1081,7 +1081,7 @@ export default function StamfordMap() {
 
       // Base tile — dark default
       const baseDef = BASE_LAYERS.dark;
-      baseTileRef.current = L.tileLayer(baseDef.url, { subdomains: baseDef.subdomains ?? "abc", maxNativeZoom: baseDef.maxNativeZoom, maxZoom: 19 }).addTo(map);
+      baseTileRef.current = L.tileLayer(baseDef.url, { subdomains: baseDef.subdomains ?? "abc", minNativeZoom: baseDef.minNativeZoom, maxNativeZoom: baseDef.maxNativeZoom, maxZoom: 19 }).addTo(map);
 
       L.control.attribution({ prefix: false, position: "bottomright" })
         .addAttribution('<span style="color:#2a3a52;font-size:10px">© CartoDB · ESRI · OSM · OpenSky · NWS · RainViewer · Blitzortung · UMO</span>')
@@ -1263,7 +1263,7 @@ export default function StamfordMap() {
       if (baseTileRef.current) map.removeLayer(baseTileRef.current);
       if (labelRef.current)    { map.removeLayer(labelRef.current); labelRef.current = null; }
       const def = BASE_LAYERS[baseKey];
-      const opts: any = { maxNativeZoom: def.maxNativeZoom, maxZoom: 19 };
+      const opts: any = { minNativeZoom: def.minNativeZoom, maxNativeZoom: def.maxNativeZoom, maxZoom: 19 };
       if (def.subdomains) opts.subdomains = def.subdomains;
       baseTileRef.current = L.tileLayer(def.url, opts).addTo(map);
       if (baseKey === "hybrid") {
