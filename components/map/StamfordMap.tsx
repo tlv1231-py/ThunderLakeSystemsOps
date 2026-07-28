@@ -41,7 +41,7 @@ const WMO: Record<number, string> = {
 interface LayerMeta { label: string; color: string; section: "overhead" | "atmospheric" | "city" }
 
 const LAYER_META: Record<LayerKey, LayerMeta> = {
-  aircraft:  { label: "Aircraft",   color: "#2a8bff", section: "overhead"    },
+  aircraft:  { label: "Aircraft",   color: "#a855f7", section: "overhead"    },
   iss:       { label: "ISS",        color: "#a78bfa", section: "overhead"    },
   radar:     { label: "Radar",      color: "#39d97a", section: "atmospheric" },
   lightning: { label: "Lightning",  color: "#ffe066", section: "atmospheric" },
@@ -117,7 +117,7 @@ const CT_TOWNS: Record<string, [number, number]> = {
   WOODBRIDGE:[41.354,-73.003],WOODBURY:[41.549,-73.208],WOODSTOCK:[41.961,-71.973],
 };
 const outageColor = (pct: number) =>
-  pct >= 10 ? "#ef4444" : pct >= 2 ? "#f97316" : pct >= 0.5 ? "#facc15" : "#86efac";
+  pct >= 20 ? "#dc2626" : pct >= 5 ? "#ef4444" : pct >= 1 ? "#f97316" : "#facc15";
 const outageRadius = (n: number) =>
   n >= 200 ? 18 : n >= 50 ? 14 : n >= 10 ? 10 : 7;
 
@@ -137,8 +137,8 @@ const metersToFt = (m: number) => Math.round(m * 3.281);
 const fmtHMS = (d: Date) => d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 
 function aircraftSVG(heading: number) {
-  return `<div style="transform:rotate(${heading}deg);width:22px;height:22px;filter:drop-shadow(0 0 5px #2a8bffaa)">
-    <svg viewBox="0 0 32 32" fill="#2a8bff" xmlns="http://www.w3.org/2000/svg">
+  return `<div style="transform:rotate(${heading}deg);width:22px;height:22px;filter:drop-shadow(0 0 5px #a855f7aa)">
+    <svg viewBox="0 0 32 32" fill="#a855f7" xmlns="http://www.w3.org/2000/svg">
       <path d="M16 2C16 2 19 10 19 14L28 20L27 23L19 18L18 28L21 30L16 32L11 30L14 28L13 18L5 23L4 20L13 14C13 10 16 2 16 2Z"/>
     </svg>
   </div>`;
@@ -400,7 +400,7 @@ export default function StamfordMap() {
       setAircraftCount(states.length);
       animateOut(g, () => {
         g.clearLayers();
-        if (states.length) addLog("✈", `${states.length} aircraft in sector`, "#2a8bff");
+        if (states.length) addLog("✈", `${states.length} aircraft in sector`, "#a855f7");
         states.forEach(s => {
           const [icao, callsign, country, , , lon, lat, baroAlt, , vel, hdg, , , , , , geoAlt] = s;
           if (lat == null || lon == null) return;
@@ -409,7 +409,7 @@ export default function StamfordMap() {
           const icon = L.divIcon({ html: `<div class="tl-anim">${aircraftSVG(hdg ?? 0)}</div>`, className: "", iconSize: [22, 22], iconAnchor: [11, 11] });
           L.marker([lat, lon], { icon })
             .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(
-              popupWrap(`<div style="font-size:13px;font-weight:700;color:#2a8bff;margin-bottom:5px">${cs}</div>
+              popupWrap(`<div style="font-size:13px;font-weight:700;color:#a855f7;margin-bottom:5px">${cs}</div>
               <div style="color:#5a7090;font-size:10px;margin-bottom:8px;text-transform:uppercase">${country ?? "?"} · ${icao}</div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 14px">
                 <span style="color:#5a7090">ALT</span><span>${alt > 0 ? metersToFt(alt).toLocaleString() + " ft" : "—"}</span>
@@ -1076,7 +1076,7 @@ export default function StamfordMap() {
     import("leaflet").then(mod => {
       const L = mod.default;
 
-      const map = L.map(mapRef.current!, { zoomControl: false, attributionControl: false, maxZoom: 19 });
+      const map = L.map(mapRef.current!, { zoomControl: false, attributionControl: false, minZoom: 5, maxZoom: 19 });
       map.fitBounds(STAMFORD_BOUNDS, { padding: [0, 0] });
 
       // Base tile — dark default
@@ -1533,7 +1533,7 @@ export default function StamfordMap() {
         {/* Quick stats */}
         <div className="px-5 py-3 flex gap-4" style={{ borderBottom: "1px solid #0d1520" }}>
           {[
-            { val: aircraftCount, label: "Aircraft", color: "#2a8bff" },
+            { val: aircraftCount, label: "Aircraft", color: "#a855f7" },
             { val: transitCount,  label: "Buses",    color: "#60a5fa" },
             { val: strikeCount,   label: "⚡",       color: "#ffe066" },
           ].map(({ val, label, color }) => (
