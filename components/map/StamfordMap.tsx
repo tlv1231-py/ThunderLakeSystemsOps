@@ -259,6 +259,18 @@ function stormSVG(icao: string, precip1hIn: number | null, windKt: number | null
     <div style="font-size:calc(7.5px * var(--tl-mk-scale,1));color:${color}cc">💧${precipStr} · ${windStr}</div>
   </div>`;
 }
+function stamfordWeatherSVG(w: { temp: number; wind_speed: number; wind_dir: number; humidity: number; precipitation: number; code: number }): string {
+  const cond = ({"0":"Clear","1":"Mostly Clear","2":"Partly Cloudy","3":"Overcast","45":"Fog","51":"Drizzle","61":"Light Rain","63":"Rain","65":"Heavy Rain","71":"Light Snow","73":"Snow","80":"Showers","95":"T-storm"} as Record<string, string>)[String(w.code)] ?? "Unknown";
+  const hasRain = w.precipitation > 0.005;
+  const color = hasRain ? "#38bdf8" : "#94a3b8";
+  const dir = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"][Math.round(w.wind_dir / 22.5) % 16];
+  return `<div style="font-family:Menlo,Consolas,monospace;white-space:nowrap;line-height:1.5;
+    text-shadow:0 0 6px rgba(0,0,0,0.95),0 0 12px rgba(0,0,0,0.8)">
+    <div style="font-size:calc(9px * var(--tl-mk-scale,1));color:#e2ecff;letter-spacing:0.1em;font-weight:700">STAMFORD</div>
+    <div style="font-size:calc(8px * var(--tl-mk-scale,1));color:${color}">${Math.round(w.temp)}°F · ${cond}</div>
+    <div style="font-size:calc(7.5px * var(--tl-mk-scale,1));color:${color}cc">${Math.round(w.wind_speed)}mph ${dir} · ${w.humidity}%RH</div>
+  </div>`;
+}
 function popupWrap(inner: string) {
   return `<div style="font-family:Menlo,Consolas,monospace;font-size:11px;color:#d8e3f0;background:#07090fee;
     border:1px solid #1e2d44;border-radius:8px;padding:10px 14px;min-width:180px;line-height:1.9;
@@ -360,8 +372,9 @@ export default function StamfordMap() {
     if (typeof window !== "undefined") localStorage.setItem("tl-mk-scale", String(v));
   }, []);
 
-  const trackGroupRef   = useRef<any>(null);
-  const trainMarkersRef = useRef<Map<string, any>>(new Map());
+  const trackGroupRef      = useRef<any>(null);
+  const trainMarkersRef    = useRef<Map<string, any>>(new Map());
+  const weatherMarkerRef   = useRef<any>(null);
   const [trackOpacity, setTrackOpacity] = useState(() => {
     if (typeof window === "undefined") return 0.35;
     const s = parseFloat(localStorage.getItem("tl-track-opacity") ?? "0.35");
@@ -429,7 +442,12 @@ export default function StamfordMap() {
       const url = `https://tilecache.rainviewer.com${frames[frames.length - 1].path}/256/{z}/{x}/{y}/4/1_1.png`;
       const g = groupRefs.current.radar;
       g?.clearLayers();
-      g?.addLayer(L.tileLayer(url, { opacity: 0.6, maxNativeZoom: 8, maxZoom: 19 }));
+      // minNativeZoom:8 = always use zoom-8 tiles and scale them (RainViewer has no z6-z7 tiles)
+      g?.addLayer(L.tileLayer(url, {
+        opacity: 0.6,
+        minNativeZoom: 8, maxNativeZoom: 8, maxZoom: 19,
+        bounds: [[34, -84], [49, -62]], // northeast US + eastern Canada
+      }));
     }).catch(() => {});
   }, []);
 
@@ -1245,6 +1263,21 @@ export default function StamfordMap() {
     const id = setInterval(fetchWeather, 5 * 60_000);
     return () => clearInterval(id);
   }, [fetchWeather]);
+
+  // Stamford center weather pin — always visible, updates with Open-Meteo data
+  useEffect(() => {
+    if (!weather || !mapInst.current) return;
+    const L = (window as any).L;
+    if (!L) return;
+    const html = stamfordWeatherSVG(weather);
+    const icon = L.divIcon({ html, className: "", iconAnchor: [0, 0] });
+    if (weatherMarkerRef.current) {
+      weatherMarkerRef.current.setIcon(icon);
+    } else {
+      weatherMarkerRef.current = L.marker([STAMFORD.lat, STAMFORD.lng], { icon, zIndexOffset: 100, interactive: false })
+        .addTo(mapInst.current);
+    }
+  }, [weather]);
 
   // Fullscreen listener
   useEffect(() => {
