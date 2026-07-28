@@ -157,9 +157,10 @@ function fmtElapsed(ms: number) {
   const hms = `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
   return d > 0 ? `${d}d ${hms}` : hms;
 }
-function alertPingSVG(label: string) {
-  return `<div style="position:relative;width:52px;height:64px">
-    <div style="position:absolute;top:4px;left:4px;right:4px;bottom:18px">
+function alertPingSVG(label: string, onsetMs: number) {
+  const init = fmtElapsed(Date.now() - onsetMs);
+  return `<div style="position:relative;width:52px;height:76px">
+    <div style="position:absolute;top:4px;left:4px;right:4px;bottom:30px">
       <div style="position:absolute;inset:0;border-radius:50%;border:1.5px solid #f59e0b;animation:tl-alert-ring 2.6s ease-out infinite"></div>
       <div style="position:absolute;inset:0;border-radius:50%;border:1px solid #fbbf24;animation:tl-alert-ring 2.6s ease-out 0.87s infinite"></div>
       <div style="position:absolute;inset:0;border-radius:50%;border:1px solid #f59e0b;animation:tl-alert-ring 2.6s ease-out 1.73s infinite"></div>
@@ -167,10 +168,13 @@ function alertPingSVG(label: string) {
         width:9px;height:9px;border-radius:50%;background:#f59e0b;
         box-shadow:0 0 6px #f59e0b,0 0 18px rgba(245,158,11,0.7),0 0 36px rgba(245,158,11,0.25)"></div>
     </div>
-    <div style="position:absolute;bottom:0;left:0;right:0;text-align:center;
+    <div style="position:absolute;bottom:14px;left:0;right:0;text-align:center;
       font-family:Menlo,Consolas,monospace;font-size:7px;color:#fbbf24;
       letter-spacing:0.14em;white-space:nowrap;
       text-shadow:0 0 5px rgba(245,158,11,0.9),0 0 10px rgba(245,158,11,0.5)">${label}</div>
+    <span data-tl-mkr-onset="${onsetMs}" style="position:absolute;bottom:1px;left:0;right:0;display:block;text-align:center;
+      font-family:Menlo,Consolas,monospace;font-size:7px;color:#f59e0baa;
+      font-variant-numeric:tabular-nums;letter-spacing:0.06em;white-space:nowrap">${init}</span>
   </div>`;
 }
 function marineSVG(type: "buoy" | "tide_gauge") {
@@ -390,7 +394,7 @@ export default function StamfordMap() {
           </div>
           <div style="font-size:9px;color:#5a7090;border-top:1px solid #0d1a26;padding-top:4px">${f.properties.headline ?? ""}</div>
         `);
-        const icon = L.divIcon({ html: alertPingSVG(shortEvt), className: "", iconSize: [52, 64], iconAnchor: [26, 46] });
+        const icon = L.divIcon({ html: alertPingSVG(shortEvt, onsetMs), className: "", iconSize: [52, 76], iconAnchor: [26, 46] });
         const marker = L.marker(center, { icon })
           .bindPopup(L.popup({ className: "tl-popup", maxWidth: 280, offset: [0, -4] }).setContent(buildPopup()));
         let timerInt: ReturnType<typeof setInterval> | null = null;
@@ -855,14 +859,20 @@ export default function StamfordMap() {
       }, 60_000));
     });
 
-    // Military clock + live elapsed timer
+    // Military clock + live elapsed timer + marker face timers
     const clockTick = () => {
       const n = new Date();
       const h = String(n.getUTCHours()).padStart(2, "0");
       const m = String(n.getUTCMinutes()).padStart(2, "0");
       const s = String(n.getUTCSeconds()).padStart(2, "0");
       setMilClock(`${h}${m}${s}Z`);
-      setNowMs(Date.now());
+      const now = Date.now();
+      setNowMs(now);
+      // Update elapsed timers embedded in map marker faces
+      document.querySelectorAll<HTMLElement>("[data-tl-mkr-onset]").forEach(el => {
+        const onset = parseInt(el.dataset.tlMkrOnset ?? "0");
+        if (onset) el.textContent = fmtElapsed(now - onset);
+      });
     };
     clockTick();
     const clockId = setInterval(clockTick, 1000);
