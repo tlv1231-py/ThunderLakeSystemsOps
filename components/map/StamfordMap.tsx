@@ -259,18 +259,6 @@ function stormSVG(icao: string, precip1hIn: number | null, windKt: number | null
     <div style="font-size:calc(7.5px * var(--tl-mk-scale,1));color:${color}cc">💧${precipStr} · ${windStr}</div>
   </div>`;
 }
-function stamfordWeatherSVG(w: { temp: number; wind_speed: number; wind_dir: number; humidity: number; precipitation: number; code: number }): string {
-  const cond = ({"0":"Clear","1":"Mostly Clear","2":"Partly Cloudy","3":"Overcast","45":"Fog","51":"Drizzle","61":"Light Rain","63":"Rain","65":"Heavy Rain","71":"Light Snow","73":"Snow","80":"Showers","95":"T-storm"} as Record<string, string>)[String(w.code)] ?? "Unknown";
-  const hasRain = w.precipitation > 0.005;
-  const color = hasRain ? "#38bdf8" : "#94a3b8";
-  const dir = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"][Math.round(w.wind_dir / 22.5) % 16];
-  return `<div style="font-family:Menlo,Consolas,monospace;white-space:nowrap;line-height:1.5;
-    text-shadow:0 0 6px rgba(0,0,0,0.95),0 0 12px rgba(0,0,0,0.8)">
-    <div style="font-size:calc(9px * var(--tl-mk-scale,1));color:#e2ecff;letter-spacing:0.1em;font-weight:700">STAMFORD</div>
-    <div style="font-size:calc(8px * var(--tl-mk-scale,1));color:${color}">${Math.round(w.temp)}°F · ${cond}</div>
-    <div style="font-size:calc(7.5px * var(--tl-mk-scale,1));color:${color}cc">${Math.round(w.wind_speed)}mph ${dir} · ${w.humidity}%RH</div>
-  </div>`;
-}
 function popupWrap(inner: string) {
   return `<div style="font-family:Menlo,Consolas,monospace;font-size:11px;color:#d8e3f0;background:#07090fee;
     border:1px solid #1e2d44;border-radius:8px;padding:10px 14px;min-width:180px;line-height:1.9;
@@ -374,7 +362,6 @@ export default function StamfordMap() {
 
   const trackGroupRef      = useRef<any>(null);
   const trainMarkersRef    = useRef<Map<string, any>>(new Map());
-  const weatherMarkerRef   = useRef<any>(null);
   const [trackOpacity, setTrackOpacity] = useState(() => {
     if (typeof window === "undefined") return 0.35;
     const s = parseFloat(localStorage.getItem("tl-track-opacity") ?? "0.35");
@@ -442,12 +429,11 @@ export default function StamfordMap() {
       const url = `https://tilecache.rainviewer.com${frames[frames.length - 1].path}/256/{z}/{x}/{y}/4/1_1.png`;
       const g = groupRefs.current.radar;
       g?.clearLayers();
-      // minNativeZoom:8 = always use zoom-8 tiles and scale them (RainViewer has no z6-z7 tiles)
-      g?.addLayer(L.tileLayer(url, {
-        opacity: 0.6,
-        minNativeZoom: 8, maxNativeZoom: 8, maxZoom: 19,
-        bounds: [[34, -84], [49, -62]], // northeast US + eastern Canada
-      }));
+      // Two layers avoids requesting z6-z7 tiles that RainViewer doesn't serve for individual frames:
+      // City/street (z9+): upscale from z8 (same high quality as before)
+      g?.addLayer(L.tileLayer(url, { opacity: 0.6, maxNativeZoom: 8, minZoom: 9, maxZoom: 19 }));
+      // State/country (z5-8): upscale from z5 — never requests z6 or z7 tiles
+      g?.addLayer(L.tileLayer(url, { opacity: 0.6, maxNativeZoom: 5, minZoom: 0, maxZoom: 8 }));
     }).catch(() => {});
   }, []);
 
@@ -1264,20 +1250,6 @@ export default function StamfordMap() {
     return () => clearInterval(id);
   }, [fetchWeather]);
 
-  // Stamford center weather pin — always visible, updates with Open-Meteo data
-  useEffect(() => {
-    if (!weather || !mapInst.current) return;
-    const L = (window as any).L;
-    if (!L) return;
-    const html = stamfordWeatherSVG(weather);
-    const icon = L.divIcon({ html, className: "", iconAnchor: [0, 0] });
-    if (weatherMarkerRef.current) {
-      weatherMarkerRef.current.setIcon(icon);
-    } else {
-      weatherMarkerRef.current = L.marker([STAMFORD.lat, STAMFORD.lng], { icon, zIndexOffset: 100, interactive: false })
-        .addTo(mapInst.current);
-    }
-  }, [weather]);
 
   // Fullscreen listener
   useEffect(() => {
@@ -1687,34 +1659,51 @@ export default function StamfordMap() {
         </div>
       )}
 
-      {/* ── Event log — bottom right ───────────────────────────────────────── */}
-      {log.length > 0 && (
-        <div style={{ position: "fixed", right: 56, bottom: Math.round(28 * uiScale + 8), zIndex: 15, maxWidth: 340, pointerEvents: "none",
-          transform: `scale(${uiScale})`, transformOrigin: "bottom right" }}>
-          {log.slice(0, 7).map((entry, i) => (
-            <div key={i} style={{
-              display: "flex", alignItems: "center", gap: 7,
-              fontFamily: "Menlo,Consolas,monospace", fontSize: 9,
-              background: "rgba(7,9,15,0.82)",
-              borderLeft: `2px solid ${entry.color}44`,
-              padding: "3px 9px", marginBottom: 3,
-              opacity: 1 - i * 0.12,
-              animation: i === 0 ? "tl-slide-in 0.3s ease" : "none",
-              letterSpacing: "0.04em",
-            }}>
-              <span>{entry.icon}</span>
-              <span style={{ color: entry.color + "88", fontVariantNumeric: "tabular-nums",
-                fontSize: 8, minWidth: 56, flexShrink: 0, letterSpacing: "0.06em" }}>
-                {fmtElapsed(Math.max(0, nowMs - entry.loggedAt))}
-              </span>
-              <span style={{ color: entry.color }}>{entry.text}</span>
+      {/* ── Right column — weather header + activity feed ─────────────────── */}
+      <div className="absolute tl-panel-hide" style={{
+        right: 10, top: 48, zIndex: 15, width: 230, pointerEvents: "none",
+        fontFamily: "Menlo,Consolas,monospace",
+      }}>
+        {/* Weather header */}
+        {weather && (
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: Math.round(9 * uiScale), color: "#e2ecff", letterSpacing: "0.18em", fontWeight: 700, marginBottom: 2 }}>
+              STAMFORD
             </div>
-          ))}
-          <div style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 7, color: "#1e2d44", textAlign: "right", letterSpacing: "0.1em", marginTop: 4 }}>
+            <div style={{ fontSize: Math.round(12 * uiScale), color: weather.precipitation > 0.005 ? "#38bdf8" : "#94a3b8", marginBottom: 1 }}>
+              {Math.round(weather.temp)}°F · {cond}
+            </div>
+            <div style={{ fontSize: Math.round(9 * uiScale), color: (weather.precipitation > 0.005 ? "#38bdf8" : "#94a3b8") + "bb" }}>
+              {Math.round(weather.wind_speed)} mph {degToCompass(weather.wind_dir)} · {weather.humidity}% RH
+              {weather.precipitation > 0.005 ? ` · 💧${weather.precipitation.toFixed(2)}"` : ""}
+            </div>
+            <div style={{ marginTop: 6, height: 1, background: "linear-gradient(to right, #1e2d4488, transparent)" }} />
+          </div>
+        )}
+        {/* Activity feed */}
+        {log.slice(0, 8).map((entry, i) => (
+          <div key={i} style={{
+            display: "flex", alignItems: "center", gap: 6,
+            fontSize: Math.round(8 * uiScale),
+            borderLeft: `2px solid ${entry.color}33`,
+            paddingLeft: 7, paddingTop: 2, paddingBottom: 2, marginBottom: 2,
+            opacity: 1 - i * 0.1,
+            animation: i === 0 ? "tl-slide-in 0.3s ease" : "none",
+            letterSpacing: "0.04em",
+          }}>
+            <span style={{ flexShrink: 0 }}>{entry.icon}</span>
+            <span style={{ color: entry.color + "77", fontVariantNumeric: "tabular-nums", fontSize: Math.round(7 * uiScale), minWidth: 48, flexShrink: 0, letterSpacing: "0.06em" }}>
+              {fmtElapsed(Math.max(0, nowMs - entry.loggedAt))}
+            </span>
+            <span style={{ color: entry.color, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.text}</span>
+          </div>
+        ))}
+        {log.length > 0 && (
+          <div style={{ fontSize: Math.round(7 * uiScale), color: "#1e2d44", letterSpacing: "0.1em", marginTop: 4 }}>
             ACTIVITY LOG
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* ── Global CSS ─────────────────────────────────────────────────────── */}
       <style>{`
