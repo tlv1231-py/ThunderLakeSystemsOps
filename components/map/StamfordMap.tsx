@@ -478,7 +478,7 @@ export default function StamfordMap() {
           evtType: (ev.type ?? "TRAFFIC").replace(/_/g, " ").toUpperCase(),
           detail: [ev.subtype || ev.type.replace(/_/g, " "), ev.road, ev.direction ? `(${ev.direction})` : null].filter(Boolean).join(" · ").slice(0, 60),
           color: ev.color ?? "#f59e0b",
-          startMs: ft,
+          startMs: ev.startMs ?? ft,
           fetchTime: ft,
         }));
         const nonTraffic = prev.filter(it => !it.id.startsWith("traffic-"));
@@ -495,7 +495,20 @@ export default function StamfordMap() {
         events.forEach(ev => {
           if (!ev.lat || !ev.lon) return;
           const typeLabel = ev.type.replace(/_/g, " ");
-          const icon = L.divIcon({ html: `<div class="tl-anim">${trafficSVG(ev.color)}</div>`, className: "", iconSize: [18, 18], iconAnchor: [9, 9] });
+          const evStartMs: number | null = ev.startMs ?? null;
+          const markerHtml = evStartMs
+            ? `<div class="tl-anim" style="position:relative;width:52px;height:28px">
+                <div style="position:absolute;top:0;left:50%;transform:translateX(-50%)">${trafficSVG(ev.color)}</div>
+                <span data-tl-mkr-onset="${evStartMs}" style="position:absolute;bottom:1px;left:0;right:0;display:block;text-align:center;
+                  font-family:Menlo,Consolas,monospace;font-size:6.5px;color:${ev.color}bb;
+                  font-variant-numeric:tabular-nums;letter-spacing:0.06em;white-space:nowrap">${fmtElapsed(Date.now() - evStartMs)}</span>
+              </div>`
+            : `<div class="tl-anim">${trafficSVG(ev.color)}</div>`;
+          const icon = L.divIcon({
+            html: markerHtml, className: "",
+            iconSize:   evStartMs ? [52, 28] : [18, 18],
+            iconAnchor: evStartMs ? [26, 9]  : [9, 9],
+          });
           L.marker([ev.lat, ev.lon], { icon })
             .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(
               popupWrap(`<div style="font-size:12px;font-weight:700;color:${ev.color};margin-bottom:4px">🚧 ${ev.subtype || typeLabel}</div>

@@ -37,6 +37,17 @@ async function fetchCT511(debug = false): Promise<
       return { ok: false, reason: "unexpected_shape", ...(debug ? { raw: JSON.stringify(raw).slice(0, 300) } : {}) };
     }
 
+    // Parse Microsoft /Date(ms)/ format or ISO strings from CT511
+    const parseApiDate = (v: any): number | null => {
+      if (!v) return null;
+      if (typeof v === "string") {
+        const msMatch = v.match(/\/Date\((\d+)/);
+        if (msMatch) return parseInt(msMatch[1]);
+      }
+      const d = new Date(v);
+      return isNaN(d.getTime()) ? null : d.getTime();
+    };
+
     const events = raw
       .filter(e => {
         const lat = Number(e.Latitude);
@@ -55,6 +66,7 @@ async function fetchCT511(debug = false): Promise<
         closure:     e.IsFullClosure ?? false,
         lat:         Number(e.Latitude),
         lon:         Number(e.Longitude),
+        startMs:     parseApiDate(e.StartDate ?? e.CreatedDate ?? e.EventDate ?? e.LastUpdated),
       }));
 
     return { ok: true, events, ...(debug ? { raw: raw.slice(0, 2) } : {}) };
