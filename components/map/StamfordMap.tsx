@@ -273,6 +273,20 @@ export default function StamfordMap() {
     if (typeof window !== "undefined") localStorage.setItem("tl-mk-scale", String(v));
   }, []);
 
+  const trackGroupRef = useRef<any>(null);
+  const [trackOpacity, setTrackOpacity] = useState(() => {
+    if (typeof window === "undefined") return 0.35;
+    const s = parseFloat(localStorage.getItem("tl-track-opacity") ?? "0.35");
+    return isNaN(s) || s < 0 || s > 1 ? 0.35 : s;
+  });
+  const applyTrackOpacity = useCallback((v: number) => {
+    setTrackOpacity(v);
+    if (typeof window !== "undefined") localStorage.setItem("tl-track-opacity", String(v));
+    trackGroupRef.current?.eachLayer((l: any) => {
+      if (l.setStyle) l.setStyle({ opacity: v, fillOpacity: v * 0.85 });
+    });
+  }, []);
+
   const [ongoingItems, setOngoingItems] = useState<OngoingItem[]>([]);
 
   // ── Event log ─────────────────────────────────────────────────────────────
@@ -452,6 +466,84 @@ export default function StamfordMap() {
       });
     }).catch(() => {});
   }, [addLog]);
+
+  // Metro-North stops for track overlay (from MTA GTFS static stops.txt)
+  const MNR_STOPS = [
+    { name: "Grand Central",        lat: 40.752998, lon: -73.977056 },
+    { name: "Harlem-125 St",        lat: 40.805157, lon: -73.939149 },
+    { name: "Mt Vernon East",       lat: 40.912161, lon: -73.832185 },
+    { name: "Pelham",               lat: 40.910321, lon: -73.810242 },
+    { name: "New Rochelle",         lat: 40.911605, lon: -73.783807 },
+    { name: "Larchmont",            lat: 40.933394, lon: -73.759792 },
+    { name: "Mamaroneck",           lat: 40.954061, lon: -73.736125 },
+    { name: "Harrison",             lat: 40.969432, lon: -73.712964 },
+    { name: "Rye",                  lat: 40.985922, lon: -73.682553 },
+    { name: "Port Chester",         lat: 41.000732, lon: -73.664700 },
+    { name: "Greenwich",            lat: 41.021277, lon: -73.624621 },
+    { name: "Cos Cob",              lat: 41.030171, lon: -73.598306 },
+    { name: "Riverside",            lat: 41.031682, lon: -73.588173 },
+    { name: "Old Greenwich",        lat: 41.033817, lon: -73.565859 },
+    { name: "Stamford",             lat: 41.046611, lon: -73.542846 },
+    { name: "Glenbrook",            lat: 41.070547, lon: -73.520021 },
+    { name: "Springdale",           lat: 41.088760, lon: -73.517828 },
+    { name: "Talmadge Hill",        lat: 41.116012, lon: -73.498149 },
+    { name: "New Canaan",           lat: 41.146305, lon: -73.495626 },
+    { name: "Noroton Heights",      lat: 41.069041, lon: -73.497880 },
+    { name: "Darien",               lat: 41.076913, lon: -73.472966 },
+    { name: "Rowayton",             lat: 41.077456, lon: -73.445527 },
+    { name: "South Norwalk",        lat: 41.096730, lon: -73.421132 },
+    { name: "Merritt 7",            lat: 41.146618, lon: -73.427859 },
+    { name: "Wilton",               lat: 41.196202, lon: -73.432434 },
+    { name: "Cannondale",           lat: 41.216620, lon: -73.426703 },
+    { name: "Branchville",          lat: 41.267630, lon: -73.441421 },
+    { name: "Redding",              lat: 41.325684, lon: -73.433800 },
+    { name: "Bethel",               lat: 41.376225, lon: -73.418171 },
+    { name: "Danbury",              lat: 41.396146, lon: -73.448790 },
+    { name: "East Norwalk",         lat: 41.103996, lon: -73.404588 },
+    { name: "Westport",             lat: 41.118928, lon: -73.371413 },
+    { name: "Green's Farms",        lat: 41.122265, lon: -73.315408 },
+    { name: "Southport",            lat: 41.134844, lon: -73.288970 },
+    { name: "Fairfield",            lat: 41.143077, lon: -73.257742 },
+    { name: "Fairfield-Black Rock", lat: 41.161000, lon: -73.234336 },
+    { name: "Bridgeport",           lat: 41.178677, lon: -73.187076 },
+    { name: "Stratford",            lat: 41.194255, lon: -73.131532 },
+    { name: "Milford",              lat: 41.223231, lon: -73.057647 },
+    { name: "West Haven",           lat: 41.271420, lon: -72.963488 },
+    { name: "New Haven",            lat: 41.296501, lon: -72.928290 },
+    { name: "New Haven-State St",   lat: 41.304979, lon: -72.921747 },
+  ];
+
+  const fetchRailTrack = useCallback((L: any) => {
+    const op = parseFloat(localStorage.getItem("tl-track-opacity") ?? "0.35");
+    fetch("/api/map/railtrack").then(r => r.json()).then(data => {
+      const ways: any[] = data.ways ?? [];
+      const g = L.layerGroup().addTo(mapInst.current);
+
+      // Draw track polylines
+      ways.forEach(w => {
+        L.polyline(w.coords, {
+          color: "#cc3355",
+          weight: 2,
+          opacity: op,
+          interactive: false,
+        }).addTo(g);
+      });
+
+      // Draw station dots
+      MNR_STOPS.forEach(st => {
+        L.circleMarker([st.lat, st.lon], {
+          radius: 4,
+          color: "#cc3355",
+          fillColor: "#ff5577",
+          fillOpacity: op * 0.85,
+          opacity: op,
+          weight: 1.5,
+        }).bindTooltip(st.name, { permanent: false, direction: "top", className: "tl-tooltip" }).addTo(g);
+      });
+
+      trackGroupRef.current = g;
+    }).catch(() => {});
+  }, []);
 
   const fetchRail = useCallback((L: any) => {
     fetch("/api/map/transit-rail").then(r => r.json()).then(data => {
@@ -886,6 +978,7 @@ export default function StamfordMap() {
 
       // Initial fetches
       fetchAircraft(L); fetchRadar(L); fetchISS(L); fetchAlerts(L);
+      fetchRailTrack(L);
       fetchTransit(L); fetchRail(L); fetchServices(L); fetchTraffic(L); fetchDispatch(L);
       fetchMarine(L); fetchBuildings(L); fetchMetar(L); // buildings: one-time load, 24h server cache
 
@@ -1182,6 +1275,13 @@ export default function StamfordMap() {
             onChange={e => applyMarkerScale(Number(e.target.value) / 100)}
             style={{ width: 52, cursor: "pointer", accentColor: "#f59e0b", opacity: 0.5 }}
             title={`Marker text ${Math.round(markerScale * 100)}%`}
+          />
+          <input
+            type="range" min="0" max="100" step="5"
+            value={Math.round(trackOpacity * 100)}
+            onChange={e => applyTrackOpacity(Number(e.target.value) / 100)}
+            style={{ width: 52, cursor: "pointer", accentColor: "#888", opacity: 0.5 }}
+            title={`Rail track overlay ${Math.round(trackOpacity * 100)}%`}
           />
         </div>
       </div>
