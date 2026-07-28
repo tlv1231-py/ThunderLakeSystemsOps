@@ -80,7 +80,7 @@ export function AdminNav({ isAdmin, userEmail = "" }: { isAdmin: boolean; userEm
     <Tooltip.Provider delayDuration={150} skipDelayDuration={0}>
       <nav
         className={cn(
-          "flex flex-col shrink-0 border-r border-zinc-800 bg-zinc-950 py-6 transition-all duration-200",
+          "flex flex-col shrink-0 border-r border-zinc-800 bg-zinc-950 py-6 transition-all duration-200 tl-panel-hide",
           navWidth,
           collapsed ? "px-2" : "px-3"
         )}
