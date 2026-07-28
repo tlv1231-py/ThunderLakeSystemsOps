@@ -583,12 +583,12 @@ export default function StamfordMap() {
       const canvas = L.canvas({ padding: 0.5 });
       buildings.forEach(([lat, lon]) => {
         L.circleMarker([lat, lon], {
-          radius: 3,
+          radius: 5,
           color: "#fbbf24",
-          fillColor: "#fde68a",
-          fillOpacity: 0.8,
-          opacity: 0.4,
-          weight: 0.5,
+          fillColor: "#fef3c7",
+          fillOpacity: 0.9,
+          opacity: 0.7,
+          weight: 0.8,
           renderer: canvas,
         }).addTo(g);
       });
@@ -1003,6 +1003,7 @@ export default function StamfordMap() {
           top: 40, left: panelOpen ? 240 : 12,
           transition: "left 0.3s",
           fontFamily: "Menlo,Consolas,monospace",
+          maxWidth: 310,
         }}>
           <div style={{ fontSize: 7, color: "#22d3ee55", letterSpacing: "0.22em", marginBottom: 6, textTransform: "uppercase" }}>
             ◈ ONGOING
@@ -1016,16 +1017,23 @@ export default function StamfordMap() {
             return (
               <div key={item.id} style={{
                 display: "flex", alignItems: "baseline", gap: 6,
-                marginBottom: 4,
+                marginBottom: 4, overflow: "hidden",
                 animation: "tl-slide-in 0.3s ease",
               }}>
-                <span style={{ fontSize: 8, color: item.color, letterSpacing: "0.12em", minWidth: 72, opacity: 0.9 }}>
-                  {item.evtType.slice(0, 10)}
+                <span style={{ fontSize: 8, color: item.color, letterSpacing: "0.1em",
+                  minWidth: 66, maxWidth: 66, flexShrink: 0,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  opacity: 0.9 }}>
+                  {item.evtType}
                 </span>
-                <span style={{ fontSize: 8, color: "rgba(200,215,235,0.55)", letterSpacing: "0.03em", flex: 1, maxWidth: 200 }}>
+                <span style={{ fontSize: 8, color: "rgba(200,215,235,0.5)", letterSpacing: "0.03em",
+                  flex: 1, minWidth: 0,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {item.detail}
                 </span>
-                <span style={{ fontSize: 8, color: item.color, letterSpacing: "0.08em", fontVariantNumeric: "tabular-nums", opacity: 0.75 }}>
+                <span style={{ fontSize: 8, color: item.color, letterSpacing: "0.08em",
+                  fontVariantNumeric: "tabular-nums", opacity: 0.75,
+                  whiteSpace: "nowrap", flexShrink: 0 }}>
                   {elapsedStr}
                 </span>
               </div>
