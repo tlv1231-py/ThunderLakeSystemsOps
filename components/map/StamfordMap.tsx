@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "services" | "traffic" | "dispatch" | "buildings" | "marine" | "metar";
 type BaseKey  = "satellite" | "hybrid" | "dark";
-interface LogEntry { time: string; icon: string; text: string; color: string; }
+interface LogEntry { icon: string; text: string; color: string; loggedAt: number; }
 interface OngoingItem {
   id: string; evtType: string; detail: string; color: string;
   startMs: number; serverNow?: number; fetchTime?: number;
@@ -251,9 +251,10 @@ export default function StamfordMap() {
 
   // ── Event log ─────────────────────────────────────────────────────────────
 
-  const addLog = useCallback((icon: string, text: string, color: string) => {
-    const time = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-    setLog(prev => [{ time, icon, text, color }, ...prev].slice(0, 10));
+  // serverNow: pass the server's Date.now() when the API response includes one,
+  // so the timer is anchored to the server clock rather than the client's system time.
+  const addLog = useCallback((icon: string, text: string, color: string, serverNow?: number) => {
+    setLog(prev => [{ icon, text, color, loggedAt: serverNow ?? Date.now() }, ...prev].slice(0, 10));
   }, []);
 
   // ── Fetch functions ───────────────────────────────────────────────────────
@@ -347,7 +348,7 @@ export default function StamfordMap() {
         const nonAlerts = prev.filter(it => it.color !== "#f59e0b");
         return [...alertItems, ...nonAlerts];
       });
-      if (features.length) addLog("⚠", `${features.length} NWS alert${features.length > 1 ? "s" : ""} active`, "#f59e0b");
+      if (features.length) addLog("⚠", `${features.length} NWS alert${features.length > 1 ? "s" : ""} active`, "#f59e0b", serverNow);
       const g = groupRefs.current.alerts;
       if (!g) return;
       g.clearLayers();
@@ -1259,7 +1260,7 @@ export default function StamfordMap() {
 
       {/* ── Event log — bottom right ───────────────────────────────────────── */}
       {log.length > 0 && (
-        <div style={{ position: "absolute", right: 56, bottom: 36, zIndex: 15, maxWidth: 290, pointerEvents: "none" }}>
+        <div style={{ position: "absolute", right: 56, bottom: 36, zIndex: 15, maxWidth: 340, pointerEvents: "none" }}>
           {log.slice(0, 7).map((entry, i) => (
             <div key={i} style={{
               display: "flex", alignItems: "center", gap: 7,
@@ -1272,7 +1273,10 @@ export default function StamfordMap() {
               letterSpacing: "0.04em",
             }}>
               <span>{entry.icon}</span>
-              <span style={{ color: "#1e2d44", marginRight: 3, fontSize: 8 }}>{entry.time}</span>
+              <span style={{ color: entry.color + "88", fontVariantNumeric: "tabular-nums",
+                fontSize: 8, minWidth: 56, flexShrink: 0, letterSpacing: "0.06em" }}>
+                {fmtElapsed(Math.max(0, nowMs - entry.loggedAt))}
+              </span>
               <span style={{ color: entry.color }}>{entry.text}</span>
             </div>
           ))}
