@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 
-// NOAA CO-OPS tide gauge — Bridgeport CT (nearest active station to Stamford)
-const COOPS = { id: "8467150", name: "Bridgeport, CT", lat: 41.17582, lon: -73.18397 };
+// NOAA CO-OPS tide gauge — Cos Cob, CT (within Stamford viewport, station 8469706)
+const COOPS = { id: "8469706", name: "Cos Cob, CT", lat: 41.029, lon: -73.601 };
 
 // NDBC buoys in western Long Island Sound
 const NDBC_STATIONS = [
-  { id: "44022", name: "Execution Rocks Buoy", lat: 40.883, lon: -73.728 },
+  { id: "44022", name: "Execution Rocks Light", lat: 40.883, lon: -73.728 },
 ];
 
 async function fetchCOOPS() {

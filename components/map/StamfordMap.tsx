@@ -184,6 +184,19 @@ function popupWrap(inner: string) {
     backdrop-filter:blur(8px)">${inner}</div>`;
 }
 
+// Animate existing layer markers out, then run callback to rebuild.
+// Uses CSS class so the GPU handles the transition; canvas-rendered markers (buildings)
+// have no DOM elements so eachLayer() just yields nothing and cb() fires immediately.
+function animateOut(g: any, cb: () => void) {
+  const els: HTMLElement[] = [];
+  g.eachLayer?.((layer: any) => {
+    const el = layer.getElement?.();
+    if (el?.classList) { el.classList.add("tl-marker-out"); els.push(el); }
+  });
+  if (!els.length) { cb(); return; }
+  setTimeout(cb, 250);
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function StamfordMap() {
@@ -243,26 +256,28 @@ export default function StamfordMap() {
     fetch("/api/map/aircraft").then(r => r.json()).then(data => {
       const g = groupRefs.current.aircraft;
       if (!g) return;
-      g.clearLayers();
       const states: any[][] = data.states ?? [];
       setAircraftCount(states.length);
-      if (states.length) addLog("✈", `${states.length} aircraft in sector`, "#2a8bff");
-      states.forEach(s => {
-        const [icao, callsign, country, , , lon, lat, baroAlt, , vel, hdg, , , , , , geoAlt] = s;
-        if (lat == null || lon == null) return;
-        const alt = baroAlt ?? geoAlt ?? 0;
-        const cs  = (callsign as string)?.trim() || icao;
-        const icon = L.divIcon({ html: aircraftSVG(hdg ?? 0), className: "", iconSize: [22, 22], iconAnchor: [11, 11] });
-        L.marker([lat, lon], { icon })
-          .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(
-            popupWrap(`<div style="font-size:13px;font-weight:700;color:#2a8bff;margin-bottom:5px">${cs}</div>
-            <div style="color:#5a7090;font-size:10px;margin-bottom:8px;text-transform:uppercase">${country ?? "?"} · ${icao}</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 14px">
-              <span style="color:#5a7090">ALT</span><span>${alt > 0 ? metersToFt(alt).toLocaleString() + " ft" : "—"}</span>
-              <span style="color:#5a7090">SPD</span><span>${vel > 0 ? mpsToKnots(vel) + " kt" : "—"}</span>
-              <span style="color:#5a7090">HDG</span><span>${hdg ?? 0}° ${degToCompass(hdg ?? 0)}</span>
-            </div>`)))
-          .addTo(g);
+      animateOut(g, () => {
+        g.clearLayers();
+        if (states.length) addLog("✈", `${states.length} aircraft in sector`, "#2a8bff");
+        states.forEach(s => {
+          const [icao, callsign, country, , , lon, lat, baroAlt, , vel, hdg, , , , , , geoAlt] = s;
+          if (lat == null || lon == null) return;
+          const alt = baroAlt ?? geoAlt ?? 0;
+          const cs  = (callsign as string)?.trim() || icao;
+          const icon = L.divIcon({ html: aircraftSVG(hdg ?? 0), className: "tl-marker", iconSize: [22, 22], iconAnchor: [11, 11] });
+          L.marker([lat, lon], { icon })
+            .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(
+              popupWrap(`<div style="font-size:13px;font-weight:700;color:#2a8bff;margin-bottom:5px">${cs}</div>
+              <div style="color:#5a7090;font-size:10px;margin-bottom:8px;text-transform:uppercase">${country ?? "?"} · ${icao}</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 14px">
+                <span style="color:#5a7090">ALT</span><span>${alt > 0 ? metersToFt(alt).toLocaleString() + " ft" : "—"}</span>
+                <span style="color:#5a7090">SPD</span><span>${vel > 0 ? mpsToKnots(vel) + " kt" : "—"}</span>
+                <span style="color:#5a7090">HDG</span><span>${hdg ?? 0}° ${degToCompass(hdg ?? 0)}</span>
+              </div>`)))
+            .addTo(g);
+        });
       });
     }).catch(() => {});
   }, [addLog]);
@@ -283,8 +298,9 @@ export default function StamfordMap() {
       setIss(d);
       const g = groupRefs.current.iss;
       if (!g) return;
+      animateOut(g, () => {
       g.clearLayers();
-      const icon = L.divIcon({ html: issSVG(), className: "", iconSize: [26, 26], iconAnchor: [13, 13] });
+      const icon = L.divIcon({ html: issSVG(), className: "tl-marker", iconSize: [26, 26], iconAnchor: [13, 13] });
       L.marker([d.latitude, d.longitude], { icon })
         .bindPopup(L.popup({ className: "tl-popup", maxWidth: 220, offset: [0, -4] }).setContent(
           popupWrap(`<div style="font-size:13px;font-weight:700;color:#a78bfa;margin-bottom:5px">ISS · Intl Space Station</div>
@@ -294,6 +310,7 @@ export default function StamfordMap() {
             <span style="color:#5a7090">VIS</span><span>${d.visibility}</span>
           </div>`)))
         .addTo(g);
+      }); // end animateOut
     }).catch(() => {});
   }, []);
 
@@ -359,21 +376,23 @@ export default function StamfordMap() {
     fetch("/api/map/transit").then(r => r.json()).then(data => {
       const vehicles: any[] = data.vehicles ?? [];
       setTransitCount(vehicles.length);
-      if (vehicles.length) addLog("🚌", `${vehicles.length} CT Transit buses active`, "#60a5fa");
       const g = groupRefs.current.transit;
       if (!g) return;
-      g.clearLayers();
-      vehicles.forEach(v => {
-        const icon = L.divIcon({ html: transitSVG(v.routeTag, v.heading), className: "", iconSize: [26, 26], iconAnchor: [13, 13] });
-        L.marker([v.lat, v.lon], { icon })
-          .bindPopup(L.popup({ className: "tl-popup", maxWidth: 220, offset: [0, -4] }).setContent(
-            popupWrap(`<div style="font-size:13px;font-weight:700;color:#60a5fa;margin-bottom:5px">Route ${v.routeTag}</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 14px">
-              <span style="color:#5a7090">BUS</span><span>${v.id}</span>
-              <span style="color:#5a7090">HDG</span><span>${v.heading}° ${degToCompass(v.heading)}</span>
-              <span style="color:#5a7090">SPD</span><span>${v.speedKmHr} km/h</span>
-            </div>`)))
-          .addTo(g);
+      animateOut(g, () => {
+        g.clearLayers();
+        if (vehicles.length) addLog("🚌", `${vehicles.length} CT Transit buses active`, "#60a5fa");
+        vehicles.forEach(v => {
+          const icon = L.divIcon({ html: transitSVG(v.routeTag, v.heading), className: "tl-marker", iconSize: [26, 26], iconAnchor: [13, 13] });
+          L.marker([v.lat, v.lon], { icon })
+            .bindPopup(L.popup({ className: "tl-popup", maxWidth: 220, offset: [0, -4] }).setContent(
+              popupWrap(`<div style="font-size:13px;font-weight:700;color:#60a5fa;margin-bottom:5px">Route ${v.routeTag}</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 14px">
+                <span style="color:#5a7090">BUS</span><span>${v.id}</span>
+                <span style="color:#5a7090">HDG</span><span>${v.heading}° ${degToCompass(v.heading)}</span>
+                <span style="color:#5a7090">SPD</span><span>${v.speedKmHr} km/h</span>
+              </div>`)))
+            .addTo(g);
+        });
       });
     }).catch(() => {});
   }, [addLog]);
@@ -414,25 +433,27 @@ export default function StamfordMap() {
       setTrafficTexts(events.filter(ev => ev.lat && ev.lon).map(ev =>
         [ev.subtype || ev.type.replace(/_/g, " "), ev.road, ev.direction ? `(${ev.direction})` : null].filter(Boolean).join(" · ")
       ));
-      if (events.length) {
-        const label = source === "ct511" ? "CT 511" : "OSM";
-        addLog("🚧", `${events.length} road event${events.length !== 1 ? "s" : ""} · ${label}`, "#f59e0b");
-      }
       const g = groupRefs.current.traffic;
       if (!g) return;
-      g.clearLayers();
-      events.forEach(ev => {
-        if (!ev.lat || !ev.lon) return;
-        const typeLabel = ev.type.replace(/_/g, " ");
-        const icon = L.divIcon({ html: trafficSVG(ev.color), className: "", iconSize: [15, 15], iconAnchor: [7, 7] });
-        L.marker([ev.lat, ev.lon], { icon })
-          .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(
-            popupWrap(`<div style="font-size:12px;font-weight:700;color:${ev.color};margin-bottom:4px">🚧 ${ev.subtype || typeLabel}</div>
-            ${ev.road      ? `<div style="color:#7a9ab0">${ev.road}${ev.direction ? " · " + ev.direction : ""}</div>` : ""}
-            ${ev.severity  ? `<div style="color:#5a7090;font-size:10px">Severity: ${ev.severity}</div>` : ""}
-            ${ev.closure   ? `<div style="color:#ff2244;font-size:10px">⛔ Full closure</div>` : ""}
-            ${ev.description ? `<div style="color:#5a7090;font-size:10px;margin-top:3px">${ev.description}</div>` : ""}`)))
-          .addTo(g);
+      animateOut(g, () => {
+        g.clearLayers();
+        if (events.length) {
+          const label = source === "ct511" ? "CT 511" : "OSM";
+          addLog("🚧", `${events.length} road event${events.length !== 1 ? "s" : ""} · ${label}`, "#f59e0b");
+        }
+        events.forEach(ev => {
+          if (!ev.lat || !ev.lon) return;
+          const typeLabel = ev.type.replace(/_/g, " ");
+          const icon = L.divIcon({ html: trafficSVG(ev.color), className: "tl-marker", iconSize: [18, 18], iconAnchor: [9, 9] });
+          L.marker([ev.lat, ev.lon], { icon })
+            .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(
+              popupWrap(`<div style="font-size:12px;font-weight:700;color:${ev.color};margin-bottom:4px">🚧 ${ev.subtype || typeLabel}</div>
+              ${ev.road      ? `<div style="color:#7a9ab0">${ev.road}${ev.direction ? " · " + ev.direction : ""}</div>` : ""}
+              ${ev.severity  ? `<div style="color:#5a7090;font-size:10px">Severity: ${ev.severity}</div>` : ""}
+              ${ev.closure   ? `<div style="color:#ff2244;font-size:10px">⛔ Full closure</div>` : ""}
+              ${ev.description ? `<div style="color:#5a7090;font-size:10px;margin-top:3px">${ev.description}</div>` : ""}`)))
+            .addTo(g);
+        });
       });
     }).catch(() => {});
   }, [addLog]);
@@ -443,21 +464,23 @@ export default function StamfordMap() {
       setDispatchCount(incidents.length);
       const g = groupRefs.current.dispatch;
       if (!g) return;
-      g.clearLayers();
-      if (incidents.length) {
-        addLog("🚨", `${incidents.length} active dispatch call${incidents.length !== 1 ? "s" : ""}`, "#ff4466");
-        incidents.forEach(inc => {
-          if (!inc.lat || !inc.lon) return;
-          const icon = L.divIcon({ html: dispatchSVG(inc.callType), className: "", iconSize: [22, 22], iconAnchor: [11, 11] });
-          L.marker([inc.lat, inc.lon], { icon })
-            .bindPopup(L.popup({ className: "tl-popup", maxWidth: 220, offset: [0, -4] }).setContent(
-              popupWrap(`<div style="font-size:12px;font-weight:700;color:#ff4466;margin-bottom:4px">🚨 ${inc.callType}</div>
-              <div style="color:#7a9ab0">${inc.address}</div>
-              ${inc.unit ? `<div style="color:#5a7090;font-size:10px">Unit: ${inc.unit}</div>` : ""}
-              ${inc.timestamp ? `<div style="color:#5a7090;font-size:10px">${inc.timestamp}</div>` : ""}`)))
-            .addTo(g);
-        });
-      }
+      animateOut(g, () => {
+        g.clearLayers();
+        if (incidents.length) {
+          addLog("🚨", `${incidents.length} active dispatch call${incidents.length !== 1 ? "s" : ""}`, "#ff4466");
+          incidents.forEach(inc => {
+            if (!inc.lat || !inc.lon) return;
+            const icon = L.divIcon({ html: dispatchSVG(inc.callType), className: "tl-marker", iconSize: [22, 22], iconAnchor: [11, 11] });
+            L.marker([inc.lat, inc.lon], { icon })
+              .bindPopup(L.popup({ className: "tl-popup", maxWidth: 220, offset: [0, -4] }).setContent(
+                popupWrap(`<div style="font-size:12px;font-weight:700;color:#ff4466;margin-bottom:4px">🚨 ${inc.callType}</div>
+                <div style="color:#7a9ab0">${inc.address}</div>
+                ${inc.unit ? `<div style="color:#5a7090;font-size:10px">Unit: ${inc.unit}</div>` : ""}
+                ${inc.timestamp ? `<div style="color:#5a7090;font-size:10px">${inc.timestamp}</div>` : ""}`)))
+              .addTo(g);
+          });
+        }
+      });
     }).catch(() => {});
   }, [addLog]);
 
@@ -474,24 +497,26 @@ export default function StamfordMap() {
       }));
       const g = groupRefs.current.marine;
       if (!g) return;
-      g.clearLayers();
-      if (!stations.length) return;
-      addLog("⚓", `${stations.length} marine station${stations.length !== 1 ? "s" : ""} reporting`, "#06b6d4");
-      stations.forEach(st => {
-        const icon = L.divIcon({ html: marineSVG(st.type), className: "", iconSize: [22, 22], iconAnchor: [11, 11] });
-        const rows = [
-          st.waterLevel != null ? `<span style="color:#5a7090">TIDE</span><span>${st.waterLevel > 0 ? "+" : ""}${st.waterLevel} ft MLLW</span>` : "",
-          st.waterTemp  != null ? `<span style="color:#5a7090">WTEMP</span><span>${st.waterTemp}°F</span>` : "",
-          st.airTemp    != null ? `<span style="color:#5a7090">ATEMP</span><span>${st.airTemp}°F</span>` : "",
-          st.windSpeed  != null ? `<span style="color:#5a7090">WIND</span><span>${st.windSpeed} kt${st.windDir != null ? " " + degToCompass(st.windDir) : ""}</span>` : "",
-          st.waveHeight != null ? `<span style="color:#5a7090">WAVE</span><span>${st.waveHeight} ft</span>` : "",
-        ].filter(Boolean).join("");
-        L.marker([st.lat, st.lon], { icon })
-          .bindPopup(L.popup({ className: "tl-popup", maxWidth: 230, offset: [0, -4] }).setContent(
-            popupWrap(`<div style="font-size:12px;font-weight:700;color:#06b6d4;margin-bottom:4px">${st.type === "buoy" ? "⚓" : "≈"} ${st.name}</div>
-            <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px">${rows}</div>
-            ${st.updated ? `<div style="color:#2a3a52;font-size:9px;margin-top:5px">${st.updated} UTC</div>` : ""}`)))
-          .addTo(g);
+      animateOut(g, () => {
+        g.clearLayers();
+        if (!stations.length) return;
+        addLog("⚓", `${stations.length} marine station${stations.length !== 1 ? "s" : ""} reporting`, "#06b6d4");
+        stations.forEach(st => {
+          const icon = L.divIcon({ html: marineSVG(st.type), className: "tl-marker", iconSize: [22, 22], iconAnchor: [11, 11] });
+          const rows = [
+            st.waterLevel != null ? `<span style="color:#5a7090">TIDE</span><span>${st.waterLevel > 0 ? "+" : ""}${st.waterLevel} ft MLLW</span>` : "",
+            st.waterTemp  != null ? `<span style="color:#5a7090">WTEMP</span><span>${st.waterTemp}°F</span>` : "",
+            st.airTemp    != null ? `<span style="color:#5a7090">ATEMP</span><span>${st.airTemp}°F</span>` : "",
+            st.windSpeed  != null ? `<span style="color:#5a7090">WIND</span><span>${st.windSpeed} kt${st.windDir != null ? " " + degToCompass(st.windDir) : ""}</span>` : "",
+            st.waveHeight != null ? `<span style="color:#5a7090">WAVE</span><span>${st.waveHeight} ft</span>` : "",
+          ].filter(Boolean).join("");
+          L.marker([st.lat, st.lon], { icon })
+            .bindPopup(L.popup({ className: "tl-popup", maxWidth: 230, offset: [0, -4] }).setContent(
+              popupWrap(`<div style="font-size:12px;font-weight:700;color:#06b6d4;margin-bottom:4px">${st.type === "buoy" ? "⚓" : "≈"} ${st.name}</div>
+              <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px">${rows}</div>
+              ${st.updated ? `<div style="color:#2a3a52;font-size:9px;margin-top:5px">${st.updated} UTC</div>` : ""}`)))
+            .addTo(g);
+        });
       });
     }).catch(() => {});
   }, [addLog]);
@@ -508,12 +533,12 @@ export default function StamfordMap() {
       const canvas = L.canvas({ padding: 0.5 });
       buildings.forEach(([lat, lon]) => {
         L.circleMarker([lat, lon], {
-          radius: 1.5,
+          radius: 3,
           color: "#fbbf24",
-          fillColor: "#fbbf24",
-          fillOpacity: 0.55,
-          opacity: 0,
-          weight: 0,
+          fillColor: "#fde68a",
+          fillOpacity: 0.8,
+          opacity: 0.4,
+          weight: 0.5,
           renderer: canvas,
         }).addTo(g);
       });
@@ -526,8 +551,9 @@ export default function StamfordMap() {
       setMetarCount(stations.length);
       const g = groupRefs.current.metar;
       if (!g) return;
-      g.clearLayers();
       const items: { text: string; color: string }[] = [];
+      animateOut(g, () => {
+      g.clearLayers();
       stations.forEach((st: any) => {
         const color = fltColor(st.fltCat ?? "");
         // Log when the observation time changes (new METAR or SPECI received)
@@ -565,7 +591,7 @@ export default function StamfordMap() {
         `);
         const icon = L.divIcon({
           html: metarSVG(st.icaoId, st.fltCat ?? "?", windShort),
-          className: "", iconSize: [84, 32], iconAnchor: [42, 32],
+          className: "tl-marker", iconSize: [84, 32], iconAnchor: [42, 32],
         });
         L.marker([st.lat, st.lon], { icon })
           .bindPopup(L.popup({ className: "tl-popup", maxWidth: 270, offset: [0, -4] }).setContent(popup))
@@ -576,6 +602,7 @@ export default function StamfordMap() {
         });
       });
       setMetarItems(items);
+      }); // end animateOut
     }).catch(() => {});
   }, [addLog]);
 
@@ -1189,6 +1216,26 @@ export default function StamfordMap() {
         @keyframes tl-slide-in {
           from { opacity: 0; transform: translateX(12px); }
           to   { opacity: 1; transform: translateX(0); }
+        }
+
+        /* ── Marker appear / disappear ───────────────────────────────────────── */
+        @keyframes tl-pop-in {
+          0%   { transform: scale(0.15) translateY(8px); opacity: 0;   filter: brightness(4) saturate(2); }
+          45%  { transform: scale(1.18) translateY(-2px); opacity: 1;  filter: brightness(1.6) saturate(1.4); }
+          70%  { transform: scale(0.94) translateY(1px);  opacity: 1;  filter: brightness(1.1); }
+          100% { transform: scale(1)    translateY(0);    opacity: 1;  filter: brightness(1); }
+        }
+        @keyframes tl-pop-out {
+          0%   { transform: scale(1)    translateY(0);    opacity: 1;  filter: brightness(1); }
+          30%  { transform: scale(1.1)  translateY(-2px); opacity: 0.7; filter: brightness(1.8) saturate(1.5); }
+          100% { transform: scale(0)    translateY(6px);  opacity: 0;  filter: brightness(3) blur(1px); }
+        }
+        .tl-marker {
+          animation: tl-pop-in 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        }
+        .tl-marker-out {
+          animation: tl-pop-out 0.24s ease-in both;
+          pointer-events: none;
         }
 
         /* Leaflet popup reset */
