@@ -167,6 +167,9 @@ export default function StamfordMap() {
   const [dispatchCount,  setDispatchCount]  = useState(0);
   const [buildingsCount, setBuildingsCount] = useState(0);
   const [marineCount,    setMarineCount]    = useState(0);
+  const [alertTexts,    setAlertTexts]    = useState<string[]>([]);
+  const [trafficTexts,  setTrafficTexts]  = useState<string[]>([]);
+  const [marineTexts,   setMarineTexts]   = useState<string[]>([]);
   const [strikeCount,   setStrikeCount]   = useState(0);
   const [strikesPerMin, setStrikesPerMin] = useState(0);
   const [wsStatus,      setWsStatus]      = useState<"connecting" | "live" | "offline">("connecting");
@@ -249,6 +252,9 @@ export default function StamfordMap() {
     }).then(r => r.json()).then(d => {
       const features = d.features ?? [];
       setAlertCount(features.length);
+      setAlertTexts(features.map((f: any) =>
+        [f.properties.event, f.properties.headline].filter(Boolean).join(" — ")
+      ));
       if (features.length) addLog("⚠", `${features.length} NWS alert${features.length > 1 ? "s" : ""} active`, "#f59e0b");
       const g = groupRefs.current.alerts;
       if (!g) return;
@@ -320,6 +326,9 @@ export default function StamfordMap() {
       const events: any[] = data.events ?? [];
       const source: string = data.source ?? "overpass";
       setTrafficCount(events.length);
+      setTrafficTexts(events.filter(ev => ev.lat && ev.lon).map(ev =>
+        [ev.subtype || ev.type.replace(/_/g, " "), ev.road, ev.direction ? `(${ev.direction})` : null].filter(Boolean).join(" · ")
+      ));
       if (events.length) {
         const label = source === "ct511" ? "CT 511" : "OSM";
         addLog("🚧", `${events.length} road event${events.length !== 1 ? "s" : ""} · ${label}`, "#f59e0b");
@@ -371,6 +380,13 @@ export default function StamfordMap() {
     fetch("/api/map/marine").then(r => r.json()).then(data => {
       const stations: any[] = data.stations ?? [];
       setMarineCount(stations.length);
+      setMarineTexts(stations.map((st: any) => {
+        const bits: string[] = [st.name];
+        if (st.waterLevel != null) bits.push(`Tide ${st.waterLevel > 0 ? "+" : ""}${st.waterLevel}ft`);
+        if (st.waterTemp  != null) bits.push(`Water ${st.waterTemp}°F`);
+        if (st.windSpeed  != null) bits.push(`Wind ${st.windSpeed}kt${st.windDir != null ? " " + degToCompass(st.windDir) : ""}`);
+        return bits.join(" · ");
+      }));
       const g = groupRefs.current.marine;
       if (!g) return;
       g.clearLayers();
@@ -688,6 +704,12 @@ export default function StamfordMap() {
   const cond = weather ? (WMO[weather.code] ?? "Unknown") : null;
   const panelW = 232;
 
+  const tickerItems: { text: string; color: string }[] = [
+    ...alertTexts.map(t  => ({ text: `⚠ ${t}`,  color: "#f59e0b" })),
+    ...trafficTexts.map(t => ({ text: `🚧 ${t}`, color: "#fb923c" })),
+    ...marineTexts.map(t  => ({ text: `⚓ ${t}`, color: "#22d3ee" })),
+  ];
+
   const layerBadge: Partial<Record<LayerKey, string>> = {
     aircraft:  aircraftCount  > 0 ? String(aircraftCount)  : undefined,
     alerts:    alertCount     > 0 ? String(alertCount)     : undefined,
@@ -944,6 +966,39 @@ export default function StamfordMap() {
         </div>
       </div>
 
+      {/* ── Live ticker — bottom of map ───────────────────────────────────── */}
+      {tickerItems.length > 0 && (
+        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 20,
+          height: 28, overflow: "hidden", pointerEvents: "none",
+          borderTop: "1px solid #0d1a26",
+          background: "rgba(7,9,15,0.92)", display: "flex", alignItems: "center" }}>
+          {/* Label */}
+          <div style={{ flexShrink: 0, height: "100%", padding: "0 10px",
+            display: "flex", alignItems: "center", gap: 5,
+            borderRight: "1px solid #0d1a26" }}>
+            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#39d97a",
+              display: "inline-block", animation: "tl-blink 1.4s ease-in-out infinite" }} />
+            <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 8, color: "#39d97a", letterSpacing: "0.16em" }}>
+              INTEL
+            </span>
+          </div>
+          {/* Scrolling strip */}
+          <div style={{ flex: 1, overflow: "hidden" }}>
+            <div style={{ display: "flex", width: "max-content",
+              animation: `tl-ticker ${Math.max(tickerItems.length * 10, 20)}s linear infinite` }}>
+              {[...tickerItems, ...tickerItems].map((item, i) => (
+                <span key={i} style={{
+                  fontFamily: "Menlo,Consolas,monospace", fontSize: 9.5,
+                  color: item.color, padding: "0 32px", letterSpacing: "0.045em", whiteSpace: "nowrap",
+                }}>
+                  {item.text}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Event log — bottom right ───────────────────────────────────────── */}
       {log.length > 0 && (
         <div style={{ position: "absolute", right: 56, bottom: 36, zIndex: 15, maxWidth: 290, pointerEvents: "none" }}>
@@ -971,6 +1026,10 @@ export default function StamfordMap() {
 
       {/* ── Global CSS ─────────────────────────────────────────────────────── */}
       <style>{`
+        @keyframes tl-ticker {
+          from { transform: translateX(0); }
+          to   { transform: translateX(-50%); }
+        }
         @keyframes tl-pulse {
           0%   { transform: translate(-50%,-50%) scale(0); opacity: 0.9; }
           100% { transform: translate(-50%,-50%) scale(1); opacity: 0; }
