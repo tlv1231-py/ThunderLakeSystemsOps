@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
-// NOAA CO-OPS tide gauge — Cos Cob, CT (within Stamford viewport, station 8469706)
-const COOPS = { id: "8469706", name: "Cos Cob, CT", lat: 41.029, lon: -73.601 };
+// NOAA CO-OPS tide gauge — Bridgeport, CT (nearest verified station, id confirmed)
+const COOPS = { id: "8467150", name: "Bridgeport, CT", lat: 41.1735, lon: -73.1815 };
 
 // NDBC buoys in western Long Island Sound
 const NDBC_STATIONS = [
