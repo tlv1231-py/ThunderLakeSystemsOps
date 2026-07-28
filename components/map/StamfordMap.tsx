@@ -246,7 +246,15 @@ export default function StamfordMap() {
   const [nowMs,         setNowMs]         = useState(Date.now());
   const [log,           setLog]           = useState<LogEntry[]>([]);
   const [centerPx,      setCenterPx]      = useState<{ x: number; y: number } | null>(null);
-  const [uiScale,       setUiScale]       = useState(1.0);
+  const [uiScale, setUiScale] = useState(() => {
+    if (typeof window === "undefined") return 1.0;
+    const s = parseFloat(localStorage.getItem("tl-ui-scale") ?? "1");
+    return isNaN(s) || s < 0.5 || s > 2.5 ? 1.0 : s;
+  });
+  const applyScale = useCallback((v: number) => {
+    setUiScale(v);
+    if (typeof window !== "undefined") localStorage.setItem("tl-ui-scale", String(v));
+  }, []);
 
   const [ongoingItems, setOngoingItems] = useState<OngoingItem[]>([]);
 
@@ -1051,28 +1059,28 @@ export default function StamfordMap() {
         <button onClick={toggleFullscreen} className="flex items-center gap-1.5 shrink-0"
           style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d97a", display: "inline-block", animation: "tl-blink 1.4s ease-in-out infinite" }} />
-          <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 9, color: "#39d97a", letterSpacing: "0.16em" }}>LIVE</span>
+          <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(9 * uiScale), color: "#39d97a", letterSpacing: "0.16em" }}>LIVE</span>
         </button>
 
         {/* Lightning WS */}
         <div className="flex items-center gap-1 shrink-0 tl-mob-hide">
-          <span style={{ fontSize: 10, color: wsStatus === "live" ? "#ffe066" : "#2a3a52" }}>⚡</span>
-          <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 9, color: wsStatus === "live" ? "#ffe066" : "#2a3a52", letterSpacing: "0.1em" }}>
+          <span style={{ fontSize: Math.round(10 * uiScale), color: wsStatus === "live" ? "#ffe066" : "#2a3a52" }}>⚡</span>
+          <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(9 * uiScale), color: wsStatus === "live" ? "#ffe066" : "#2a3a52", letterSpacing: "0.1em" }}>
             {wsStatus === "live" ? (strikesPerMin > 0 ? `${strikesPerMin}/min` : "live") : wsStatus}
           </span>
         </div>
 
         {weather ? (
           <>
-            <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 11, color: "#e2ecff" }}>{Math.round(weather.temp)}°F</span>
-            <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 11, color: "#5a7090" }}>{cond}</span>
-            <span className="shrink-0 tl-mob-hide" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 11, color: "#5a7090" }}>{Math.round(weather.wind_speed)} mph {degToCompass(weather.wind_dir)}</span>
-            <span className="shrink-0 tl-mob-hide" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 11, color: "#5a7090" }}>{weather.humidity}% RH</span>
+            <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#e2ecff" }}>{Math.round(weather.temp)}°F</span>
+            <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#5a7090" }}>{cond}</span>
+            <span className="shrink-0 tl-mob-hide" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#5a7090" }}>{Math.round(weather.wind_speed)} mph {degToCompass(weather.wind_dir)}</span>
+            <span className="shrink-0 tl-mob-hide" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#5a7090" }}>{weather.humidity}% RH</span>
           </>
         ) : null}
 
         {alertCount > 0 && (
-          <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 9, color: "#f59e0b",
+          <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(9 * uiScale), color: "#f59e0b",
             background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.28)",
             borderRadius: 4, padding: "1px 6px", letterSpacing: "0.08em" }}>
             {alertCount} ALERT{alertCount !== 1 ? "S" : ""}
@@ -1082,13 +1090,13 @@ export default function StamfordMap() {
         {/* UI scale slider + Military clock — right side */}
         <div className="ml-auto flex items-center gap-3 shrink-0">
           <input
-            type="range" min="70" max="160" step="5"
+            type="range" min="50" max="250" step="5"
             value={Math.round(uiScale * 100)}
-            onChange={e => setUiScale(Number(e.target.value) / 100)}
+            onChange={e => applyScale(Number(e.target.value) / 100)}
             style={{ width: 52, cursor: "pointer", accentColor: "#22d3ee", opacity: 0.45, verticalAlign: "middle" }}
             title={`UI scale ${Math.round(uiScale * 100)}%`}
           />
-          <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 13, color: "#39d97a", letterSpacing: "0.12em", fontWeight: 700 }}>
+          <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(13 * uiScale), color: "#39d97a", letterSpacing: "0.12em", fontWeight: 700 }}>
             {milClock}
           </span>
         </div>
@@ -1236,17 +1244,18 @@ export default function StamfordMap() {
 
       {/* ── Live ticker — bottom of map ───────────────────────────────────── */}
       {tickerItems.length > 0 && (
-        <div className="tl-ticker-wrap" style={{ position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 20,
+        <div className="tl-ticker-wrap" style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 20,
           overflow: "hidden", pointerEvents: "none",
           borderTop: "1px solid #0d1a26",
-          background: "rgba(7,9,15,0.92)", display: "flex", alignItems: "center" }}>
+          background: "rgba(7,9,15,0.92)", display: "flex", alignItems: "center",
+          height: Math.round(28 * uiScale) }}>
           {/* Label */}
           <div style={{ flexShrink: 0, height: "100%", padding: "0 10px",
             display: "flex", alignItems: "center", gap: 5,
             borderRight: "1px solid #0d1a26" }}>
             <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#39d97a",
               display: "inline-block", animation: "tl-blink 1.4s ease-in-out infinite" }} />
-            <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 8, color: "#39d97a", letterSpacing: "0.16em" }}>
+            <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(8 * uiScale), color: "#39d97a", letterSpacing: "0.16em" }}>
               INTEL
             </span>
           </div>
@@ -1256,7 +1265,7 @@ export default function StamfordMap() {
               animation: `tl-ticker ${Math.max(tickerItems.length * 10, 20)}s linear infinite` }}>
               {[...tickerItems, ...tickerItems].map((item, i) => (
                 <span key={i} style={{
-                  fontFamily: "Menlo,Consolas,monospace", fontSize: 9.5,
+                  fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(9.5 * uiScale),
                   color: item.color, padding: "0 32px", letterSpacing: "0.045em", whiteSpace: "nowrap",
                 }}>
                   {item.text}
@@ -1269,7 +1278,7 @@ export default function StamfordMap() {
 
       {/* ── Event log — bottom right ───────────────────────────────────────── */}
       {log.length > 0 && (
-        <div style={{ position: "absolute", right: 56, bottom: 36, zIndex: 15, maxWidth: 340, pointerEvents: "none",
+        <div style={{ position: "fixed", right: 56, bottom: Math.round(28 * uiScale + 8), zIndex: 15, maxWidth: 340, pointerEvents: "none",
           transform: `scale(${uiScale})`, transformOrigin: "bottom right" }}>
           {log.slice(0, 7).map((entry, i) => (
             <div key={i} style={{
