@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "services" | "traffic" | "dispatch" | "buildings" | "marine";
+type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "services" | "traffic" | "dispatch" | "buildings" | "marine" | "metar";
 type BaseKey  = "satellite" | "hybrid" | "dark";
 interface LogEntry { time: string; icon: string; text: string; color: string; }
 
@@ -48,6 +48,7 @@ const LAYER_META: Record<LayerKey, LayerMeta> = {
   dispatch:  { label: "Dispatch",   color: "#ff4466", section: "city"        },
   buildings: { label: "City Lights", color: "#fbbf24", section: "city"       },
   marine:    { label: "Maritime",    color: "#06b6d4", section: "city"       },
+  metar:     { label: "METAR",       color: "#22c55e", section: "atmospheric" },
 };
 
 const SECTIONS: { key: "overhead" | "atmospheric" | "city"; label: string }[] = [
@@ -121,6 +122,18 @@ function dispatchSVG(callType: string) {
     <div style="position:absolute;inset:5px;border-radius:50%;background:${color};filter:drop-shadow(0 0 5px ${color})"></div>
   </div>`;
 }
+const fltColor = (cat: string) =>
+  cat === "VFR" ? "#22c55e" : cat === "MVFR" ? "#60a5fa" : cat === "IFR" ? "#ef4444" : cat === "LIFR" ? "#a855f7" : "#5a7090";
+
+function metarSVG(icao: string, fltcat: string, wind: string) {
+  const c = fltColor(fltcat);
+  return `<div style="font-family:Menlo,Consolas,monospace;background:rgba(7,9,15,0.9);
+    border:1.5px solid ${c};border-radius:4px;padding:3px 7px;
+    box-shadow:0 0 8px ${c}55;white-space:nowrap;line-height:1.35;min-width:72px">
+    <div style="font-size:9px;color:${c};letter-spacing:0.1em;font-weight:700">${icao}</div>
+    <div style="font-size:7.5px;color:${c}bb">${fltcat} · ${wind}</div>
+  </div>`;
+}
 function marineSVG(type: "buoy" | "tide_gauge") {
   const color  = type === "buoy" ? "#06b6d4" : "#0891b2";
   const symbol = type === "buoy" ? "⚓" : "≈";
@@ -150,12 +163,13 @@ export default function StamfordMap() {
   const strikeCountMinRef   = useRef(0);
   const wakeLockRef         = useRef<any>(null);
   const crosshairLatLngRef  = useRef(STAMFORD);
+  const metarObsRef         = useRef<Record<string, number>>({});
 
   const [baseKey,       setBaseKey]       = useState<BaseKey>("dark");
   const [enabled,       setEnabled]       = useState<Record<LayerKey, boolean>>({
     aircraft: true, radar: true, iss: true, alerts: true,
     lightning: true, transit: true, services: true,
-    traffic: true, dispatch: true, buildings: true, marine: true,
+    traffic: true, dispatch: true, buildings: true, marine: true, metar: true,
   });
   const [weather,       setWeather]       = useState<WeatherNow | null>(null);
   const [iss,           setIss]           = useState<ISSPos | null>(null);
@@ -167,9 +181,11 @@ export default function StamfordMap() {
   const [dispatchCount,  setDispatchCount]  = useState(0);
   const [buildingsCount, setBuildingsCount] = useState(0);
   const [marineCount,    setMarineCount]    = useState(0);
+  const [metarCount,    setMetarCount]    = useState(0);
   const [alertTexts,    setAlertTexts]    = useState<string[]>([]);
   const [trafficTexts,  setTrafficTexts]  = useState<string[]>([]);
   const [marineTexts,   setMarineTexts]   = useState<string[]>([]);
+  const [metarItems,    setMetarItems]    = useState<{ text: string; color: string }[]>([]);
   const [strikeCount,   setStrikeCount]   = useState(0);
   const [strikesPerMin, setStrikesPerMin] = useState(0);
   const [wsStatus,      setWsStatus]      = useState<"connecting" | "live" | "offline">("connecting");
@@ -435,6 +451,65 @@ export default function StamfordMap() {
     }).catch(() => {});
   }, [addLog]);
 
+  const fetchMetar = useCallback((L: any) => {
+    fetch("/api/map/metar").then(r => r.json()).then(data => {
+      const stations: any[] = data.stations ?? [];
+      setMetarCount(stations.length);
+      const g = groupRefs.current.metar;
+      if (!g) return;
+      g.clearLayers();
+      const items: { text: string; color: string }[] = [];
+      stations.forEach((st: any) => {
+        const color = fltColor(st.fltcat ?? "");
+        // Log when the observation time changes (new METAR or SPECI received)
+        const prev = metarObsRef.current[st.icaoId];
+        if (prev !== st.obsTime) {
+          metarObsRef.current[st.icaoId] = st.obsTime;
+          addLog("⛅", `${st.icaoId} ${st.fltcat ?? "?"} · ${st.wspd ?? 0}kt ${st.wdir != null ? degToCompass(st.wdir) : ""}`.trim(), color);
+        }
+        const cToF = (c: number | null) => c != null ? Math.round(c * 9 / 5 + 32) : null;
+        const wind = st.wspd != null
+          ? `${st.wdir ?? "VRB"}°/${st.wspd}${st.wgst ? "G" + st.wgst : ""}KT`
+          : "CALM";
+        const windShort = st.wspd != null
+          ? `${st.wspd}kt ${st.wdir != null ? degToCompass(st.wdir) : ""}`.trim()
+          : "calm";
+        const skyLayers = [
+          st.cover  && st.cldBas1 != null ? `${st.cover} ${(st.cldBas1 * 100).toLocaleString()}ft`  : st.cover  ?? null,
+          st.cover2 && st.cldBas2 != null ? `${st.cover2} ${(st.cldBas2 * 100).toLocaleString()}ft` : null,
+          st.cover3 && st.cldBas3 != null ? `${st.cover3} ${(st.cldBas3 * 100).toLocaleString()}ft` : null,
+        ].filter(Boolean).join(" · ") || "SKC";
+        const obsZ = st.obsTime ? new Date(st.obsTime * 1000).toUTCString().slice(17, 22) + "Z" : "";
+        const popup = popupWrap(`
+          <div style="font-size:12px;font-weight:700;color:${color};margin-bottom:2px">${st.icaoId} · ${st.name ?? ""}</div>
+          <div style="color:#2a3a52;font-size:8px;margin-bottom:6px">${obsZ}</div>
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin-bottom:6px">
+            <span style="color:#5a7090">CAT</span><span style="color:${color};font-weight:700">${st.fltcat ?? "?"}</span>
+            <span style="color:#5a7090">WIND</span><span>${wind}</span>
+            <span style="color:#5a7090">VIS</span><span>${st.visib != null ? st.visib + " SM" : "?"}</span>
+            <span style="color:#5a7090">SKY</span><span>${skyLayers}</span>
+            ${cToF(st.temp) != null ? `<span style="color:#5a7090">T/DP</span><span>${cToF(st.temp)}°F / ${cToF(st.dewp) ?? "?"}°F</span>` : ""}
+            ${st.altim != null ? `<span style="color:#5a7090">ALT</span><span>${Number(st.altim).toFixed(2)} inHg</span>` : ""}
+            ${st.wxString ? `<span style="color:#5a7090">WX</span><span>${st.wxString}</span>` : ""}
+          </div>
+          <div style="color:#2a3a52;font-size:7.5px;word-break:break-all;border-top:1px solid #0d1a26;padding-top:4px;line-height:1.6">${st.rawOb ?? ""}</div>
+        `);
+        const icon = L.divIcon({
+          html: metarSVG(st.icaoId, st.fltcat ?? "?", windShort),
+          className: "", iconSize: [84, 32], iconAnchor: [42, 32],
+        });
+        L.marker([st.lat, st.lon], { icon })
+          .bindPopup(L.popup({ className: "tl-popup", maxWidth: 270, offset: [0, -4] }).setContent(popup))
+          .addTo(g);
+        items.push({
+          text: `⛅ ${st.icaoId} ${st.fltcat} · ${wind} · Vis ${st.visib ?? "?"}SM · ${skyLayers}${cToF(st.temp) != null ? ` · ${cToF(st.temp)}°F` : ""}`,
+          color,
+        });
+      });
+      setMetarItems(items);
+    }).catch(() => {});
+  }, [addLog]);
+
   const fetchWeather = useCallback(() => {
     fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${STAMFORD.lat}&longitude=${STAMFORD.lng}` +
@@ -522,6 +597,7 @@ export default function StamfordMap() {
         dispatch:  L.layerGroup().addTo(map),
         buildings: L.layerGroup().addTo(map),
         marine:    L.layerGroup().addTo(map),
+        metar:     L.layerGroup().addTo(map),
       };
 
       mapInst.current = map;
@@ -581,7 +657,7 @@ export default function StamfordMap() {
       // Initial fetches
       fetchAircraft(L); fetchRadar(L); fetchISS(L); fetchAlerts(L);
       fetchTransit(L); fetchServices(L); fetchTraffic(L); fetchDispatch(L);
-      fetchMarine(L); fetchBuildings(L); // buildings: one-time load, 24h server cache
+      fetchMarine(L); fetchBuildings(L); fetchMetar(L); // buildings: one-time load, 24h server cache
 
       // Polling
       intervals.current.push(setInterval(() => fetchAircraft(L), 15_000));
@@ -593,6 +669,7 @@ export default function StamfordMap() {
       intervals.current.push(setInterval(() => fetchTraffic(L), 5 * 60_000));
       intervals.current.push(setInterval(() => fetchDispatch(L), 30_000));
       intervals.current.push(setInterval(() => fetchMarine(L), 30 * 60_000));
+      intervals.current.push(setInterval(() => fetchMetar(L), 60_000));
 
       // Lightning
       setupLightning(L);
@@ -705,6 +782,7 @@ export default function StamfordMap() {
   const panelW = 232;
 
   const tickerItems: { text: string; color: string }[] = [
+    ...metarItems,
     ...alertTexts.map(t  => ({ text: `⚠ ${t}`,  color: "#f59e0b" })),
     ...trafficTexts.map(t => ({ text: `🚧 ${t}`, color: "#fb923c" })),
     ...marineTexts.map(t  => ({ text: `⚓ ${t}`, color: "#22d3ee" })),
@@ -720,6 +798,7 @@ export default function StamfordMap() {
     dispatch:  dispatchCount  > 0 ? String(dispatchCount)  : "◉",
     buildings: buildingsCount > 0 ? buildingsCount.toLocaleString() : undefined,
     marine:    marineCount    > 0 ? String(marineCount)    : undefined,
+    metar:     metarCount     > 0 ? String(metarCount)     : undefined,
   };
 
   return (
