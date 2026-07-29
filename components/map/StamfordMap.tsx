@@ -224,7 +224,7 @@ function metarCircleSVG(icao: string, fltcat: string, wspd: number | null, wdir:
   const wxIcon = metarWxIcon(wxString, cover);
   const icaoY = wxIcon ? cy - 7 : cy + 1;
   const iconTxt = wxIcon
-    ? `<text x="${cx}" y="${cy + 9}" text-anchor="middle" dominant-baseline="central" font-size="10" opacity="0.9">${wxIcon}</text>`
+    ? `<text x="${cx}" y="${cy + 9}" text-anchor="middle" dominant-baseline="central" font-size="13" fill="${color}" opacity="0.9">${wxIcon}</text>`
     : "";
   return `<svg width="80" height="88" viewBox="0 0 80 88" xmlns="http://www.w3.org/2000/svg" style="overflow:visible">
     <circle cx="${cx}" cy="${cy}" r="${r}" stroke="${color}" stroke-width="1.5" fill="rgba(7,9,15,0.18)" opacity="0.88"/>
