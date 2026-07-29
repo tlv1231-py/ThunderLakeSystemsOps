@@ -191,10 +191,23 @@ function dispatchSVG(callType: string) {
 const fltColor = (cat: string) =>
   cat === "VFR" ? "#22c55e" : cat === "MVFR" ? "#60a5fa" : cat === "IFR" ? "#ef4444" : cat === "LIFR" ? "#a855f7" : "#5a7090";
 
-function metarCircleSVG(icao: string, fltcat: string, wspd: number | null, wdir: number | null): string {
+function metarWxIcon(wxString: string | null, cover: string | null): string {
+  const wx = (wxString ?? "").toUpperCase();
+  if (wx.includes("TS")) return "⛈";
+  if (wx.includes("SN") || wx.includes("GR") || wx.includes("PL")) return "❄";
+  if (wx.includes("RA") || wx.includes("DZ")) return "🌧";
+  if (wx.includes("FG") || wx.includes("BR") || wx.includes("HZ")) return "🌫";
+  const sky = (cover ?? "").toUpperCase();
+  if (sky === "OVC") return "☁";
+  if (sky === "BKN") return "🌥";
+  if (sky === "SCT") return "⛅";
+  if (sky === "FEW") return "🌤";
+  if (sky === "CLR" || sky === "SKC") return "☀";
+  return "";
+}
+function metarCircleSVG(icao: string, fltcat: string, wspd: number | null, wdir: number | null, wxString: string | null = null, cover: string | null = null): string {
   const color = fltColor(fltcat);
   const cx = 40, cy = 42, r = 26;
-  // Arrow from circle edge, pointing toward the FROM direction; rotated by wdir
   const ay1 = cy - r - 1, ay2 = cy - r - 14, hs = 3;
   const hasWind = wspd != null && wspd > 0 && wdir != null;
   const arrow = hasWind ? `
@@ -208,12 +221,17 @@ function metarCircleSVG(icao: string, fltcat: string, wspd: number | null, wdir:
     ? `<text x="${cx}" y="83" text-anchor="middle" font-family="Menlo,Consolas,monospace"
         font-size="8" fill="${color}" opacity="0.75" letter-spacing="0.04em">${wspd}kt</text>`
     : "";
+  const wxIcon = metarWxIcon(wxString, cover);
+  const icaoY = wxIcon ? cy - 7 : cy + 1;
+  const iconTxt = wxIcon
+    ? `<text x="${cx}" y="${cy + 9}" text-anchor="middle" dominant-baseline="central" font-size="10" opacity="0.9">${wxIcon}</text>`
+    : "";
   return `<svg width="80" height="88" viewBox="0 0 80 88" xmlns="http://www.w3.org/2000/svg" style="overflow:visible">
     <circle cx="${cx}" cy="${cy}" r="${r}" stroke="${color}" stroke-width="1.5" fill="rgba(7,9,15,0.18)" opacity="0.88"/>
-    <text x="${cx}" y="${cy + 1}" text-anchor="middle" dominant-baseline="central"
+    <text x="${cx}" y="${icaoY}" text-anchor="middle" dominant-baseline="central"
       font-family="Menlo,Consolas,monospace" font-size="9" font-weight="700"
       fill="${color}" letter-spacing="0.07em" opacity="0.95">${icao}</text>
-    ${arrow}${spdTxt}
+    ${iconTxt}${arrow}${spdTxt}
   </svg>`;
 }
 function geoCenter(geom: any): [number, number] | null {
@@ -264,18 +282,11 @@ function marineSVG(type: "buoy" | "tide_gauge") {
     font-size:11px;line-height:1;
     filter:drop-shadow(0 0 5px ${color}66)">${symbol}</div>`;
 }
-function stormSVG(icao: string, precip1hIn: number | null, windKt: number | null, windDir: number | null): string {
+function stormSVG(_icao: string, precip1hIn: number | null, _windKt: number | null, _windDir: number | null): string {
   const hasRain = precip1hIn != null && precip1hIn > 0.005;
-  const color   = hasRain ? "#38bdf8" : "#4a7a8a";
-  const precipStr = hasRain ? precip1hIn!.toFixed(2) + '"' : "0.00\"";
-  const windStr = windKt != null
-    ? `${windKt}kt${windDir != null ? " " + ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"][Math.round(windDir / 22.5) % 16] : ""}`
-    : "--";
-  return `<div style="font-family:Menlo,Consolas,monospace;white-space:nowrap;line-height:1.4;
-    text-shadow:0 0 6px rgba(0,0,0,0.95),0 0 12px rgba(0,0,0,0.8)">
-    <div style="font-size:calc(9px * var(--tl-mk-scale,1));color:${color};letter-spacing:0.1em;font-weight:700">${icao}</div>
-    <div style="font-size:calc(7.5px * var(--tl-mk-scale,1));color:${color}cc">💧${precipStr} · ${windStr}</div>
-  </div>`;
+  const color = hasRain ? "#38bdf8" : "#2a4a5a";
+  return `<div style="width:7px;height:7px;border-radius:50%;background:${color};opacity:${hasRain ? 0.85 : 0.45};
+    box-shadow:0 0 4px ${color}88;cursor:pointer"></div>`;
 }
 function popupWrap(inner: string) {
   return `<div style="font-family:Menlo,Consolas,monospace;font-size:11px;color:#d8e3f0;background:#07090fee;
@@ -1075,7 +1086,7 @@ export default function StamfordMap() {
           <div style="color:#2a3a52;font-size:7.5px;word-break:break-all;border-top:1px solid #0d1a26;padding-top:4px;line-height:1.6">${st.rawOb ?? ""}</div>
         `);
         const icon = L.divIcon({
-          html: `<div${obsChanged ? ' class="tl-anim"' : ""}>${metarCircleSVG(st.icaoId, st.fltCat ?? "?", st.wspd ?? null, st.wdir ?? null)}</div>`,
+          html: `<div${obsChanged ? ' class="tl-anim"' : ""}>${metarCircleSVG(st.icaoId, st.fltCat ?? "?", st.wspd ?? null, st.wdir ?? null, st.wxString ?? null, st.cover ?? null)}</div>`,
           className: "", iconSize: [80, 88], iconAnchor: [40, 42],
         });
 
@@ -1139,7 +1150,7 @@ export default function StamfordMap() {
             </div>`);
           const icon = L.divIcon({
             html: `<div class="tl-anim">${stormSVG(st.id, st.precip1hIn, st.windKt, st.windDir)}</div>`,
-            className: "", iconSize: [84, 32], iconAnchor: [42, 32],
+            className: "", iconSize: [7, 7], iconAnchor: [3, 3],
           });
           L.marker([st.lat, st.lon], { icon })
             .bindPopup(L.popup({ className: "tl-popup", maxWidth: 260, offset: [0, -4] }).setContent(popup))
@@ -1785,59 +1796,21 @@ export default function StamfordMap() {
         </div>
       )}
 
-      {/* ── Bottom-left sliders ────────────────────────────────────────────── */}
+      {/* ── Left column — ACTIVE panel + terminal ─────────────────────────── */}
       <div className="absolute" style={{
-        left: 10, bottom: tickerItems.length > 0 ? 38 : 10, zIndex: 15,
-        fontFamily: "Menlo,Consolas,monospace", display: "flex", flexDirection: "column", gap: 2,
-      }}>
-        {([
-          { label: "RADAR", val: Math.round(radarOpacity * 100), min: 0, max: 100, fn: (v: number) => applyRadarOpacity(v / 100), color: "#22d3ee" },
-          { label: "TRACK", val: Math.round(trackOpacity * 100), min: 0, max: 100, fn: (v: number) => applyTrackOpacity(v / 100), color: "#4488ff" },
-          { label: "SCALE", val: Math.round(uiScale * 100),      min: 50, max: 250, fn: (v: number) => applyScale(v / 100),        color: "#22d3ee" },
-          { label: "MARKS", val: Math.round(markerScale * 100),  min: 50, max: 300, fn: (v: number) => applyMarkerScale(v / 100),  color: "#f59e0b" },
-        ] as const).map(({ label, val, min, max, fn, color }) => (
-          <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, pointerEvents: "auto" }}>
-            <span style={{ fontSize: 7, color: color + "66", letterSpacing: "0.1em", minWidth: 36 }}>{label}</span>
-            <input
-              type="range" min={min} max={max} step="5"
-              value={val}
-              onChange={e => fn(Number(e.target.value))}
-              style={{ width: 52, cursor: "pointer", accentColor: color, opacity: 0.55 }}
-              title={`${label} ${val}%`}
-            />
-          </div>
-        ))}
-      </div>
-
-      {/* ── Right column — weather header + activity feed ─────────────────── */}
-      <div className="absolute" style={{
-        right: 10, top: 48, bottom: tickerItems.length > 0 ? 38 : 10, zIndex: 15, width: 230, pointerEvents: "none",
+        left: panelOpen ? panelW + 10 : 10,
+        top: 48, bottom: tickerItems.length > 0 ? 38 : 10,
+        zIndex: 15, width: 210, pointerEvents: "none",
         fontFamily: "Menlo,Consolas,monospace",
         display: "flex", flexDirection: "column",
+        transition: "left 0.3s",
       }}>
-        {/* Weather header */}
-        {weather && (
-          <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: Math.round(9 * uiScale), color: "#e2ecff", letterSpacing: "0.18em", fontWeight: 700, marginBottom: 2 }}>
-              STAMFORD
-            </div>
-            <div style={{ fontSize: Math.round(12 * uiScale), color: weather.precipitation > 0.005 ? "#38bdf8" : "#94a3b8", marginBottom: 1 }}>
-              {Math.round(weather.temp)}°F · {cond}
-            </div>
-            <div style={{ fontSize: Math.round(9 * uiScale), color: (weather.precipitation > 0.005 ? "#38bdf8" : "#94a3b8") + "bb" }}>
-              {Math.round(weather.wind_speed)} mph {degToCompass(weather.wind_dir)} · {weather.humidity}% RH
-              {weather.precipitation > 0.005 ? ` · 💧${weather.precipitation.toFixed(2)}"` : ""}
-            </div>
-            <div style={{ marginTop: 6, height: 1, background: "linear-gradient(to right, #1e2d4488, transparent)" }} />
-          </div>
-        )}
         {/* ◈ ACTIVE — merged situational awareness: ongoing events + recent log */}
         {(ongoingItems.length > 0 || log.length > 0) && (
           <div style={{ fontSize: Math.round(7 * uiScale), color: "#22d3ee44", letterSpacing: "0.14em", marginBottom: 4, flexShrink: 0 }}>
             ◈ ACTIVE
           </div>
         )}
-        {/* Time-critical ongoing events with live elapsed timers */}
         {ongoingItems.map(item => {
           const elapsedMs = item.serverNow != null && item.fetchTime != null
             ? (item.serverNow - item.startMs) + (nowMs - item.fetchTime)
@@ -1859,7 +1832,6 @@ export default function StamfordMap() {
             </div>
           );
         })}
-        {/* Recent system activity — muted, fades with age */}
         {log.slice(0, Math.max(2, 5 - ongoingItems.length)).map((entry, i) => (
           <div key={i} style={{
             display: "flex", alignItems: "center", gap: 6,
@@ -1877,7 +1849,6 @@ export default function StamfordMap() {
             <span style={{ color: entry.color + "88", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.text}</span>
           </div>
         ))}
-
         {/* Terminal feed — transparent, full-height, bottom-fade */}
         <div style={{ flex: 1, minHeight: 0, marginTop: 10, display: "flex", flexDirection: "column" }}>
           <div style={{ fontSize: Math.round(7 * uiScale), color: "#22d3ee44", letterSpacing: "0.14em", marginBottom: 3, flexShrink: 0 }}>
@@ -1909,6 +1880,48 @@ export default function StamfordMap() {
               );
             })}
           </div>
+        </div>
+      </div>
+
+      {/* ── Right column — weather header + sliders ──────────────────────── */}
+      <div className="absolute" style={{
+        right: 10, top: 48, zIndex: 15, width: 210, pointerEvents: "none",
+        fontFamily: "Menlo,Consolas,monospace",
+        display: "flex", flexDirection: "column",
+      }}>
+        {weather && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: Math.round(9 * uiScale), color: "#e2ecff", letterSpacing: "0.18em", fontWeight: 700, marginBottom: 2 }}>
+              STAMFORD
+            </div>
+            <div style={{ fontSize: Math.round(12 * uiScale), color: weather.precipitation > 0.005 ? "#38bdf8" : "#94a3b8", marginBottom: 1 }}>
+              {Math.round(weather.temp)}°F · {cond}
+            </div>
+            <div style={{ fontSize: Math.round(9 * uiScale), color: (weather.precipitation > 0.005 ? "#38bdf8" : "#94a3b8") + "bb" }}>
+              {Math.round(weather.wind_speed)} mph {degToCompass(weather.wind_dir)} · {weather.humidity}% RH
+              {weather.precipitation > 0.005 ? ` · 💧${weather.precipitation.toFixed(2)}"` : ""}
+            </div>
+            <div style={{ marginTop: 6, height: 1, background: "linear-gradient(to right, #1e2d4488, transparent)" }} />
+          </div>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 3, pointerEvents: "auto" }}>
+          {([
+            { label: "RADAR", val: Math.round(radarOpacity * 100), min: 0, max: 100, fn: (v: number) => applyRadarOpacity(v / 100), color: "#22d3ee" },
+            { label: "TRACK", val: Math.round(trackOpacity * 100), min: 0, max: 100, fn: (v: number) => applyTrackOpacity(v / 100), color: "#4488ff" },
+            { label: "SCALE", val: Math.round(uiScale * 100),      min: 50, max: 250, fn: (v: number) => applyScale(v / 100),        color: "#22d3ee" },
+            { label: "MARKS", val: Math.round(markerScale * 100),  min: 50, max: 300, fn: (v: number) => applyMarkerScale(v / 100),  color: "#f59e0b" },
+          ] as const).map(({ label, val, min, max, fn, color }) => (
+            <div key={label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ fontSize: 7, color: color + "66", letterSpacing: "0.1em", minWidth: 36 }}>{label}</span>
+              <input
+                type="range" min={min} max={max} step="5"
+                value={val}
+                onChange={e => fn(Number(e.target.value))}
+                style={{ width: 52, cursor: "pointer", accentColor: color, opacity: 0.55 }}
+                title={`${label} ${val}%`}
+              />
+            </div>
+          ))}
         </div>
       </div>
 
