@@ -191,14 +191,30 @@ function dispatchSVG(callType: string) {
 const fltColor = (cat: string) =>
   cat === "VFR" ? "#22c55e" : cat === "MVFR" ? "#60a5fa" : cat === "IFR" ? "#ef4444" : cat === "LIFR" ? "#a855f7" : "#5a7090";
 
-function metarSVG(icao: string, fltcat: string, wind: string, obsMs: number | null) {
-  const c = fltColor(fltcat);
-  return `<div style="font-family:Menlo,Consolas,monospace;white-space:nowrap;line-height:1.4;
-    text-shadow:0 0 6px rgba(0,0,0,0.95),0 0 12px rgba(0,0,0,0.8)">
-    <div style="font-size:calc(9px * var(--tl-mk-scale,1));color:${c};letter-spacing:0.1em;font-weight:700">${icao}</div>
-    <div style="font-size:calc(7.5px * var(--tl-mk-scale,1));color:${c}cc">${fltcat} · ${wind}</div>
-    ${obsMs ? `<span data-tl-mkr-onset="${obsMs}" style="display:block;font-size:calc(7px * var(--tl-mk-scale,1));color:${c}77;font-variant-numeric:tabular-nums;letter-spacing:0.04em;margin-top:1px">${fmtElapsed(Date.now() - obsMs)}</span>` : ""}
-  </div>`;
+function metarCircleSVG(icao: string, fltcat: string, wspd: number | null, wdir: number | null): string {
+  const color = fltColor(fltcat);
+  const cx = 40, cy = 42, r = 26;
+  // Arrow from circle edge, pointing toward the FROM direction; rotated by wdir
+  const ay1 = cy - r - 1, ay2 = cy - r - 14, hs = 3;
+  const hasWind = wspd != null && wspd > 0 && wdir != null;
+  const arrow = hasWind ? `
+    <g transform="rotate(${wdir},${cx},${cy})">
+      <line x1="${cx}" y1="${ay1}" x2="${cx}" y2="${ay2 + hs * 2}"
+        stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity="0.8"/>
+      <polygon points="${cx - hs},${ay2 + hs * 2} ${cx},${ay2} ${cx + hs},${ay2 + hs * 2}"
+        fill="${color}" opacity="0.8"/>
+    </g>` : "";
+  const spdTxt = wspd != null
+    ? `<text x="${cx}" y="83" text-anchor="middle" font-family="Menlo,Consolas,monospace"
+        font-size="8" fill="${color}" opacity="0.75" letter-spacing="0.04em">${wspd}kt</text>`
+    : "";
+  return `<svg width="80" height="88" viewBox="0 0 80 88" xmlns="http://www.w3.org/2000/svg" style="overflow:visible">
+    <circle cx="${cx}" cy="${cy}" r="${r}" stroke="${color}" stroke-width="1.5" fill="rgba(7,9,15,0.18)" opacity="0.88"/>
+    <text x="${cx}" y="${cy + 1}" text-anchor="middle" dominant-baseline="central"
+      font-family="Menlo,Consolas,monospace" font-size="9" font-weight="700"
+      fill="${color}" letter-spacing="0.07em" opacity="0.95">${icao}</text>
+    ${arrow}${spdTxt}
+  </svg>`;
 }
 function geoCenter(geom: any): [number, number] | null {
   if (!geom?.coordinates) return null;
@@ -1038,9 +1054,6 @@ export default function StamfordMap() {
         const wind = st.wspd != null
           ? `${st.wdir ?? "VRB"}°/${st.wspd}${st.wgst ? "G" + st.wgst : ""}KT`
           : "CALM";
-        const windShort = st.wspd != null
-          ? `${st.wspd}kt ${st.wdir != null ? degToCompass(st.wdir) : ""}`.trim()
-          : "calm";
         const skyLayers = [
           st.cover  && st.cldBas1 != null ? `${st.cover} ${(st.cldBas1 * 100).toLocaleString()}ft`  : st.cover  ?? null,
           st.cover2 && st.cldBas2 != null ? `${st.cover2} ${(st.cldBas2 * 100).toLocaleString()}ft` : null,
@@ -1061,11 +1074,9 @@ export default function StamfordMap() {
           </div>
           <div style="color:#2a3a52;font-size:7.5px;word-break:break-all;border-top:1px solid #0d1a26;padding-top:4px;line-height:1.6">${st.rawOb ?? ""}</div>
         `);
-        const obsMs = st.obsTime ? st.obsTime * 1000 : null;
-        const mkH = obsMs ? 46 : 32;
         const icon = L.divIcon({
-          html: `<div${obsChanged ? ' class="tl-anim"' : ""}>${metarSVG(st.icaoId, st.fltCat ?? "?", windShort, obsMs)}</div>`,
-          className: "", iconSize: [84, mkH], iconAnchor: [42, mkH],
+          html: `<div${obsChanged ? ' class="tl-anim"' : ""}>${metarCircleSVG(st.icaoId, st.fltCat ?? "?", st.wspd ?? null, st.wdir ?? null)}</div>`,
+          className: "", iconSize: [80, 88], iconAnchor: [40, 42],
         });
 
         if (metarMarkersRef.current.has(st.icaoId)) {
@@ -1558,50 +1569,6 @@ export default function StamfordMap() {
         </div>
       )}
 
-      {/* ── ONGOING events overlay — full-width banner below top bar ─────── */}
-      {ongoingItems.length > 0 && (
-        <div className="tl-ongoing absolute pointer-events-none" style={{ zIndex: 15,
-          top: 44, left: panelOpen ? 244 : 12, right: 12,
-          transition: "left 0.3s",
-          fontFamily: "Menlo,Consolas,monospace",
-          transform: `scale(${uiScale})`, transformOrigin: "top left",
-        }}>
-          <div style={{ fontSize: 8, color: "#22d3ee44", letterSpacing: "0.22em", marginBottom: 5, textTransform: "uppercase" }}>
-            ◈ ONGOING
-          </div>
-          {ongoingItems.map(item => {
-            const elapsedMs = item.serverNow != null && item.fetchTime != null
-              ? (item.serverNow - item.startMs) + (nowMs - item.fetchTime)
-              : (nowMs - item.startMs);
-            const clampedMs = Math.max(0, elapsedMs);
-            const elapsedStr = fmtElapsed(clampedMs);
-            return (
-              <div key={item.id} style={{
-                display: "flex", alignItems: "baseline", gap: 10,
-                marginBottom: 3, overflow: "hidden",
-                animation: "tl-slide-in 0.3s ease",
-              }}>
-                <span style={{ fontSize: 10, color: item.color, letterSpacing: "0.1em",
-                  minWidth: 90, maxWidth: 90, flexShrink: 0,
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  opacity: 0.9 }}>
-                  {item.evtType}
-                </span>
-                <span style={{ fontSize: 10, color: "rgba(130,160,195,0.65)",
-                  fontVariantNumeric: "tabular-nums", letterSpacing: "0.06em",
-                  minWidth: 58, flexShrink: 0, whiteSpace: "nowrap" }}>
-                  {elapsedStr}
-                </span>
-                <span style={{ fontSize: 10, color: "rgba(200,218,240,0.5)",
-                  flex: 1, minWidth: 0,
-                  whiteSpace: "nowrap", overflow: "hidden" }}>
-                  {item.detail}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
 
       {/* ── Top bar ────────────────────────────────────────────────────────── */}
       <div className="absolute top-0 left-0 right-0 z-10 flex items-center gap-3 px-3 py-2"
@@ -1864,29 +1831,52 @@ export default function StamfordMap() {
             <div style={{ marginTop: 6, height: 1, background: "linear-gradient(to right, #1e2d4488, transparent)" }} />
           </div>
         )}
-        {/* Activity feed */}
-        {log.slice(0, 5).map((entry, i) => (
+        {/* ◈ ACTIVE — merged situational awareness: ongoing events + recent log */}
+        {(ongoingItems.length > 0 || log.length > 0) && (
+          <div style={{ fontSize: Math.round(7 * uiScale), color: "#22d3ee44", letterSpacing: "0.14em", marginBottom: 4, flexShrink: 0 }}>
+            ◈ ACTIVE
+          </div>
+        )}
+        {/* Time-critical ongoing events with live elapsed timers */}
+        {ongoingItems.map(item => {
+          const elapsedMs = item.serverNow != null && item.fetchTime != null
+            ? (item.serverNow - item.startMs) + (nowMs - item.fetchTime)
+            : (nowMs - item.startMs);
+          return (
+            <div key={item.id} style={{
+              display: "flex", alignItems: "center", gap: 5,
+              fontSize: Math.round(8 * uiScale),
+              borderLeft: `2px solid ${item.color}55`,
+              paddingLeft: 7, paddingTop: 2, paddingBottom: 2, marginBottom: 2,
+              animation: "tl-slide-in 0.3s ease", letterSpacing: "0.04em", flexShrink: 0,
+            }}>
+              <span style={{ color: item.color + "88", fontVariantNumeric: "tabular-nums", fontSize: Math.round(7 * uiScale), minWidth: 48, flexShrink: 0, letterSpacing: "0.06em" }}>
+                {fmtElapsed(Math.max(0, elapsedMs))}
+              </span>
+              <span style={{ color: item.color, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {item.evtType}: {item.detail}
+              </span>
+            </div>
+          );
+        })}
+        {/* Recent system activity — muted, fades with age */}
+        {log.slice(0, Math.max(2, 5 - ongoingItems.length)).map((entry, i) => (
           <div key={i} style={{
             display: "flex", alignItems: "center", gap: 6,
             fontSize: Math.round(8 * uiScale),
-            borderLeft: `2px solid ${entry.color}33`,
+            borderLeft: `2px solid ${entry.color}22`,
             paddingLeft: 7, paddingTop: 2, paddingBottom: 2, marginBottom: 2,
-            opacity: 1 - i * 0.1,
-            animation: i === 0 ? "tl-slide-in 0.3s ease" : "none",
-            letterSpacing: "0.04em",
+            opacity: 0.65 - i * 0.1,
+            animation: i === 0 && ongoingItems.length === 0 ? "tl-slide-in 0.3s ease" : "none",
+            letterSpacing: "0.04em", flexShrink: 0,
           }}>
             <span style={{ flexShrink: 0 }}>{entry.icon}</span>
-            <span style={{ color: entry.color + "77", fontVariantNumeric: "tabular-nums", fontSize: Math.round(7 * uiScale), minWidth: 48, flexShrink: 0, letterSpacing: "0.06em" }}>
+            <span style={{ color: entry.color + "55", fontVariantNumeric: "tabular-nums", fontSize: Math.round(7 * uiScale), minWidth: 44, flexShrink: 0, letterSpacing: "0.06em" }}>
               {fmtElapsed(Math.max(0, nowMs - entry.loggedAt))}
             </span>
-            <span style={{ color: entry.color, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.text}</span>
+            <span style={{ color: entry.color + "88", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.text}</span>
           </div>
         ))}
-        {log.length > 0 && (
-          <div style={{ fontSize: Math.round(7 * uiScale), color: "#1e2d44", letterSpacing: "0.1em", marginTop: 4 }}>
-            ACTIVITY LOG
-          </div>
-        )}
 
         {/* Terminal feed — transparent, full-height, bottom-fade */}
         <div style={{ flex: 1, minHeight: 0, marginTop: 10, display: "flex", flexDirection: "column" }}>
