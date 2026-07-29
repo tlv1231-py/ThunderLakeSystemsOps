@@ -296,14 +296,11 @@ function popupWrap(inner: string) {
 }
 function trainMarkerSVG(dir: "outbound" | "inbound"): string {
   const flip = dir === "inbound" ? "transform:scaleX(-1);" : "";
-  return `<div style="width:28px;height:16px;display:flex;align-items:center;justify-content:center;overflow:visible;${flip}">
-    <div style="filter:drop-shadow(0 0 4px rgba(26,90,204,0.9))">
-      <svg viewBox="0 0 22 10" width="22" height="10" xmlns="http://www.w3.org/2000/svg">
-        <rect x="1" y="2" width="14" height="6" rx="1.5" fill="#1a5acd"/>
-        <rect x="2.5" y="3.5" width="11" height="3" rx="0.5" fill="rgba(255,255,255,0.15)"/>
-        <polygon points="15,2 21,5 15,8" fill="#2266ee"/>
-      </svg>
-    </div>
+  return `<div style="width:24px;height:7px;overflow:visible;${flip}">
+    <svg viewBox="0 0 24 7" width="24" height="7" xmlns="http://www.w3.org/2000/svg">
+      <line x1="1" y1="3.5" x2="17" y2="3.5" stroke="#4488ff" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
+      <polygon points="15,1 24,3.5 15,6" fill="#4488ff" opacity="0.9"/>
+    </svg>
   </div>`;
 }
 
@@ -573,7 +570,7 @@ export default function StamfordMap() {
     const v = Math.floor(Date.now() / 300_000);
     g?.addLayer(L.tileLayer(
       `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png?_=${v}`,
-      { opacity: radarOpacityRef.current, maxZoom: 19 }
+      { opacity: radarOpacityRef.current, maxZoom: 19, className: "tl-radar-tile" }
     ));
   }, []);
 
@@ -1972,6 +1969,9 @@ export default function StamfordMap() {
 
         /* Ongoing overlay */
         .tl-ongoing { text-shadow: 0 0 8px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,1); }
+
+        /* Soften blocky NEXRAD tiles with bilinear blur */
+        .tl-radar-tile { image-rendering: auto; filter: blur(2px); }
 
         /* Ticker: 28px content area + safe-area inset for Android/iOS nav bars */
         .tl-ticker-wrap {
