@@ -11,8 +11,12 @@ const COOPS_TIDE = [
 
 // NDBC buoys in/near Long Island Sound
 const NDBC_BUOYS = [
-  { id: "44040", name: "LI Sound (Offshore)", lat: 41.138, lon: -72.659 },
-  { id: "44025", name: "NY Bight",            lat: 40.251, lon: -73.166 },
+  { id: "44040", name: "LI Sound (Offshore)", lat: 41.138,  lon: -72.659  },
+  { id: "44025", name: "NY Bight",            lat: 40.251,  lon: -73.166  },
+  { id: "KPTN6", name: "Kings Point, NY",     lat: 40.8083, lon: -73.7633 },
+  { id: "MHRN6", name: "Montauk Harbor, NY",  lat: 41.0717, lon: -71.9600 },
+  { id: "ROBN4", name: "Robbins Reef, NJ",    lat: 40.6567, lon: -74.0650 },
+  { id: "BATN6", name: "The Battery, NYC",    lat: 40.6983, lon: -74.0133 },
 ];
 
 function coopsUrl(stationId: string, product: string) {
