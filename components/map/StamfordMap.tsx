@@ -383,6 +383,7 @@ export default function StamfordMap() {
   const [nowMs,         setNowMs]         = useState(Date.now());
   const [log,           setLog]           = useState<LogEntry[]>([]);
   const [termLog,       setTermLog]       = useState<TermEntry[]>([]);
+  const [audioOpen,     setAudioOpen]     = useState(false);
   const [centerPx,      setCenterPx]      = useState<{ x: number; y: number } | null>(null);
   const [uiScale, setUiScale] = useState(() => {
     if (typeof window === "undefined") return 1.0;
@@ -512,20 +513,15 @@ export default function StamfordMap() {
   }, [addLog, addTerm]);
 
   const fetchRadar = useCallback((L: any) => {
-    fetch("https://api.rainviewer.com/public/weather-maps.json").then(r => r.json()).then(data => {
-      const frames: any[] = data.radar?.past ?? [];
-      if (!frames.length) return;
-      const url = `https://tilecache.rainviewer.com${frames[frames.length - 1].path}/256/{z}/{x}/{y}/4/1_1.png`;
-      const g = groupRefs.current.radar;
-      g?.clearLayers();
-      // bounds = northeast US land area only: RainViewer returns "Zoom Level Not Supported"
-      // for tiles that are entirely over open ocean (no radar coverage), not for land tiles.
-      // Restricting to the northeast US grid ensures every requested tile has data at all zoom levels.
-      g?.addLayer(L.tileLayer(url, {
-        opacity: 0.6, maxNativeZoom: 8, maxZoom: 19,
-        bounds: [[35, -82], [48, -63]],
-      }));
-    }).catch(() => {});
+    const g = groupRefs.current.radar;
+    g?.clearLayers();
+    // Iowa State Mesonet NEXRAD composite tiles — no zoom restrictions, no error tiles over water,
+    // transparent where no precip. Cache-bust parameter changes every 5 min to match their update cycle.
+    const v = Math.floor(Date.now() / 300_000);
+    g?.addLayer(L.tileLayer(
+      `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png?_=${v}`,
+      { opacity: 0.7, maxZoom: 19 }
+    ));
   }, []);
 
   const fetchISS = useCallback((L: any) => {
@@ -701,12 +697,13 @@ export default function StamfordMap() {
     const g = L.layerGroup().addTo(mapInst.current);
     const lineStyle = { color: "#2255bb", weight: 2, opacity: op, interactive: false };
 
-    // Draw hardcoded track geometry — no Overpass needed
+    // Hardcoded tracks draw instantly as fallback for the full line
+    const fallbackGroup = L.layerGroup().addTo(g);
     [MNR_MAIN, MNR_NEWCANAAN, MNR_DANBURY, MNR_WATERBURY].forEach(seg => {
-      L.polyline(seg, lineStyle).addTo(g);
+      L.polyline(seg, lineStyle).addTo(fallbackGroup);
     });
 
-    // Draw station dots
+    // Station dots draw immediately
     MNR_STOPS.forEach(st => {
       L.circleMarker([st.lat, st.lon], {
         radius: 4, color: "#2255bb", fillColor: "#4488ee",
@@ -716,6 +713,16 @@ export default function StamfordMap() {
           <div style="color:#5a7090;font-size:10px;margin-top:2px">Metro-North Station</div>`)
       )).addTo(g);
     });
+
+    // Async: overlay accurate OSM geometry for Stamford metro area (replaces fallback if Overpass succeeds)
+    const osmGroup = L.layerGroup().addTo(g);
+    fetch("/api/map/railtrack").then(r => r.json()).then(data => {
+      const ways: any[] = data.ways ?? [];
+      if (ways.length > 0) {
+        fallbackGroup.clearLayers();
+        ways.forEach(w => L.polyline(w.coords, lineStyle).addTo(osmGroup));
+      }
+    }).catch(() => {});
 
     trackGroupRef.current = g;
   }, []);
@@ -1245,15 +1252,15 @@ export default function StamfordMap() {
         .then(() => nominatim("150 Butternut Lane, Stamford, CT"))
         .then(pos => {
           if (!pos) return;
-          const bnHtml = `<div style="position:relative;width:28px;height:28px">
-            <div style="position:absolute;top:50%;left:12px;width:12px;height:1px;background:rgba(59,130,246,0.7)"></div>
-            <div style="position:absolute;top:50%;right:12px;width:12px;height:1px;background:rgba(59,130,246,0.7);transform:translateX(100%)"></div>
-            <div style="position:absolute;left:50%;top:12px;width:1px;height:12px;background:rgba(59,130,246,0.7)"></div>
-            <div style="position:absolute;left:50%;bottom:12px;width:1px;height:12px;background:rgba(59,130,246,0.7);transform:translateY(100%)"></div>
-            <div style="position:absolute;top:50%;left:50%;width:5px;height:5px;border-radius:50%;background:#3b82f6;transform:translate(-50%,-50%);box-shadow:0 0 6px #3b82f6,0 0 14px rgba(59,130,246,0.6)"></div>
-            <div style="position:absolute;top:calc(50% + 6px);left:calc(50% + 6px);font-family:Menlo,Consolas,monospace;font-size:7.5px;color:rgba(59,130,246,0.75);letter-spacing:0.14em">BN</div>
+          const bnHtml = `<div style="position:relative;width:34px;height:34px">
+            <div style="position:absolute;top:50%;left:14px;width:14px;height:1px;background:rgba(255,255,255,0.7)"></div>
+            <div style="position:absolute;top:50%;right:14px;width:14px;height:1px;background:rgba(255,255,255,0.7);transform:translateX(100%)"></div>
+            <div style="position:absolute;left:50%;top:14px;width:1px;height:14px;background:rgba(255,255,255,0.7)"></div>
+            <div style="position:absolute;left:50%;bottom:14px;width:1px;height:14px;background:rgba(255,255,255,0.7);transform:translateY(100%)"></div>
+            <div style="position:absolute;top:50%;left:50%;width:6px;height:6px;border-radius:50%;background:#ffffff;transform:translate(-50%,-50%);box-shadow:0 0 6px rgba(255,255,255,0.9),0 0 14px rgba(255,255,255,0.3)"></div>
+            <div style="position:absolute;top:calc(50% + 7px);left:calc(50% + 7px);font-family:Menlo,Consolas,monospace;font-size:9px;color:rgba(255,255,255,0.8);letter-spacing:0.14em;text-shadow:0 0 4px rgba(0,0,0,0.9)">BN</div>
           </div>`;
-          const icon = L.divIcon({ html: bnHtml, className: "", iconSize: [28, 28], iconAnchor: [14, 14] });
+          const icon = L.divIcon({ html: bnHtml, className: "", iconSize: [34, 34], iconAnchor: [17, 17] });
           L.marker([pos.lat, pos.lng], { icon })
             .bindTooltip("150 Butternut Ln", { className: "tl-tt", sticky: true })
             .addTo(map);
@@ -1355,7 +1362,7 @@ export default function StamfordMap() {
   // Weather
   useEffect(() => {
     fetchWeather();
-    const id = setInterval(fetchWeather, 5 * 60_000);
+    const id = setInterval(fetchWeather, 2 * 60_000);
     return () => clearInterval(id);
   }, [fetchWeather]);
 
@@ -1415,7 +1422,13 @@ export default function StamfordMap() {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  const cond = weather ? (WMO[weather.code] ?? "Unknown") : null;
+  // Override WMO code string with precipitation-based condition when actively raining —
+  // Open-Meteo's weather_code can lag its precipitation field by 15+ minutes.
+  const cond = weather
+    ? weather.precipitation > 0.1  ? "Heavy rain"
+    : weather.precipitation > 0.01 ? "Rain"
+    : (WMO[weather.code] ?? "Unknown")
+    : null;
   const panelW = 232;
 
   const tickerItems: { text: string; color: string }[] = [
@@ -1458,27 +1471,28 @@ export default function StamfordMap() {
           {/* Crosshair at city center */}
           <div style={{ position: "absolute", left: centerPx.x, top: centerPx.y }}>
             {/* Horizontal bars */}
-            <div style={{ position: "absolute", top: -0.5, left: 12, width: 20, height: 1, background: "rgba(57,217,122,0.55)" }} />
-            <div style={{ position: "absolute", top: -0.5, right: 12, width: 20, height: 1, background: "rgba(57,217,122,0.55)", transform: "translateX(100%)" }} />
+            <div style={{ position: "absolute", top: -0.5, left: 14, width: 26, height: 1, background: "rgba(255,255,255,0.7)" }} />
+            <div style={{ position: "absolute", top: -0.5, right: 14, width: 26, height: 1, background: "rgba(255,255,255,0.7)", transform: "translateX(100%)" }} />
             {/* Vertical bars */}
-            <div style={{ position: "absolute", left: -0.5, top: 12, width: 1, height: 20, background: "rgba(57,217,122,0.55)" }} />
-            <div style={{ position: "absolute", left: -0.5, bottom: 12, width: 1, height: 20, background: "rgba(57,217,122,0.55)", transform: "translateY(100%)" }} />
+            <div style={{ position: "absolute", left: -0.5, top: 14, width: 1, height: 26, background: "rgba(255,255,255,0.7)" }} />
+            <div style={{ position: "absolute", left: -0.5, bottom: 14, width: 1, height: 26, background: "rgba(255,255,255,0.7)", transform: "translateY(100%)" }} />
             {/* Center dot */}
-            <div style={{ position: "absolute", width: 6, height: 6, borderRadius: "50%", background: "#39d97a",
-              transform: "translate(-50%,-50%)", boxShadow: "0 0 8px #39d97a, 0 0 20px rgba(57,217,122,0.4)" }} />
+            <div style={{ position: "absolute", width: 8, height: 8, borderRadius: "50%", background: "#ffffff",
+              transform: "translate(-50%,-50%)", boxShadow: "0 0 8px rgba(255,255,255,0.9), 0 0 20px rgba(255,255,255,0.3)" }} />
           </div>
 
-          {/* "STAMFORD" label near crosshair */}
+          {/* "TLS" label near crosshair */}
           <div style={{
             position: "absolute",
-            left: centerPx.x + 14,
-            top: centerPx.y + 8,
+            left: centerPx.x + 16,
+            top: centerPx.y + 10,
             fontFamily: "Menlo,Consolas,monospace",
-            fontSize: 9,
-            color: "rgba(57,217,122,0.7)",
+            fontSize: 11,
+            color: "rgba(255,255,255,0.85)",
             letterSpacing: "0.18em",
             textTransform: "uppercase",
             pointerEvents: "none",
+            textShadow: "0 0 6px rgba(0,0,0,0.9)",
           }}>
             TLS
           </div>
@@ -1843,6 +1857,34 @@ export default function StamfordMap() {
             })}
           </div>
         </div>
+      </div>
+
+      {/* ── Scanner / audio feeds ─────────────────────────────────────────── */}
+      <div className="absolute" style={{ right: 10, bottom: tickerItems.length > 0 ? 38 : 10, zIndex: 20, fontFamily: "Menlo,Consolas,monospace" }}>
+        {audioOpen ? (
+          <div style={{ position: "relative", background: "rgba(7,9,15,0.94)", border: "1px solid #0d1a26", borderRadius: 6, padding: "8px 10px", width: 240 }}>
+            <button onClick={() => setAudioOpen(false)} style={{ position: "absolute", top: 6, right: 8, background: "none", border: "none", color: "#2a3a52", cursor: "pointer", fontSize: 12, lineHeight: 1 }}>✕</button>
+            <div style={{ fontSize: 8, color: "#22d3ee", letterSpacing: "0.16em", marginBottom: 7 }}>◈ SCANNER FEEDS</div>
+            <div style={{ fontSize: 8, color: "#4488ff", letterSpacing: "0.1em", marginBottom: 4 }}>STAMFORD FIRE / EMS</div>
+            <iframe
+              src="https://www.broadcastify.com/webPlayer/27204"
+              style={{ width: "100%", height: 46, border: "none", borderRadius: 3 }}
+              scrolling="no"
+              allow="autoplay"
+            />
+            <div style={{ fontSize: 7, color: "#1e2d44", marginTop: 5, lineHeight: 1.5 }}>
+              Free Broadcastify account required to play
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setAudioOpen(true)} style={{
+            background: "rgba(7,9,15,0.88)", border: "1px solid #0d1a2688",
+            borderRadius: 4, padding: "4px 9px", cursor: "pointer",
+            fontSize: 8, color: "#4488ffaa", letterSpacing: "0.12em",
+          }}>
+            📡 FEEDS
+          </button>
+        )}
       </div>
 
       {/* ── Global CSS ─────────────────────────────────────────────────────── */}
