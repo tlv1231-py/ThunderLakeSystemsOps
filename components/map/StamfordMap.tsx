@@ -274,13 +274,14 @@ function alertPingSVG(label: string, onsetMs: number) {
   </div>`;
 }
 function marineSVG(type: "buoy" | "tide_gauge") {
-  const color  = type === "buoy" ? "#06b6d4" : "#0891b2";
+  const color  = type === "buoy" ? "#06b6d4" : "#22d3ee";
   const symbol = type === "buoy" ? "⚓" : "≈";
-  return `<div style="width:22px;height:22px;border-radius:50%;
-    background:${color}18;border:1.5px solid ${color};
+  return `<div style="width:30px;height:30px;border-radius:50%;
+    background:${color}18;border:2px solid ${color};
     display:flex;align-items:center;justify-content:center;
-    font-size:11px;line-height:1;
-    filter:drop-shadow(0 0 5px ${color}66)">${symbol}</div>`;
+    font-size:14px;line-height:1;
+    filter:drop-shadow(0 0 6px ${color}99);
+    box-shadow:0 0 0 3px ${color}22">${symbol}</div>`;
 }
 function stormSVG(_icao: string, precip1hIn: number | null, _windKt: number | null, _windDir: number | null): string {
   const hasRain = precip1hIn != null && precip1hIn > 0.005;
@@ -999,7 +1000,7 @@ export default function StamfordMap() {
         if (!stations.length) return;
         addLog("⚓", `${stations.length} marine station${stations.length !== 1 ? "s" : ""} reporting`, "#06b6d4");
         stations.forEach(st => {
-          const icon = L.divIcon({ html: `<div class="tl-anim">${marineSVG(st.type)}</div>`, className: "", iconSize: [22, 22], iconAnchor: [11, 11] });
+          const icon = L.divIcon({ html: `<div class="tl-anim">${marineSVG(st.type)}</div>`, className: "", iconSize: [30, 30], iconAnchor: [15, 15] });
           const rows = [
             st.waterLevel != null ? `<span style="color:#5a7090">TIDE</span><span>${st.waterLevel > 0 ? "+" : ""}${st.waterLevel} ft MLLW</span>` : "",
             st.waterTemp  != null ? `<span style="color:#5a7090">WTEMP</span><span>${st.waterTemp}°F</span>` : "",
@@ -1030,12 +1031,12 @@ export default function StamfordMap() {
       const canvas = L.canvas({ padding: 0.5 });
       buildings.forEach(([lat, lon]) => {
         L.circleMarker([lat, lon], {
-          radius: 5,
+          radius: 3,
           color: "#fbbf24",
           fillColor: "#fef3c7",
-          fillOpacity: 0.9,
+          fillOpacity: 0.85,
           opacity: 0.7,
-          weight: 0.8,
+          weight: 0,
           renderer: canvas,
         }).addTo(g);
       });
