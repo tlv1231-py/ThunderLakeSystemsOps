@@ -1800,7 +1800,7 @@ export default function StamfordMap() {
       <div className="absolute" style={{
         left: panelOpen ? panelW + 10 : 10,
         top: 48, bottom: tickerItems.length > 0 ? 28 : 0,
-        zIndex: 15, width: 210, pointerEvents: "none",
+        zIndex: 15, width: 270, pointerEvents: "none",
         fontFamily: "Menlo,Consolas,monospace",
         display: "flex", flexDirection: "column",
         transition: "left 0.3s",
