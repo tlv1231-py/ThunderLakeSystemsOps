@@ -411,6 +411,7 @@ export default function StamfordMap() {
   const trainStateRef      = useRef<Map<string, { prevLat: number; prevLon: number; prevDepMs: number; nextLat: number; nextLon: number; nextArrMs: number }>>(new Map());
   const aircraftMarkersRef = useRef<Map<string, any>>(new Map());
   const aircraftStateRef   = useRef<Map<string, { lat: number; lon: number; heading: number; speedMs: number; lastMs: number }>>(new Map());
+  const metarMarkersRef    = useRef<Map<string, any>>(new Map());
   const terminalRef        = useRef<HTMLDivElement>(null);
   const [trackOpacity, setTrackOpacity] = useState(() => {
     if (typeof window === "undefined") return 0.35;
@@ -422,6 +423,21 @@ export default function StamfordMap() {
     if (typeof window !== "undefined") localStorage.setItem("tl-track-opacity", String(v));
     trackGroupRef.current?.eachLayer((l: any) => {
       if (l.setStyle) l.setStyle({ opacity: v, fillOpacity: v * 0.85 });
+    });
+  }, []);
+  const [radarOpacity, setRadarOpacity] = useState(() => {
+    if (typeof window === "undefined") return 0.6;
+    const s = parseFloat(localStorage.getItem("tl-radar-opacity") ?? "0.6");
+    return isNaN(s) || s < 0 || s > 1 ? 0.6 : s;
+  });
+  const radarOpacityRef = useRef(0.6);
+  radarOpacityRef.current = radarOpacity;
+  const applyRadarOpacity = useCallback((v: number) => {
+    setRadarOpacity(v);
+    radarOpacityRef.current = v;
+    if (typeof window !== "undefined") localStorage.setItem("tl-radar-opacity", String(v));
+    groupRefs.current.radar?.eachLayer((layer: any) => {
+      if (layer.setOpacity) layer.setOpacity(v);
     });
   }, []);
 
@@ -528,7 +544,7 @@ export default function StamfordMap() {
     const v = Math.floor(Date.now() / 300_000);
     g?.addLayer(L.tileLayer(
       `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png?_=${v}`,
-      { opacity: 0.7, maxZoom: 19 }
+      { opacity: radarOpacityRef.current, maxZoom: 19 }
     ));
   }, []);
 
@@ -753,13 +769,16 @@ export default function StamfordMap() {
 
       // Remove markers for trains no longer in the feed
       const incomingIds = new Set(trains.map((t: any) => String(t.id)));
+      let removedCount = 0;
       trainMarkersRef.current.forEach((_marker, id) => {
         if (!incomingIds.has(id)) {
           g.removeLayer(trainMarkersRef.current.get(id));
           trainMarkersRef.current.delete(id);
+          removedCount++;
         }
       });
 
+      let addedCount = 0;
       trains.forEach(t => {
         const id = String(t.id);
         const depStr = t.depMs ? new Date(t.depMs).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }) : "?";
@@ -795,9 +814,16 @@ export default function StamfordMap() {
             .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupContent))
             .addTo(g);
           trainMarkersRef.current.set(id, marker);
+          addedCount++;
         }
-        addTerm("🚆", `${t.tripId} ${t.line} ${t.dir === "outbound" ? "→NHV" : "←GCT"} → ${t.stopName}`, "#4488ff");
       });
+
+      // One batch summary line instead of per-train spam
+      if (trains.length > 0 || removedCount > 0) {
+        const net = addedCount - removedCount;
+        const netStr = net > 0 ? ` (+${net})` : net < 0 ? ` (${net})` : "";
+        addTerm("🚆", `Rail: ${trains.length} active${netStr}`, "#4488ff");
+      }
     }).catch(() => {});
   }, [addLog, addTerm]);
 
@@ -995,13 +1021,15 @@ export default function StamfordMap() {
       const g = groupRefs.current.metar;
       if (!g) return;
       const items: { text: string; color: string }[] = [];
-      animateOut(g, () => {
-      g.clearLayers();
+      const seenIds = new Set<string>();
+
       stations.forEach((st: any) => {
         const color = fltColor(st.fltCat ?? "");
-        // Log when the observation time changes (new METAR or SPECI received)
+        seenIds.add(st.icaoId);
+        // Log only when the observation time changes (new METAR or SPECI received)
         const prev = metarObsRef.current[st.icaoId];
-        if (prev !== st.obsTime) {
+        const obsChanged = prev !== st.obsTime;
+        if (obsChanged) {
           metarObsRef.current[st.icaoId] = st.obsTime;
           addLog("⛅", `${st.icaoId} ${st.fltCat ?? "?"} · ${st.wspd ?? 0}kt ${st.wdir != null ? degToCompass(st.wdir) : ""}`.trim(), color);
           addTerm("⛅", `${st.icaoId} ${st.fltCat ?? "?"} ${st.wspd ?? 0}kt ${st.wdir != null ? degToCompass(st.wdir) : ""} vis:${st.visib ?? "?"}SM`.trim(), color);
@@ -1036,19 +1064,34 @@ export default function StamfordMap() {
         const obsMs = st.obsTime ? st.obsTime * 1000 : null;
         const mkH = obsMs ? 46 : 32;
         const icon = L.divIcon({
-          html: `<div class="tl-anim">${metarSVG(st.icaoId, st.fltCat ?? "?", windShort, obsMs)}</div>`,
+          html: `<div${obsChanged ? ' class="tl-anim"' : ""}>${metarSVG(st.icaoId, st.fltCat ?? "?", windShort, obsMs)}</div>`,
           className: "", iconSize: [84, mkH], iconAnchor: [42, mkH],
         });
-        L.marker([st.lat, st.lon], { icon })
-          .bindPopup(L.popup({ className: "tl-popup", maxWidth: 270, offset: [0, -4] }).setContent(popup))
-          .addTo(g);
+
+        if (metarMarkersRef.current.has(st.icaoId)) {
+          const m = metarMarkersRef.current.get(st.icaoId);
+          if (obsChanged) m.setIcon(icon);
+          m.getPopup()?.setContent(popup);
+        } else {
+          const m = L.marker([st.lat, st.lon], { icon })
+            .bindPopup(L.popup({ className: "tl-popup", maxWidth: 270, offset: [0, -4] }).setContent(popup))
+            .addTo(g);
+          metarMarkersRef.current.set(st.icaoId, m);
+        }
         items.push({
           text: `⛅ ${st.icaoId} ${st.fltCat} · ${wind} · Vis ${st.visib ?? "?"}SM · ${skyLayers}${cToF(st.temp) != null ? ` · ${cToF(st.temp)}°F` : ""}`,
           color,
         });
       });
+
+      // Remove stations no longer in the feed
+      metarMarkersRef.current.forEach((m, id) => {
+        if (!seenIds.has(id)) {
+          g.removeLayer(m);
+          metarMarkersRef.current.delete(id);
+        }
+      });
       setMetarItems(items);
-      }); // end animateOut
     }).catch(() => {});
   }, [addLog, addTerm]);
 
@@ -1595,33 +1638,10 @@ export default function StamfordMap() {
           </span>
         )}
 
-        {/* Military clock + UI scale slider + marker text slider — right side, stacked */}
-        <div className="ml-auto flex flex-col items-end gap-0.5 shrink-0">
-          <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(13 * uiScale), color: "#39d97a", letterSpacing: "0.12em", fontWeight: 700 }}>
-            {milClock}
-          </span>
-          <input
-            type="range" min="50" max="250" step="5"
-            value={Math.round(uiScale * 100)}
-            onChange={e => applyScale(Number(e.target.value) / 100)}
-            style={{ width: 52, cursor: "pointer", accentColor: "#22d3ee", opacity: 0.5 }}
-            title={`UI scale ${Math.round(uiScale * 100)}%`}
-          />
-          <input
-            type="range" min="50" max="300" step="5"
-            value={Math.round(markerScale * 100)}
-            onChange={e => applyMarkerScale(Number(e.target.value) / 100)}
-            style={{ width: 52, cursor: "pointer", accentColor: "#f59e0b", opacity: 0.5 }}
-            title={`Marker text ${Math.round(markerScale * 100)}%`}
-          />
-          <input
-            type="range" min="0" max="100" step="5"
-            value={Math.round(trackOpacity * 100)}
-            onChange={e => applyTrackOpacity(Number(e.target.value) / 100)}
-            style={{ width: 52, cursor: "pointer", accentColor: "#888", opacity: 0.5 }}
-            title={`Rail track overlay ${Math.round(trackOpacity * 100)}%`}
-          />
-        </div>
+        {/* Military clock — right side */}
+        <span className="ml-auto shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(13 * uiScale), color: "#39d97a", letterSpacing: "0.12em", fontWeight: 700 }}>
+          {milClock}
+        </span>
       </div>
 
       {/* ── Panel toggle tab ───────────────────────────────────────────────── */}
@@ -1797,6 +1817,30 @@ export default function StamfordMap() {
           </div>
         </div>
       )}
+
+      {/* ── Bottom-left sliders ────────────────────────────────────────────── */}
+      <div className="absolute" style={{
+        left: 10, bottom: tickerItems.length > 0 ? 38 : 10, zIndex: 15,
+        fontFamily: "Menlo,Consolas,monospace", display: "flex", flexDirection: "column", gap: 2,
+      }}>
+        {([
+          { label: "RADAR", val: Math.round(radarOpacity * 100), min: 0, max: 100, fn: (v: number) => applyRadarOpacity(v / 100), color: "#22d3ee" },
+          { label: "TRACK", val: Math.round(trackOpacity * 100), min: 0, max: 100, fn: (v: number) => applyTrackOpacity(v / 100), color: "#4488ff" },
+          { label: "SCALE", val: Math.round(uiScale * 100),      min: 50, max: 250, fn: (v: number) => applyScale(v / 100),        color: "#22d3ee" },
+          { label: "MARKS", val: Math.round(markerScale * 100),  min: 50, max: 300, fn: (v: number) => applyMarkerScale(v / 100),  color: "#f59e0b" },
+        ] as const).map(({ label, val, min, max, fn, color }) => (
+          <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, pointerEvents: "auto" }}>
+            <span style={{ fontSize: 7, color: color + "66", letterSpacing: "0.1em", minWidth: 36 }}>{label}</span>
+            <input
+              type="range" min={min} max={max} step="5"
+              value={val}
+              onChange={e => fn(Number(e.target.value))}
+              style={{ width: 52, cursor: "pointer", accentColor: color, opacity: 0.55 }}
+              title={`${label} ${val}%`}
+            />
+          </div>
+        ))}
+      </div>
 
       {/* ── Right column — weather header + activity feed ─────────────────── */}
       <div className="absolute" style={{
