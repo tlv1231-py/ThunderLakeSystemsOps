@@ -429,11 +429,13 @@ export default function StamfordMap() {
       const url = `https://tilecache.rainviewer.com${frames[frames.length - 1].path}/256/{z}/{x}/{y}/4/1_1.png`;
       const g = groupRefs.current.radar;
       g?.clearLayers();
-      // Two layers avoids requesting z6-z7 tiles that RainViewer doesn't serve for individual frames:
-      // City/street (z9+): upscale from z8 (same high quality as before)
-      g?.addLayer(L.tileLayer(url, { opacity: 0.6, maxNativeZoom: 8, minZoom: 9, maxZoom: 19 }));
-      // State/country (z5-8): upscale from z5 — never requests z6 or z7 tiles
-      g?.addLayer(L.tileLayer(url, { opacity: 0.6, maxNativeZoom: 5, minZoom: 0, maxZoom: 8 }));
+      // bounds = northeast US land area only: RainViewer returns "Zoom Level Not Supported"
+      // for tiles that are entirely over open ocean (no radar coverage), not for land tiles.
+      // Restricting to the northeast US grid ensures every requested tile has data at all zoom levels.
+      g?.addLayer(L.tileLayer(url, {
+        opacity: 0.6, maxNativeZoom: 8, maxZoom: 19,
+        bounds: [[35, -82], [48, -63]],
+      }));
     }).catch(() => {});
   }, []);
 
@@ -1660,7 +1662,7 @@ export default function StamfordMap() {
       )}
 
       {/* ── Right column — weather header + activity feed ─────────────────── */}
-      <div className="absolute tl-panel-hide" style={{
+      <div className="absolute" style={{
         right: 10, top: 48, zIndex: 15, width: 230, pointerEvents: "none",
         fontFamily: "Menlo,Consolas,monospace",
       }}>
