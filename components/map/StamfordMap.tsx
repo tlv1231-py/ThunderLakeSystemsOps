@@ -12,6 +12,8 @@ interface OngoingItem {
   startMs: number; serverNow?: number; fetchTime?: number;
 }
 
+interface TermEntry { ts: number; cat: string; text: string; color: string; }
+
 interface WeatherNow {
   temp: number; wind_speed: number; wind_dir: number;
   humidity: number; cloud_cover: number; precipitation: number; code: number;
@@ -289,6 +291,48 @@ function animateOut(g: any, cb: () => void) {
   setTimeout(cb, 250);
 }
 
+// ── Dead-reckoning helper ──────────────────────────────────────────────────────
+
+function destPoint(lat: number, lon: number, bearingDeg: number, distM: number): [number, number] {
+  const R = 6371000;
+  const d = distM / R;
+  const b = bearingDeg * Math.PI / 180;
+  const φ1 = lat * Math.PI / 180;
+  const λ1 = lon * Math.PI / 180;
+  const φ2 = Math.asin(Math.sin(φ1) * Math.cos(d) + Math.cos(φ1) * Math.sin(d) * Math.cos(b));
+  const λ2 = λ1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(φ1), Math.cos(d) - Math.sin(φ1) * Math.sin(φ2));
+  return [φ2 * 180 / Math.PI, λ2 * 180 / Math.PI];
+}
+
+// ── MNR track geometry (hardcoded — ordered stop sequences per line) ───────────
+
+const MNR_MAIN: [number, number][] = [
+  [40.752998,-73.977056],[40.805157,-73.939149],
+  [40.912161,-73.832185],[40.910321,-73.810242],[40.911605,-73.783807],
+  [40.933394,-73.759792],[40.954061,-73.736125],[40.969432,-73.712964],
+  [40.985922,-73.682553],[41.000732,-73.664700],[41.021277,-73.624621],
+  [41.030171,-73.598306],[41.031682,-73.588173],[41.033817,-73.565859],
+  [41.046611,-73.542846],[41.069041,-73.497880],[41.076913,-73.472966],
+  [41.077456,-73.445527],[41.096730,-73.421132],[41.103996,-73.404588],
+  [41.118928,-73.371413],[41.122265,-73.315408],[41.134844,-73.288970],
+  [41.143077,-73.257742],[41.161000,-73.234336],[41.178677,-73.187076],
+  [41.194255,-73.131532],[41.223231,-73.057647],[41.271420,-72.963488],
+  [41.296501,-72.928290],[41.304979,-72.921747],
+];
+const MNR_NEWCANAAN: [number, number][] = [
+  [41.046611,-73.542846],[41.070547,-73.520021],[41.088760,-73.517828],
+  [41.116012,-73.498149],[41.146305,-73.495626],
+];
+const MNR_DANBURY: [number, number][] = [
+  [41.096730,-73.421132],[41.146618,-73.427859],[41.196202,-73.432434],
+  [41.216620,-73.426703],[41.267630,-73.441421],[41.325684,-73.433800],
+  [41.376225,-73.418171],[41.396146,-73.448790],
+];
+const MNR_WATERBURY: [number, number][] = [
+  [41.178677,-73.187076],[41.319718,-73.083548],[41.344156,-73.079892],
+  [41.395139,-73.072499],[41.494204,-73.052655],[41.552728,-73.046126],
+];
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function StamfordMap() {
@@ -338,6 +382,7 @@ export default function StamfordMap() {
   const [milClock,      setMilClock]      = useState("");
   const [nowMs,         setNowMs]         = useState(Date.now());
   const [log,           setLog]           = useState<LogEntry[]>([]);
+  const [termLog,       setTermLog]       = useState<TermEntry[]>([]);
   const [centerPx,      setCenterPx]      = useState<{ x: number; y: number } | null>(null);
   const [uiScale, setUiScale] = useState(() => {
     if (typeof window === "undefined") return 1.0;
@@ -362,6 +407,10 @@ export default function StamfordMap() {
 
   const trackGroupRef      = useRef<any>(null);
   const trainMarkersRef    = useRef<Map<string, any>>(new Map());
+  const trainStateRef      = useRef<Map<string, { prevLat: number; prevLon: number; prevDepMs: number; nextLat: number; nextLon: number; nextArrMs: number }>>(new Map());
+  const aircraftMarkersRef = useRef<Map<string, any>>(new Map());
+  const aircraftStateRef   = useRef<Map<string, { lat: number; lon: number; heading: number; speedMs: number; lastMs: number }>>(new Map());
+  const terminalRef        = useRef<HTMLDivElement>(null);
   const [trackOpacity, setTrackOpacity] = useState(() => {
     if (typeof window === "undefined") return 0.35;
     const s = parseFloat(localStorage.getItem("tl-track-opacity") ?? "0.35");
@@ -384,10 +433,20 @@ export default function StamfordMap() {
     document.documentElement.style.setProperty("--tl-mk-scale", String(markerScale));
   }, [markerScale]);
 
+  // Auto-scroll terminal to newest entry
+  useEffect(() => {
+    const el = terminalRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [termLog]);
+
   // serverNow: pass the server's Date.now() when the API response includes one,
   // so the timer is anchored to the server clock rather than the client's system time.
   const addLog = useCallback((icon: string, text: string, color: string, serverNow?: number) => {
     setLog(prev => [{ icon, text, color, loggedAt: serverNow ?? Date.now() }, ...prev].slice(0, 10));
+  }, []);
+
+  const addTerm = useCallback((cat: string, text: string, color: string) => {
+    setTermLog(prev => [...prev, { ts: Date.now(), cat, text, color }].slice(-200));
   }, []);
 
   // ── Fetch functions ───────────────────────────────────────────────────────
@@ -398,29 +457,59 @@ export default function StamfordMap() {
       if (!g) return;
       const states: any[][] = data.states ?? [];
       setAircraftCount(states.length);
-      animateOut(g, () => {
-        g.clearLayers();
-        if (states.length) addLog("✈", `${states.length} aircraft in sector`, "#a855f7");
-        states.forEach(s => {
-          const [icao, callsign, country, , , lon, lat, baroAlt, , vel, hdg, , , , , , geoAlt] = s;
-          if (lat == null || lon == null) return;
-          const alt = baroAlt ?? geoAlt ?? 0;
-          const cs  = (callsign as string)?.trim() || icao;
-          const icon = L.divIcon({ html: `<div class="tl-anim">${aircraftSVG(hdg ?? 0)}</div>`, className: "", iconSize: [22, 22], iconAnchor: [11, 11] });
-          L.marker([lat, lon], { icon })
-            .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(
-              popupWrap(`<div style="font-size:13px;font-weight:700;color:#a855f7;margin-bottom:5px">${cs}</div>
-              <div style="color:#5a7090;font-size:10px;margin-bottom:8px;text-transform:uppercase">${country ?? "?"} · ${icao}</div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 14px">
-                <span style="color:#5a7090">ALT</span><span>${alt > 0 ? metersToFt(alt).toLocaleString() + " ft" : "—"}</span>
-                <span style="color:#5a7090">SPD</span><span>${vel > 0 ? mpsToKnots(vel) + " kt" : "—"}</span>
-                <span style="color:#5a7090">HDG</span><span>${hdg ?? 0}° ${degToCompass(hdg ?? 0)}</span>
-              </div>`)))
+      if (states.length) addLog("✈", `${states.length} aircraft in sector`, "#a855f7");
+
+      const now = Date.now();
+      const seenIds = new Set<string>();
+
+      states.forEach(s => {
+        const [icao, callsign, country, , , lon, lat, baroAlt, , vel, hdg, , , , , , geoAlt] = s;
+        if (lat == null || lon == null) return;
+        const id = String(icao);
+        seenIds.add(id);
+        const alt = (baroAlt ?? geoAlt ?? 0) as number;
+        const cs  = (callsign as string)?.trim() || String(icao);
+        const heading = (hdg ?? 0) as number;
+        const speedMs = (vel ?? 0) as number; // m/s ground speed
+
+        // Anchor dead-reckoning state to latest API fix
+        aircraftStateRef.current.set(id, { lat, lon, heading, speedMs, lastMs: now });
+
+        const popupHtml = popupWrap(`<div style="font-size:13px;font-weight:700;color:#a855f7;margin-bottom:5px">${cs}</div>
+          <div style="color:#5a7090;font-size:10px;margin-bottom:8px;text-transform:uppercase">${country ?? "?"} · ${icao}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 14px">
+            <span style="color:#5a7090">ALT</span><span>${alt > 0 ? metersToFt(alt).toLocaleString() + " ft" : "—"}</span>
+            <span style="color:#5a7090">SPD</span><span>${speedMs > 0 ? mpsToKnots(speedMs) + " kt" : "—"}</span>
+            <span style="color:#5a7090">HDG</span><span>${heading}° ${degToCompass(heading)}</span>
+          </div>`);
+
+        if (aircraftMarkersRef.current.has(id)) {
+          const m = aircraftMarkersRef.current.get(id);
+          // Update heading arrow without tl-anim (no fade-in on update)
+          m.setIcon(L.divIcon({ html: `<div>${aircraftSVG(heading)}</div>`, className: "", iconSize: [22, 22], iconAnchor: [11, 11] }));
+          m.getPopup()?.setContent(popupHtml);
+        } else {
+          const icon = L.divIcon({ html: `<div class="tl-anim">${aircraftSVG(heading)}</div>`, className: "", iconSize: [22, 22], iconAnchor: [11, 11] });
+          const m = L.marker([lat, lon], { icon })
+            .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupHtml))
             .addTo(g);
-        });
+          aircraftMarkersRef.current.set(id, m);
+        }
+
+        const altFt = alt > 0 ? Math.round(metersToFt(alt)).toLocaleString() + "ft" : "GND";
+        addTerm("✈", `${cs.padEnd(9, " ")} ${altFt} ${speedMs > 0 ? mpsToKnots(speedMs) + "kt" : "---"} ${degToCompass(heading)}`, "#a855f7");
+      });
+
+      // Remove aircraft that left the sector
+      aircraftMarkersRef.current.forEach((m, id) => {
+        if (!seenIds.has(id)) {
+          g.removeLayer(m);
+          aircraftMarkersRef.current.delete(id);
+          aircraftStateRef.current.delete(id);
+        }
       });
     }).catch(() => {});
-  }, [addLog]);
+  }, [addLog, addTerm]);
 
   const fetchRadar = useCallback((L: any) => {
     fetch("https://api.rainviewer.com/public/weather-maps.json").then(r => r.json()).then(data => {
@@ -609,37 +698,26 @@ export default function StamfordMap() {
 
   const fetchRailTrack = useCallback((L: any) => {
     const op = parseFloat(localStorage.getItem("tl-track-opacity") ?? "0.35");
-    fetch("/api/map/railtrack").then(r => r.json()).then(data => {
-      const ways: any[] = data.ways ?? [];
-      const g = L.layerGroup().addTo(mapInst.current);
+    const g = L.layerGroup().addTo(mapInst.current);
+    const lineStyle = { color: "#2255bb", weight: 2, opacity: op, interactive: false };
 
-      // Draw track polylines
-      ways.forEach(w => {
-        L.polyline(w.coords, {
-          color: "#2255bb",
-          weight: 2,
-          opacity: op,
-          interactive: false,
-        }).addTo(g);
-      });
+    // Draw hardcoded track geometry — no Overpass needed
+    [MNR_MAIN, MNR_NEWCANAAN, MNR_DANBURY, MNR_WATERBURY].forEach(seg => {
+      L.polyline(seg, lineStyle).addTo(g);
+    });
 
-      // Draw station dots
-      MNR_STOPS.forEach(st => {
-        L.circleMarker([st.lat, st.lon], {
-          radius: 4,
-          color: "#2255bb",
-          fillColor: "#4488ee",
-          fillOpacity: op * 0.85,
-          opacity: op,
-          weight: 1.5,
-        }).bindPopup(L.popup({ className: "tl-popup", maxWidth: 200, offset: [0, -6] }).setContent(
-            popupWrap(`<div style="font-size:13px;font-weight:700;color:#4488ff">${st.name}</div>
-              <div style="color:#5a7090;font-size:10px;margin-top:2px">Metro-North Station</div>`)
-          )).addTo(g);
-      });
+    // Draw station dots
+    MNR_STOPS.forEach(st => {
+      L.circleMarker([st.lat, st.lon], {
+        radius: 4, color: "#2255bb", fillColor: "#4488ee",
+        fillOpacity: op * 0.85, opacity: op, weight: 1.5,
+      }).bindPopup(L.popup({ className: "tl-popup", maxWidth: 200, offset: [0, -6] }).setContent(
+        popupWrap(`<div style="font-size:13px;font-weight:700;color:#4488ff">${st.name}</div>
+          <div style="color:#5a7090;font-size:10px;margin-top:2px">Metro-North Station</div>`)
+      )).addTo(g);
+    });
 
-      trackGroupRef.current = g;
-    }).catch(() => {});
+    trackGroupRef.current = g;
   }, []);
 
   const fetchRail = useCallback((L: any) => {
@@ -670,26 +748,35 @@ export default function StamfordMap() {
             <span style="color:#5a7090">DEP</span><span>${depStr}</span>
           </div>`);
 
+        // Update interpolation state for animation loop
+        if (t.prevLat != null && t.prevDepMs != null && t.nextArrMs > t.prevDepMs) {
+          trainStateRef.current.set(id, {
+            prevLat: t.prevLat, prevLon: t.prevLon, prevDepMs: t.prevDepMs,
+            nextLat: t.nextLat, nextLon: t.nextLon, nextArrMs: t.nextArrMs,
+          });
+        } else {
+          trainStateRef.current.delete(id);
+        }
+
         if (trainMarkersRef.current.has(id)) {
           const m = trainMarkersRef.current.get(id);
-          m.setLatLng([t.lat, t.lon]);
+          // Position is handled by animation loop; only update popup
+          if (!trainStateRef.current.has(id)) m.setLatLng([t.lat, t.lon]);
           m.getPopup()?.setContent(popupContent);
         } else {
-          // New train: create marker with tactical SVG icon
           const icon = L.divIcon({
             html: `<div class="tl-anim">${trainMarkerSVG(t.dir)}</div>`,
-            className: "",
-            iconSize: [28, 16],
-            iconAnchor: [14, 8],
+            className: "", iconSize: [28, 16], iconAnchor: [14, 8],
           });
           const marker = L.marker([t.lat, t.lon], { icon })
             .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupContent))
             .addTo(g);
           trainMarkersRef.current.set(id, marker);
         }
+        addTerm("🚆", `${t.tripId} ${t.line} ${t.dir === "outbound" ? "→NHV" : "←GCT"} → ${t.stopName}`, "#4488ff");
       });
     }).catch(() => {});
-  }, [addLog]);
+  }, [addLog, addTerm]);
 
   const fetchServices = useCallback((L: any) => {
     fetch("/api/map/services").then(r => r.json()).then(data => {
@@ -894,6 +981,7 @@ export default function StamfordMap() {
         if (prev !== st.obsTime) {
           metarObsRef.current[st.icaoId] = st.obsTime;
           addLog("⛅", `${st.icaoId} ${st.fltCat ?? "?"} · ${st.wspd ?? 0}kt ${st.wdir != null ? degToCompass(st.wdir) : ""}`.trim(), color);
+          addTerm("⛅", `${st.icaoId} ${st.fltCat ?? "?"} ${st.wspd ?? 0}kt ${st.wdir != null ? degToCompass(st.wdir) : ""} vis:${st.visib ?? "?"}SM`.trim(), color);
         }
         const cToF = (c: number | null) => c != null ? Math.round(c * 9 / 5 + 32) : null;
         const wind = st.wspd != null
@@ -939,7 +1027,7 @@ export default function StamfordMap() {
       setMetarItems(items);
       }); // end animateOut
     }).catch(() => {});
-  }, [addLog]);
+  }, [addLog, addTerm]);
 
   const fetchStorm = useCallback((L: any) => {
     fetch("/api/map/storm").then(r => r.json()).then(data => {
@@ -1192,6 +1280,25 @@ export default function StamfordMap() {
       intervals.current.push(setInterval(() => fetchMetar(L), 60_000));
       intervals.current.push(setInterval(() => fetchStorm(L), 15 * 60_000));
       intervals.current.push(setInterval(() => fetchOutages(L), 15 * 60_000));
+
+      // Animation: dead-reckon aircraft + interpolate trains between API polls
+      intervals.current.push(setInterval(() => {
+        const now = Date.now();
+        aircraftStateRef.current.forEach((s, id) => {
+          const m = aircraftMarkersRef.current.get(id);
+          if (!m || s.speedMs < 20) return;
+          const elapsedS = Math.min((now - s.lastMs) / 1000, 60);
+          m.setLatLng(destPoint(s.lat, s.lon, s.heading, s.speedMs * elapsedS));
+        });
+        trainStateRef.current.forEach((s, id) => {
+          const m = trainMarkersRef.current.get(id);
+          if (!m) return;
+          const span = s.nextArrMs - s.prevDepMs;
+          if (span <= 0) return;
+          const t = Math.min(1, Math.max(0, (now - s.prevDepMs) / span));
+          m.setLatLng([s.prevLat + (s.nextLat - s.prevLat) * t, s.prevLon + (s.nextLon - s.prevLon) * t]);
+        });
+      }, 100));
 
       // Lightning
       setupLightning(L);
@@ -1705,6 +1812,37 @@ export default function StamfordMap() {
             ACTIVITY LOG
           </div>
         )}
+
+        {/* Terminal feed */}
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: Math.round(7 * uiScale), color: "#22d3ee44", letterSpacing: "0.14em", marginBottom: 3 }}>
+            ◈ TERMINAL
+          </div>
+          <div
+            ref={terminalRef}
+            style={{
+              height: 210, overflowY: "auto", scrollbarWidth: "none",
+              background: "rgba(0,8,18,0.65)", border: "1px solid #0d1a2666",
+              borderRadius: 3, padding: "5px 7px",
+              pointerEvents: "auto",
+            }}
+          >
+            {termLog.map((e, i) => {
+              const d = new Date(e.ts);
+              const hms = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+              return (
+                <div key={i} style={{
+                  display: "flex", gap: 5, fontSize: Math.round(7.5 * uiScale),
+                  marginBottom: 1, lineHeight: 1.35,
+                }}>
+                  <span style={{ color: "#1e3050", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{hms}</span>
+                  <span style={{ color: e.color + "bb", flexShrink: 0 }}>{e.cat}</span>
+                  <span style={{ color: e.color + "99", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.text}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* ── Global CSS ─────────────────────────────────────────────────────── */}

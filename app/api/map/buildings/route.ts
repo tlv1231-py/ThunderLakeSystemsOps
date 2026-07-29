@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
-// Stamford core — smaller bbox keeps Overpass fast enough for Vercel's 10s limit
-const BBOX = "41.02,-73.58,41.10,-73.47";
+// Downtown Stamford core only — tight bbox + result cap keeps Overpass under 6s
+const BBOX = "41.040,-73.560,41.065,-73.515";
 
 // 24h ISR — must be route-level; next:{revalidate} on a POST fetch is ignored by Next.js Data Cache
 export const revalidate = 86400;
@@ -31,7 +31,7 @@ async function queryOverpass(query: string): Promise<any> {
 export async function GET() {
   const query = `[out:json][timeout:8];
 way["building"](${BBOX});
-out center qt;`;
+out center qt 400;`;
 
   try {
     const data = await queryOverpass(query);
