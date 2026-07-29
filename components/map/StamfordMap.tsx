@@ -462,6 +462,7 @@ export default function StamfordMap() {
 
       const now = Date.now();
       const seenIds = new Set<string>();
+      let addedCount = 0;
 
       states.forEach(s => {
         const [icao, callsign, country, , , lon, lat, baroAlt, , vel, hdg, , , , , , geoAlt] = s;
@@ -495,20 +496,27 @@ export default function StamfordMap() {
             .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupHtml))
             .addTo(g);
           aircraftMarkersRef.current.set(id, m);
+          addedCount++;
         }
-
-        const altFt = alt > 0 ? Math.round(metersToFt(alt)).toLocaleString() + "ft" : "GND";
-        addTerm("✈", `${cs.padEnd(9, " ")} ${altFt} ${speedMs > 0 ? mpsToKnots(speedMs) + "kt" : "---"} ${degToCompass(heading)}`, "#a855f7");
       });
 
       // Remove aircraft that left the sector
+      let removedCount = 0;
       aircraftMarkersRef.current.forEach((m, id) => {
         if (!seenIds.has(id)) {
           g.removeLayer(m);
           aircraftMarkersRef.current.delete(id);
           aircraftStateRef.current.delete(id);
+          removedCount++;
         }
       });
+
+      // One summary line per batch — not per aircraft
+      if (states.length > 0 || removedCount > 0) {
+        const net = addedCount - removedCount;
+        const netStr = net > 0 ? ` (+${net})` : net < 0 ? ` (${net})` : "";
+        addTerm("✈", `Air traffic: ${states.length} following${netStr}`, "#a855f7");
+      }
     }).catch(() => {});
   }, [addLog, addTerm]);
 
@@ -547,7 +555,15 @@ export default function StamfordMap() {
 
   const fetchAlerts = useCallback((L: any) => {
     fetch("/api/map/alerts").then(r => r.json()).then(d => {
-      const features: any[] = d.features ?? [];
+      const rawFeatures: any[] = d.features ?? [];
+      // NWS issues one feature per county/zone covered by the same alert — deduplicate by headline
+      const seenHeadlines = new Set<string>();
+      const features = rawFeatures.filter((f: any) => {
+        const key = f.properties.headline ?? f.properties.event ?? String(f.id);
+        if (seenHeadlines.has(key)) return false;
+        seenHeadlines.add(key);
+        return true;
+      });
       const serverNow: number = d.serverNow ?? Date.now();
       const fetchTime = Date.now();
       setAlertCount(features.length);
@@ -1784,8 +1800,9 @@ export default function StamfordMap() {
 
       {/* ── Right column — weather header + activity feed ─────────────────── */}
       <div className="absolute" style={{
-        right: 10, top: 48, zIndex: 15, width: 230, pointerEvents: "none",
+        right: 10, top: 48, bottom: tickerItems.length > 0 ? 38 : 10, zIndex: 15, width: 230, pointerEvents: "none",
         fontFamily: "Menlo,Consolas,monospace",
+        display: "flex", flexDirection: "column",
       }}>
         {/* Weather header */}
         {weather && (
@@ -1804,7 +1821,7 @@ export default function StamfordMap() {
           </div>
         )}
         {/* Activity feed */}
-        {log.slice(0, 8).map((entry, i) => (
+        {log.slice(0, 5).map((entry, i) => (
           <div key={i} style={{
             display: "flex", alignItems: "center", gap: 6,
             fontSize: Math.round(8 * uiScale),
@@ -1827,18 +1844,20 @@ export default function StamfordMap() {
           </div>
         )}
 
-        {/* Terminal feed */}
-        <div style={{ marginTop: 10 }}>
-          <div style={{ fontSize: Math.round(7 * uiScale), color: "#22d3ee44", letterSpacing: "0.14em", marginBottom: 3 }}>
+        {/* Terminal feed — transparent, full-height, bottom-fade */}
+        <div style={{ flex: 1, minHeight: 0, marginTop: 10, display: "flex", flexDirection: "column" }}>
+          <div style={{ fontSize: Math.round(7 * uiScale), color: "#22d3ee44", letterSpacing: "0.14em", marginBottom: 3, flexShrink: 0 }}>
             ◈ TERMINAL
           </div>
           <div
             ref={terminalRef}
             style={{
-              height: 210, overflowY: "auto", scrollbarWidth: "none",
-              background: "rgba(0,8,18,0.65)", border: "1px solid #0d1a2666",
-              borderRadius: 3, padding: "5px 7px",
+              flex: 1, minHeight: 0, overflowY: "auto", scrollbarWidth: "none",
+              background: "transparent",
+              padding: "2px 4px",
               pointerEvents: "auto",
+              maskImage: "linear-gradient(to bottom, black 55%, transparent 100%)",
+              WebkitMaskImage: "linear-gradient(to bottom, black 55%, transparent 100%)",
             }}
           >
             {termLog.map((e, i) => {
