@@ -477,10 +477,10 @@ export default function StamfordMap() {
     document.documentElement.style.setProperty("--tl-mk-scale", String(markerScale));
   }, [markerScale]);
 
-  // Auto-scroll terminal to newest entry
+  // Newest-on-top: always stay scrolled to top so fresh entries are visible
   useEffect(() => {
     const el = terminalRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el) el.scrollTop = 0;
   }, [termLog]);
 
   // serverNow: pass the server's Date.now() when the API response includes one,
@@ -1799,7 +1799,7 @@ export default function StamfordMap() {
       {/* ── Left column — ACTIVE panel + terminal ─────────────────────────── */}
       <div className="absolute" style={{
         left: panelOpen ? panelW + 10 : 10,
-        top: 48, bottom: tickerItems.length > 0 ? 38 : 10,
+        top: 48, bottom: tickerItems.length > 0 ? 28 : 0,
         zIndex: 15, width: 210, pointerEvents: "none",
         fontFamily: "Menlo,Consolas,monospace",
         display: "flex", flexDirection: "column",
@@ -1865,7 +1865,7 @@ export default function StamfordMap() {
               WebkitMaskImage: "linear-gradient(to bottom, black 55%, transparent 100%)",
             }}
           >
-            {termLog.map((e, i) => {
+            {[...termLog].reverse().map((e, i) => {
               const d = new Date(e.ts);
               const hms = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
               return (
