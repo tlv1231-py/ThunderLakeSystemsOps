@@ -439,6 +439,7 @@ export default function StamfordMap() {
   const aircraftMarkersRef = useRef<Map<string, any>>(new Map());
   const aircraftStateRef   = useRef<Map<string, { lat: number; lon: number; heading: number; speedMs: number; lastMs: number }>>(new Map());
   const metarMarkersRef    = useRef<Map<string, any>>(new Map());
+  const outagesTotalRef    = useRef<number>(0);
   const terminalRef        = useRef<HTMLDivElement>(null);
   const [trackOpacity, setTrackOpacity] = useState(() => {
     if (typeof window === "undefined") return 0.35;
@@ -1170,6 +1171,11 @@ export default function StamfordMap() {
       const g = groupRefs.current.outages;
       if (!g) return;
       if (total > 0) addLog("⚡", `Eversource: ${total.toLocaleString()} customers without power (CT)`, "#facc15");
+      const prevTotal = outagesTotalRef.current;
+      const diff = total - prevTotal;
+      outagesTotalRef.current = total;
+      const diffStr = diff !== 0 ? ` (${diff > 0 ? "+" : ""}${diff.toLocaleString()})` : "";
+      addTerm("⚡", `Outages: ${total.toLocaleString()} affected${diffStr}`, "#facc15");
       animateOut(g, () => {
         g.clearLayers();
         towns.forEach((t: any) => {
@@ -1826,7 +1832,7 @@ export default function StamfordMap() {
               <span style={{ color: item.color + "88", fontVariantNumeric: "tabular-nums", fontSize: Math.round(7 * uiScale), minWidth: 48, flexShrink: 0, letterSpacing: "0.06em" }}>
                 {fmtElapsed(Math.max(0, elapsedMs))}
               </span>
-              <span style={{ color: item.color, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span style={{ color: item.color }}>
                 {item.evtType}: {item.detail}
               </span>
             </div>
@@ -1838,7 +1844,6 @@ export default function StamfordMap() {
             fontSize: Math.round(8 * uiScale),
             borderLeft: `2px solid ${entry.color}22`,
             paddingLeft: 7, paddingTop: 2, paddingBottom: 2, marginBottom: 2,
-            opacity: 0.65 - i * 0.1,
             animation: i === 0 && ongoingItems.length === 0 ? "tl-slide-in 0.3s ease" : "none",
             letterSpacing: "0.04em", flexShrink: 0,
           }}>
@@ -1846,13 +1851,13 @@ export default function StamfordMap() {
             <span style={{ color: entry.color + "55", fontVariantNumeric: "tabular-nums", fontSize: Math.round(7 * uiScale), minWidth: 44, flexShrink: 0, letterSpacing: "0.06em" }}>
               {fmtElapsed(Math.max(0, nowMs - entry.loggedAt))}
             </span>
-            <span style={{ color: entry.color + "88", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.text}</span>
+            <span style={{ color: entry.color + "88" }}>{entry.text}</span>
           </div>
         ))}
         {/* Terminal feed — transparent, full-height, bottom-fade */}
         <div style={{ flex: 1, minHeight: 0, marginTop: 10, display: "flex", flexDirection: "column" }}>
-          <div style={{ fontSize: Math.round(7 * uiScale), color: "#22d3ee44", letterSpacing: "0.14em", marginBottom: 3, flexShrink: 0 }}>
-            ◈ TERMINAL
+          <div style={{ fontSize: Math.round(7 * uiScale), color: "#e2ecff", letterSpacing: "0.14em", marginBottom: 3, flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
+            {(() => { const n = new Date(nowMs); return `${String(n.getHours()).padStart(2,"0")}:${String(n.getMinutes()).padStart(2,"0")}:${String(n.getSeconds()).padStart(2,"0")}`; })()}
           </div>
           <div
             ref={terminalRef}
