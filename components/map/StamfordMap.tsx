@@ -222,14 +222,14 @@ function metarCircleSVG(icao: string, fltcat: string, wspd: number | null, wdir:
         font-size="8" fill="${color}" opacity="0.75" letter-spacing="0.04em">${wspd}kt</text>`
     : "";
   const wxIcon = metarWxIcon(wxString, cover);
-  const icaoY = wxIcon ? cy - 7 : cy + 1;
+  const icaoY = wxIcon ? cy - 8 : cy + 1;
   const iconTxt = wxIcon
-    ? `<text x="${cx}" y="${cy + 9}" text-anchor="middle" dominant-baseline="central" font-size="13" fill="${color}" opacity="0.9">${wxIcon}</text>`
+    ? `<text x="${cx}" y="${cy + 10}" text-anchor="middle" dominant-baseline="central" font-size="15" fill="${color}" opacity="0.9">${wxIcon}</text>`
     : "";
   return `<svg width="80" height="88" viewBox="0 0 80 88" xmlns="http://www.w3.org/2000/svg" style="overflow:visible">
     <circle cx="${cx}" cy="${cy}" r="${r}" stroke="${color}" stroke-width="1.5" fill="rgba(7,9,15,0.18)" opacity="0.88"/>
     <text x="${cx}" y="${icaoY}" text-anchor="middle" dominant-baseline="central"
-      font-family="Menlo,Consolas,monospace" font-size="9" font-weight="700"
+      font-family="Menlo,Consolas,monospace" font-size="11" font-weight="700"
       fill="${color}" letter-spacing="0.07em" opacity="0.95">${icao}</text>
     ${iconTxt}${arrow}${spdTxt}
   </svg>`;
