@@ -1329,8 +1329,7 @@ export default function StamfordMap() {
         reconnects = 0;
         ws.send(JSON.stringify({
           APIKey: apiKey,
-          BoundingBoxes: [[[40.3, -74.5], [41.6, -71.5]]],
-          FilterMessageTypes: ["PositionReport", "ClassBPositionReport"],
+          BoundingBoxes: [[[-90, -180], [90, 180]]],
         }));
         addTerm("⛵", "AIS stream connected — LI Sound + NY Harbor", "#0ea5e9");
       };
@@ -1359,6 +1358,8 @@ export default function StamfordMap() {
           const lat = pos.Latitude  ?? meta.Latitude;
           const lon = pos.Longitude ?? meta.Longitude;
           if (lat == null || lon == null || Math.abs(lat) > 90) return;
+          // Filter to LI Sound + NY Harbor region client-side
+          if (lat < 40.3 || lat > 41.6 || lon < -74.5 || lon > -71.5) return;
 
           const hdg = (pos.TrueHeading != null && pos.TrueHeading < 360) ? pos.TrueHeading
             : (pos.Cog != null && pos.Cog < 360) ? pos.Cog : 0;
