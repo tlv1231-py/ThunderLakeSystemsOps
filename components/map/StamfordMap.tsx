@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "rail" | "services" | "traffic" | "dispatch" | "buildings" | "marine" | "metar" | "storm" | "outages";
+type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "rail" | "services" | "traffic" | "dispatch" | "buildings" | "marine" | "vessels" | "metar" | "storm" | "outages";
 type BaseKey  = "satellite" | "hybrid" | "dark";
 interface LogEntry { icon: string; text: string; color: string; loggedAt: number; }
 interface OngoingItem {
@@ -55,6 +55,7 @@ const LAYER_META: Record<LayerKey, LayerMeta> = {
   dispatch:  { label: "Dispatch",   color: "#ff4466", section: "city"        },
   buildings: { label: "City Lights", color: "#fbbf24", section: "city"       },
   marine:    { label: "Maritime",    color: "#06b6d4", section: "city"       },
+  vessels:   { label: "AIS Vessels", color: "#0ea5e9", section: "city"       },
   metar:     { label: "METAR",       color: "#22c55e", section: "atmospheric" },
   storm:     { label: "Storm Obs",   color: "#38bdf8", section: "atmospheric" },
   outages:   { label: "Power Outages", color: "#facc15", section: "city" },
@@ -304,6 +305,19 @@ function trainMarkerSVG(dir: "outbound" | "inbound"): string {
   </div>`;
 }
 
+function shipSVG(hdg: number, sog: number): string {
+  const moving = sog >= 0.5;
+  const color = moving ? "#0ea5e9" : "#475569";
+  return `<div style="width:20px;height:20px;transform:rotate(${Math.round(hdg)}deg);transform-origin:center">
+    <svg viewBox="0 0 20 20" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
+      <path d="M10 1.5 L17.5 16.5 L10 13.5 L2.5 16.5 Z"
+        fill="${color}" fill-opacity="0.82" stroke="${color}" stroke-width="0.8" stroke-linejoin="round"
+        filter="url(#sv)"/>
+      <defs><filter id="sv"><feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="${color}" flood-opacity="0.6"/></filter></defs>
+    </svg>
+  </div>`;
+}
+
 // Animate the INNER wrapper div out (not the outer Leaflet positioning element,
 // which uses translate3d — overwriting that transform would move markers off-screen).
 function animateOut(g: any, cb: () => void) {
@@ -369,6 +383,10 @@ export default function StamfordMap() {
   const intervals    = useRef<ReturnType<typeof setInterval>[]>([]);
   const lightningMarkersRef = useRef<{ marker: any; born: number }[]>([]);
   const lightningWsRef      = useRef<WebSocket | null>(null);
+  const vesselWsRef         = useRef<WebSocket | null>(null);
+  const vesselMarkersRef    = useRef<Map<number, any>>(new Map());
+  const vesselLastSeenRef   = useRef<Map<number, number>>(new Map());
+  const newVesselBatchRef   = useRef<string[]>([]);
   const strikeCountMinRef   = useRef(0);
   const wakeLockRef         = useRef<any>(null);
   const crosshairLatLngRef  = useRef(STAMFORD);
@@ -378,7 +396,7 @@ export default function StamfordMap() {
   const [enabled,       setEnabled]       = useState<Record<LayerKey, boolean>>({
     aircraft: true, radar: true, iss: true, alerts: true,
     lightning: true, transit: true, rail: true, services: true,
-    traffic: true, dispatch: true, buildings: true, marine: true, metar: true, storm: true, outages: true,
+    traffic: true, dispatch: true, buildings: true, marine: true, vessels: true, metar: true, storm: true, outages: true,
   });
   const [weather,       setWeather]       = useState<WeatherNow | null>(null);
   const [iss,           setIss]           = useState<ISSPos | null>(null);
@@ -390,6 +408,7 @@ export default function StamfordMap() {
   const [dispatchCount,  setDispatchCount]  = useState(0);
   const [buildingsCount, setBuildingsCount] = useState(0);
   const [marineCount,    setMarineCount]    = useState(0);
+  const [vesselCount,    setVesselCount]    = useState(0);
   const [metarCount,    setMetarCount]    = useState(0);
   const [stormCount,    setStormCount]    = useState(0);
   const [outagesCount,  setOutagesCount]  = useState(0);
@@ -1254,6 +1273,91 @@ export default function StamfordMap() {
     connect();
   }, [addLog]);
 
+  // ── AIS stream WebSocket ─────────────────────────────────────────────────
+
+  const setupAIS = useCallback((L: any) => {
+    const apiKey = process.env.NEXT_PUBLIC_AISSTREAM_KEY;
+    if (!apiKey) return; // key not yet configured — silent no-op
+
+    const NAV_STATUS: Record<number, string> = {
+      0: "Underway (engine)", 1: "At anchor", 2: "Not under command",
+      3: "Restricted maneuv.", 4: "Constrained by draught", 5: "Moored",
+      6: "Aground", 7: "Fishing", 8: "Underway (sailing)",
+    };
+
+    function connect() {
+      const ws = new WebSocket("wss://stream.aisstream.io/v0/stream");
+      vesselWsRef.current = ws;
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({
+          APIKey: apiKey,
+          BoundingBoxes: [[[40.3, -74.5], [41.6, -71.5]]],
+          FilterMessageTypes: ["PositionReport"],
+        }));
+        addTerm("⛵", "AIS stream connected — LI Sound + NY Harbor", "#0ea5e9");
+      };
+
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data as string);
+          if (msg.MessageType !== "PositionReport") return;
+          const meta = msg.MetaData ?? {};
+          const pos  = msg.Message?.PositionReport;
+          if (!pos) return;
+
+          const mmsi = meta.MMSI ?? pos.Mmsi;
+          const lat  = pos.Latitude  ?? meta.Latitude;
+          const lon  = pos.Longitude ?? meta.Longitude;
+          if (lat == null || lon == null) return;
+
+          const hdg = pos.TrueHeading < 360 ? pos.TrueHeading : (pos.Cog < 360 ? pos.Cog : 0);
+          const sog = pos.Sog < 102 ? pos.Sog : 0;
+          const name = ((meta.ShipName ?? "") as string).trim() || `MMSI ${mmsi}`;
+          const status = NAV_STATUS[pos.NavigationalStatus] ?? `Status ${pos.NavigationalStatus}`;
+
+          const g = groupRefs.current.vessels;
+          if (!g) return;
+
+          vesselLastSeenRef.current.set(mmsi, Date.now());
+
+          const popupHtml = popupWrap(
+            `<div style="font-size:13px;font-weight:700;color:#0ea5e9;margin-bottom:5px">${name}</div>
+            <div style="color:#5a7090;font-size:10px;margin-bottom:8px">MMSI ${mmsi}</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 14px">
+              <span style="color:#5a7090">SOG</span><span>${sog.toFixed(1)} kt</span>
+              <span style="color:#5a7090">HDG</span><span>${Math.round(hdg)}° ${degToCompass(Math.round(hdg))}</span>
+              <span style="color:#5a7090">STATUS</span><span style="grid-column:span 1;font-size:9px">${status}</span>
+            </div>`
+          );
+
+          const makeIcon = (anim: boolean) => L.divIcon({
+            html: `<div${anim ? ' class="tl-anim"' : ""}>${shipSVG(hdg, sog)}</div>`,
+            className: "", iconSize: [20, 20], iconAnchor: [10, 10],
+          });
+
+          if (vesselMarkersRef.current.has(mmsi)) {
+            const m = vesselMarkersRef.current.get(mmsi);
+            m.setLatLng([lat, lon]);
+            m.setIcon(makeIcon(false));
+            m.getPopup()?.setContent(popupHtml);
+          } else {
+            const m = L.marker([lat, lon], { icon: makeIcon(true) })
+              .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupHtml))
+              .addTo(g);
+            vesselMarkersRef.current.set(mmsi, m);
+            newVesselBatchRef.current.push(name);
+          }
+          setVesselCount(vesselMarkersRef.current.size);
+        } catch {}
+      };
+
+      ws.onclose = () => { setTimeout(connect, 5000); };
+      ws.onerror = () => ws.close();
+    }
+    connect();
+  }, [addTerm]);
+
   // ── Main init effect ──────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -1288,6 +1392,7 @@ export default function StamfordMap() {
         dispatch:  L.layerGroup().addTo(map),
         buildings: L.layerGroup().addTo(map),
         marine:    L.layerGroup().addTo(map),
+        vessels:   L.layerGroup().addTo(map),
         metar:     L.layerGroup().addTo(map),
         storm:     L.layerGroup().addTo(map),
         outages:   L.layerGroup().addTo(map),
@@ -1395,6 +1500,30 @@ export default function StamfordMap() {
       // Lightning
       setupLightning(L);
 
+      // AIS ship stream
+      setupAIS(L);
+
+      // Vessel expiry (5 min without update) + batch terminal log
+      intervals.current.push(setInterval(() => {
+        const now = Date.now();
+        const g = groupRefs.current.vessels;
+        vesselLastSeenRef.current.forEach((t, mmsi) => {
+          if (now - t > 5 * 60_000) {
+            const m = vesselMarkersRef.current.get(mmsi);
+            if (m && g) g.removeLayer(m);
+            vesselMarkersRef.current.delete(mmsi);
+            vesselLastSeenRef.current.delete(mmsi);
+          }
+        });
+        setVesselCount(vesselMarkersRef.current.size);
+        const batch = newVesselBatchRef.current.splice(0);
+        if (batch.length > 0) {
+          const total = vesselMarkersRef.current.size;
+          const detail = batch.length === 1 ? batch[0] : `${batch.length} new (${total} total)`;
+          addTerm("⛵", `AIS: ${detail}`, "#0ea5e9");
+        }
+      }, 15_000));
+
       // Strike fade
       intervals.current.push(setInterval(() => {
         const now = Date.now();
@@ -1438,6 +1567,8 @@ export default function StamfordMap() {
       intervals.current.forEach(clearInterval);
       lightningWsRef.current?.close();
       lightningWsRef.current = null;
+      vesselWsRef.current?.close();
+      vesselWsRef.current = null;
       mapInst.current?.remove();
       mapInst.current = null;
     };
@@ -1534,6 +1665,7 @@ export default function StamfordMap() {
     dispatch:  dispatchCount  > 0 ? String(dispatchCount)  : "◉",
     buildings: buildingsCount > 0 ? buildingsCount.toLocaleString() : undefined,
     marine:    marineCount    > 0 ? String(marineCount)    : undefined,
+    vessels:   vesselCount    > 0 ? String(vesselCount)    : undefined,
     metar:     metarCount     > 0 ? String(metarCount)     : undefined,
     storm:     stormCount     > 0 ? String(stormCount)     : undefined,
     outages:   outagesTotal   > 0 ? outagesTotal.toLocaleString() : undefined,
