@@ -1277,7 +1277,10 @@ export default function StamfordMap() {
 
   const setupAIS = useCallback((L: any) => {
     const apiKey = process.env.NEXT_PUBLIC_AISSTREAM_KEY;
-    if (!apiKey) return; // key not yet configured — silent no-op
+    if (!apiKey) {
+      addTerm("⛵", "AIS: key not configured (NEXT_PUBLIC_AISSTREAM_KEY)", "#ef4444");
+      return;
+    }
 
     const NAV_STATUS: Record<number, string> = {
       0: "Underway (engine)", 1: "At anchor", 2: "Not under command",
@@ -1285,15 +1288,49 @@ export default function StamfordMap() {
       6: "Aground", 7: "Fishing", 8: "Underway (sailing)",
     };
 
+    function placeVessel(mmsi: number, lat: number, lon: number, hdg: number, sog: number, name: string, status: string) {
+      const g = groupRefs.current.vessels;
+      if (!g) return;
+      vesselLastSeenRef.current.set(mmsi, Date.now());
+      const popupHtml = popupWrap(
+        `<div style="font-size:13px;font-weight:700;color:#0ea5e9;margin-bottom:5px">${name}</div>
+        <div style="color:#5a7090;font-size:10px;margin-bottom:8px">MMSI ${mmsi}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 14px">
+          <span style="color:#5a7090">SOG</span><span>${sog.toFixed(1)} kt</span>
+          <span style="color:#5a7090">HDG</span><span>${Math.round(hdg)}° ${degToCompass(Math.round(hdg))}</span>
+          <span style="color:#5a7090">STATUS</span><span style="grid-column:span 1;font-size:9px">${status}</span>
+        </div>`
+      );
+      const makeIcon = (anim: boolean) => L.divIcon({
+        html: `<div${anim ? ' class="tl-anim"' : ""}>${shipSVG(hdg, sog)}</div>`,
+        className: "", iconSize: [20, 20], iconAnchor: [10, 10],
+      });
+      if (vesselMarkersRef.current.has(mmsi)) {
+        const m = vesselMarkersRef.current.get(mmsi);
+        m.setLatLng([lat, lon]);
+        m.setIcon(makeIcon(false));
+        m.getPopup()?.setContent(popupHtml);
+      } else {
+        const m = L.marker([lat, lon], { icon: makeIcon(true) })
+          .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupHtml))
+          .addTo(g);
+        vesselMarkersRef.current.set(mmsi, m);
+        newVesselBatchRef.current.push(name);
+      }
+      setVesselCount(vesselMarkersRef.current.size);
+    }
+
+    let reconnects = 0;
     function connect() {
       const ws = new WebSocket("wss://stream.aisstream.io/v0/stream");
       vesselWsRef.current = ws;
 
       ws.onopen = () => {
+        reconnects = 0;
         ws.send(JSON.stringify({
           APIKey: apiKey,
           BoundingBoxes: [[[40.3, -74.5], [41.6, -71.5]]],
-          FilterMessageTypes: ["PositionReport"],
+          FilterMessageTypes: ["PositionReport", "ClassBPositionReport"],
         }));
         addTerm("⛵", "AIS stream connected — LI Sound + NY Harbor", "#0ea5e9");
       };
@@ -1301,58 +1338,36 @@ export default function StamfordMap() {
       ws.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data as string);
-          if (msg.MessageType !== "PositionReport") return;
           const meta = msg.MetaData ?? {};
-          const pos  = msg.Message?.PositionReport;
-          if (!pos) return;
-
-          const mmsi = meta.MMSI ?? pos.Mmsi;
-          const lat  = pos.Latitude  ?? meta.Latitude;
-          const lon  = pos.Longitude ?? meta.Longitude;
-          if (lat == null || lon == null) return;
-
-          const hdg = pos.TrueHeading < 360 ? pos.TrueHeading : (pos.Cog < 360 ? pos.Cog : 0);
-          const sog = pos.Sog < 102 ? pos.Sog : 0;
+          const mmsi = meta.MMSI as number;
           const name = ((meta.ShipName ?? "") as string).trim() || `MMSI ${mmsi}`;
-          const status = NAV_STATUS[pos.NavigationalStatus] ?? `Status ${pos.NavigationalStatus}`;
 
-          const g = groupRefs.current.vessels;
-          if (!g) return;
-
-          vesselLastSeenRef.current.set(mmsi, Date.now());
-
-          const popupHtml = popupWrap(
-            `<div style="font-size:13px;font-weight:700;color:#0ea5e9;margin-bottom:5px">${name}</div>
-            <div style="color:#5a7090;font-size:10px;margin-bottom:8px">MMSI ${mmsi}</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 14px">
-              <span style="color:#5a7090">SOG</span><span>${sog.toFixed(1)} kt</span>
-              <span style="color:#5a7090">HDG</span><span>${Math.round(hdg)}° ${degToCompass(Math.round(hdg))}</span>
-              <span style="color:#5a7090">STATUS</span><span style="grid-column:span 1;font-size:9px">${status}</span>
-            </div>`
-          );
-
-          const makeIcon = (anim: boolean) => L.divIcon({
-            html: `<div${anim ? ' class="tl-anim"' : ""}>${shipSVG(hdg, sog)}</div>`,
-            className: "", iconSize: [20, 20], iconAnchor: [10, 10],
-          });
-
-          if (vesselMarkersRef.current.has(mmsi)) {
-            const m = vesselMarkersRef.current.get(mmsi);
-            m.setLatLng([lat, lon]);
-            m.setIcon(makeIcon(false));
-            m.getPopup()?.setContent(popupHtml);
-          } else {
-            const m = L.marker([lat, lon], { icon: makeIcon(true) })
-              .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupHtml))
-              .addTo(g);
-            vesselMarkersRef.current.set(mmsi, m);
-            newVesselBatchRef.current.push(name);
+          let pos: any = null;
+          if (msg.MessageType === "PositionReport") {
+            pos = msg.Message?.PositionReport;
+          } else if (msg.MessageType === "ClassBPositionReport") {
+            pos = msg.Message?.ClassBPositionReport;
           }
-          setVesselCount(vesselMarkersRef.current.size);
+          if (!pos || !mmsi) return;
+
+          const lat = pos.Latitude  ?? meta.Latitude;
+          const lon = pos.Longitude ?? meta.Longitude;
+          if (lat == null || lon == null || Math.abs(lat) > 90) return;
+
+          const hdg = (pos.TrueHeading != null && pos.TrueHeading < 360) ? pos.TrueHeading
+            : (pos.Cog != null && pos.Cog < 360) ? pos.Cog : 0;
+          const sog = (pos.Sog != null && pos.Sog < 102) ? pos.Sog : 0;
+          const status = NAV_STATUS[pos.NavigationalStatus ?? 15] ?? "Unknown";
+
+          placeVessel(mmsi, lat, lon, hdg, sog, name, status);
         } catch {}
       };
 
-      ws.onclose = () => { setTimeout(connect, 5000); };
+      ws.onclose = (ev) => {
+        reconnects++;
+        addTerm("⛵", `AIS disconnected (${ev.code}) — reconnecting #${reconnects}…`, "#94a3b8");
+        setTimeout(connect, Math.min(5000 * reconnects, 30000));
+      };
       ws.onerror = () => ws.close();
     }
     connect();
