@@ -1335,9 +1335,10 @@ export default function StamfordMap() {
         addTerm("⛵", "AIS stream connected — LI Sound + NY Harbor", "#0ea5e9");
       };
 
-      ws.onmessage = (e) => {
+      ws.onmessage = async (e) => {
         try {
-          const msg = JSON.parse(e.data as string);
+          const text = e.data instanceof Blob ? await e.data.text() : (e.data as string);
+          const msg = JSON.parse(text);
           const meta = msg.MetaData ?? {};
           const mmsi = meta.MMSI as number;
           const name = ((meta.ShipName ?? "") as string).trim() || `MMSI ${mmsi}`;
