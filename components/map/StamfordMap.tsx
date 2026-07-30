@@ -1335,9 +1335,14 @@ export default function StamfordMap() {
         addTerm("⛵", "AIS stream connected — LI Sound + NY Harbor", "#0ea5e9");
       };
 
+      let msgCount = 0;
       ws.onmessage = async (e) => {
         try {
           const text = e.data instanceof Blob ? await e.data.text() : (e.data as string);
+          msgCount++;
+          // Log first 3 raw messages to terminal so we can see what server sends
+          if (msgCount <= 3) addTerm("⛵", `AIS raw[${msgCount}]: ${text.slice(0, 120)}`, "#64748b");
+
           const msg = JSON.parse(text);
           const meta = msg.MetaData ?? {};
           const mmsi = meta.MMSI as number;
