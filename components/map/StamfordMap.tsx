@@ -2025,7 +2025,7 @@ export default function StamfordMap() {
                 }}>
                   <span style={{ color: "#1e3050", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{hms}</span>
                   <span style={{ color: e.color + "bb", flexShrink: 0 }}>{e.cat}</span>
-                  <span style={{ color: e.color + "99", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.text}</span>
+                  <span style={{ color: e.color + "99", wordBreak: "break-word", minWidth: 0 }}>{e.text}</span>
                 </div>
               );
             })}
