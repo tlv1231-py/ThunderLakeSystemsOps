@@ -1320,13 +1320,13 @@ export default function StamfordMap() {
       setVesselCount(vesselMarkersRef.current.size);
     }
 
-    let reconnects = 0;
+    let attempt = 0;
     function connect() {
       const ws = new WebSocket("wss://stream.aisstream.io/v0/stream");
       vesselWsRef.current = ws;
 
       ws.onopen = () => {
-        reconnects = 0;
+        attempt = 0; // reset only on clean open so backoff accumulates on rapid failures
         ws.send(JSON.stringify({
           APIKey: apiKey,
           BoundingBoxes: [[[-90, -180], [90, 180]]],
@@ -1371,9 +1371,10 @@ export default function StamfordMap() {
       };
 
       ws.onclose = (ev) => {
-        reconnects++;
-        addTerm("⛵", `AIS disconnected (${ev.code}) — reconnecting #${reconnects}…`, "#94a3b8");
-        setTimeout(connect, Math.min(5000 * reconnects, 30000));
+        attempt++;
+        const delayS = Math.min(10 * Math.pow(2, attempt - 1), 300); // 10s, 20s, 40s … 5min
+        addTerm("⛵", `AIS disconnected (${ev.code}) — retry in ${delayS}s (#${attempt})`, "#94a3b8");
+        setTimeout(connect, delayS * 1000);
       };
       ws.onerror = () => ws.close();
     }
