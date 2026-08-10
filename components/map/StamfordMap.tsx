@@ -669,6 +669,7 @@ export default function StamfordMap() {
         const shortEvt = (f.properties.event ?? "ALERT").split(" ").pop()!.slice(0, 7).toUpperCase();
         const safeId = (f.id ?? `${center[0]}-${center[1]}`).replace(/[^a-z0-9]/gi, "");
         const sentLabel = sent ? new Date(sent).toUTCString().slice(5, 22) + "Z" : "—";
+        const desc = (f.properties.description ?? "").replace(/\*/g, "").replace(/\n+/g, " ").trim();
         const buildPopup = () => popupWrap(`
           <div style="font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:3px">${f.properties.event}</div>
           <div style="color:#5a7090;font-size:10px;margin-bottom:6px">${f.properties.areaDesc ?? ""}</div>
@@ -680,11 +681,11 @@ export default function StamfordMap() {
               ${fmtElapsed(elapsedAtFetch + (Date.now() - fetchTime))}
             </span>
           </div>
-          <div style="font-size:9px;color:#5a7090;border-top:1px solid #0d1a26;padding-top:4px">${f.properties.headline ?? ""}</div>
+          ${desc ? `<div style="font-size:9px;color:#c8d8e8;border-top:1px solid #0d1a26;padding-top:6px;line-height:1.6;max-height:120px;overflow-y:auto;scrollbar-width:none">${desc}</div>` : ""}
         `);
         const icon = L.divIcon({ html: alertPingSVG(shortEvt, onsetMs), className: "", iconSize: [52, 76], iconAnchor: [26, 46] });
         const marker = L.marker(center, { icon })
-          .bindPopup(L.popup({ className: "tl-popup", maxWidth: 280, offset: [0, -4] }).setContent(buildPopup()));
+          .bindPopup(L.popup({ className: "tl-popup", maxWidth: 340, offset: [0, -4] }).setContent(buildPopup()));
         let timerInt: ReturnType<typeof setInterval> | null = null;
         marker.on("popupopen", () => {
           timerInt = setInterval(() => {
