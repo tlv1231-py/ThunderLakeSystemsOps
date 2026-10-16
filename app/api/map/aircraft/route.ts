@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-// adsb.fi — free, no key, live ADS-B feed
+// adsb.lol — free community ADS-B feed, no key required
 // Coverage: 70nm radius from Stamford CT covers KJFK/KLGA/KEWR/KHPN/KBDR approach corridors
 const CENTER_LAT = 41.05;
 const CENTER_LON = -73.54;
@@ -9,7 +9,7 @@ const RADIUS_NM  = 70;
 export async function GET() {
   try {
     const res = await fetch(
-      `https://api.airplanes.live/v2/point/${CENTER_LAT}/${CENTER_LON}/${RADIUS_NM}`,
+      `https://api.adsb.lol/v2/point/${CENTER_LAT}/${CENTER_LON}/${RADIUS_NM}`,
       {
         headers: { "User-Agent": "ThunderLakeSystems/1.0 (tlevander.py@gmail.com)" },
         next: { revalidate: 0 },
