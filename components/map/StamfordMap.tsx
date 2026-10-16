@@ -31,7 +31,7 @@ const STAMFORD = { lat: 41.0534, lng: -73.5387 };
 const BASE_LAYERS: Record<BaseKey, { label: string; url: string; subdomains?: string; minNativeZoom: number; maxNativeZoom: number }> = {
   satellite: { label: "Satellite", url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", minNativeZoom: 2, maxNativeZoom: 19 },
   hybrid:    { label: "Hybrid",    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", minNativeZoom: 2, maxNativeZoom: 19 },
-  dark:      { label: "Dark",      url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", subdomains: "abcd", minNativeZoom: 0, maxNativeZoom: 18 },
+  dark:      { label: "Dark",      url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", minNativeZoom: 0, maxNativeZoom: 16 },
 };
 
 const WMO: Record<number, string> = {
@@ -1624,8 +1624,8 @@ export default function StamfordMap() {
       baseTileRef.current = L.tileLayer(def.url, opts).addTo(map);
       if (baseKey === "hybrid") {
         labelRef.current = L.tileLayer(
-          "https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png",
-          { subdomains: "abcd", maxNativeZoom: 18, maxZoom: 19, pane: "overlayPane", opacity: 0.9 }
+          "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+          { maxNativeZoom: 16, maxZoom: 19, pane: "overlayPane", opacity: 0.9 }
         ).addTo(map);
       }
       Object.values(groupRefs.current).forEach(g => g?.bringToFront?.());
