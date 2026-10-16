@@ -67,7 +67,7 @@ const SECTIONS: { key: "overhead" | "atmospheric" | "city"; label: string }[] = 
   { key: "city",        label: "City Intel"  },
 ];
 
-type FeedKey = "weather" | "aircraft" | "iss" | "alerts" | "lightning" | "transit" | "rail" | "services" | "traffic" | "dispatch" | "marine" | "vessels" | "metar" | "storm" | "outages";
+type FeedKey = "weather" | "aircraft" | "iss" | "alerts" | "lightning" | "transit" | "rail" | "services" | "traffic" | "dispatch" | "marine" | "vessels" | "metar" | "storm" | "outages" | "radar";
 
 const FEED_META: Record<FeedKey, { icon: string; short: string; color: string; maxAge: number }> = {
   weather:   { icon: "⛅", short: "WX",    color: "#60a5fa", maxAge: 900   },
@@ -85,16 +85,17 @@ const FEED_META: Record<FeedKey, { icon: string; short: string; color: string; m
   metar:     { icon: "🛫", short: "METAR", color: "#22c55e", maxAge: 900   },
   storm:     { icon: "🌩", short: "STRM",  color: "#38bdf8", maxAge: 900   },
   outages:   { icon: "💡", short: "PWR",   color: "#facc15", maxAge: 900   },
+  radar:     { icon: "🌧", short: "RADAR", color: "#38bdf8", maxAge: 600   },
 };
 
 const FEED_LAYER: Partial<Record<FeedKey, LayerKey>> = {
   aircraft: "aircraft", iss: "iss", alerts: "alerts", lightning: "lightning",
   transit: "transit", rail: "rail", services: "services", traffic: "traffic",
   dispatch: "dispatch", marine: "marine", vessels: "vessels",
-  metar: "metar", storm: "storm", outages: "outages",
+  metar: "metar", storm: "storm", outages: "outages", radar: "radar",
 };
 
-const FEED_ORDER: FeedKey[] = ["aircraft", "iss", "alerts", "lightning", "metar", "storm", "weather", "transit", "rail", "traffic", "dispatch", "marine", "vessels", "outages", "services"];
+const FEED_ORDER: FeedKey[] = ["aircraft", "iss", "alerts", "lightning", "radar", "metar", "storm", "weather", "transit", "rail", "traffic", "dispatch", "marine", "vessels", "outages", "services"];
 
 // CT town centroids for Eversource service territory (hardcoded — doesn't change)
 const CT_TOWNS: Record<string, [number, number]> = {
@@ -618,15 +619,32 @@ export default function StamfordMap() {
 
   const fetchRadar = useCallback((L: any) => {
     const g = groupRefs.current.radar;
-    g?.clearLayers();
-    // Iowa State Mesonet NEXRAD composite tiles — no zoom restrictions, no error tiles over water,
-    // transparent where no precip. Cache-bust parameter changes every 5 min to match their update cycle.
-    const v = Math.floor(Date.now() / 300_000);
-    g?.addLayer(L.tileLayer(
-      `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png?_=${v}`,
-      { opacity: radarOpacityRef.current, maxZoom: 19, className: "tl-radar-tile" }
-    ));
-  }, []);
+    if (!g) return;
+    // RainViewer: fetch the latest radar timestamp, then load smoothly-interpolated tiles.
+    // ~2 min update cycle, 250m resolution, transparent where no precip. Color scheme 6 = NEXRAD palette.
+    fetch("https://api.rainviewer.com/public/weather-maps.json", { signal: AbortSignal.timeout(6000) })
+      .then(r => r.json())
+      .then((data: any) => {
+        const frames: { time: number }[] = data?.radar?.past ?? [];
+        const ts = frames[frames.length - 1]?.time;
+        if (!ts) return;
+        g.clearLayers();
+        g.addLayer(L.tileLayer(
+          `https://tilecache.rainviewer.com/v2/radar/${ts}/256/{z}/{x}/{y}/6/1_1.png`,
+          { opacity: radarOpacityRef.current, maxZoom: 19, tileSize: 256, className: "tl-radar-tile" }
+        ));
+        touchFeed("radar");
+      })
+      .catch(() => {
+        // Fall back to IEM composite if RainViewer is unreachable
+        const v = Math.floor(Date.now() / 300_000);
+        g.clearLayers();
+        g.addLayer(L.tileLayer(
+          `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png?_=${v}`,
+          { opacity: radarOpacityRef.current, maxZoom: 19, className: "tl-radar-tile" }
+        ));
+      });
+  }, [touchFeed]);
 
   const fetchISS = useCallback((L: any) => {
     fetch("https://api.wheretheiss.at/v1/satellites/25544").then(r => r.json()).then((d: ISSPos) => {
@@ -1534,7 +1552,7 @@ export default function StamfordMap() {
       // Polling
       intervals.current.push(setInterval(() => fetchAircraft(L), 15_000));
       intervals.current.push(setInterval(() => fetchISS(L), 6_000));
-      intervals.current.push(setInterval(() => fetchRadar(L), 5 * 60_000));
+      intervals.current.push(setInterval(() => fetchRadar(L), 2 * 60_000));
       intervals.current.push(setInterval(() => fetchAlerts(L), 10 * 60_000));
       intervals.current.push(setInterval(() => fetchTransit(L), 30_000));
       intervals.current.push(setInterval(() => fetchRail(L), 30_000));
@@ -2227,7 +2245,7 @@ export default function StamfordMap() {
         .tl-ongoing { text-shadow: 0 0 8px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,1); }
 
         /* Soften blocky NEXRAD tiles with bilinear blur */
-        .tl-radar-tile { image-rendering: auto; filter: blur(2px); }
+        .tl-radar-tile { image-rendering: auto; }
 
         /* Ticker: 28px content area + safe-area inset for Android/iOS nav bars */
         .tl-ticker-wrap {
