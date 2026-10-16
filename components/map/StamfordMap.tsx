@@ -1740,8 +1740,14 @@ export default function StamfordMap() {
     outages:   outagesTotal   > 0 ? outagesTotal.toLocaleString() : undefined,
   };
 
+  // Burn-in prevention: Lissajous pixel orbit (±4px), only in fullscreen
+  const _t = nowMs / 1000;
+  const orbitX = isFullscreen ? +(4 * Math.sin(2 * Math.PI * _t / 210)).toFixed(2) : 0;
+  const orbitY = isFullscreen ? +(4 * Math.sin(2 * Math.PI * _t / 282 + Math.PI / 2)).toFixed(2) : 0;
+
   return (
-    <div className="relative w-full overflow-hidden tl-fullvp" style={{ background: "#07090f" }}>
+    <div className="relative w-full overflow-hidden tl-fullvp"
+      style={{ background: "#07090f", transform: `translate(${orbitX}px,${orbitY}px)`, transition: "transform 1s linear" }}>
       {/* Map canvas */}
       <div ref={mapRef} className="absolute inset-0 z-0" />
 
