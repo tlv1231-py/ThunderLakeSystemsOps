@@ -631,7 +631,7 @@ export default function StamfordMap() {
         g.clearLayers();
         g.addLayer(L.tileLayer(
           `https://tilecache.rainviewer.com/v2/radar/${ts}/256/{z}/{x}/{y}/6/1_1.png`,
-          { opacity: radarOpacityRef.current, maxZoom: 19, tileSize: 256, className: "tl-radar-tile" }
+          { opacity: radarOpacityRef.current, maxZoom: 19, maxNativeZoom: 8, tileSize: 256, className: "tl-radar-tile" }
         ));
         touchFeed("radar");
       })
