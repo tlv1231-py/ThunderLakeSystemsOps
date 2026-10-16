@@ -1827,48 +1827,50 @@ export default function StamfordMap() {
         </span>
       </div>
 
-      {/* ── Feed status strip ──────────────────────────────────────────────── */}
-      <div className="absolute z-10 left-0 right-0 flex items-stretch"
-        style={{ top: 31, height: 22, background: "rgba(3,5,9,0.90)", borderBottom: "1px solid rgba(255,255,255,0.05)", overflowX: "auto", scrollbarWidth: "none" }}>
+      {/* ── Feed orbs ──────────────────────────────────────────────────────── */}
+      <div className="absolute z-10 left-0 right-0 flex justify-center"
+        style={{ top: 34, gap: 6, padding: "0 10px", pointerEvents: "none" }}>
         {FEED_ORDER.map(key => {
-          const meta = FEED_META[key];
+          const meta   = FEED_META[key];
           const layerKey = FEED_LAYER[key];
           const active = layerKey ? enabled[layerKey] : true;
           const lastSeen = feedLastSeenRef.current[key];
-          const ageMs = lastSeen ? nowMs - lastSeen : null;
+          const ageMs  = lastSeen ? nowMs - lastSeen : null;
           const ageSec = ageMs !== null ? Math.floor(ageMs / 1000) : null;
+          const progress = ageSec === null ? 0 : Math.max(0, 1 - ageSec / meta.maxAge);
+          const stale  = ageSec !== null && ageSec > meta.maxAge;
+          const aging  = ageSec !== null && ageSec > meta.maxAge * 0.55 && !stale;
+          const fresh  = ageSec !== null && !aging && !stale;
+          const ringColor = !active || ageSec === null ? "#182232"
+            : stale ? "#ef4444" : aging ? "#f59e0b" : meta.color;
           const timeStr = ageSec === null ? "—"
             : ageSec < 5    ? "now"
             : ageSec < 60   ? `${ageSec}s`
             : ageSec < 3600 ? `${Math.floor(ageSec / 60)}m`
             : `${Math.floor(ageSec / 3600)}h`;
-          const fresh = ageSec !== null && ageSec <= meta.maxAge * 0.5;
-          const aging = ageSec !== null && ageSec > meta.maxAge * 0.5 && ageSec <= meta.maxAge;
-          const stale = ageSec !== null && ageSec > meta.maxAge;
-          const dotColor = !active || ageSec === null ? "#1a2535"
-            : stale ? "#ef4444"
-            : aging ? "#f59e0b"
-            : "#39d97a";
-          const timeColor = !active || ageSec === null ? "#1a2535"
-            : stale ? "#ef4444"
-            : aging ? "#f59e0b"
-            : "#39d97a";
+          const R = 16, C = 2 * Math.PI * R;
           return (
-            <div key={key} title={meta.short} style={{
-              display: "flex", alignItems: "center", gap: 4,
-              padding: "0 9px", height: "100%",
-              opacity: active ? 1 : 0.22,
-              borderRight: "1px solid rgba(255,255,255,0.04)",
-              flexShrink: 0, cursor: "default",
+            <div key={key} title={`${meta.short} · ${timeStr}`} style={{
+              position: "relative", width: 42, height: 42, flexShrink: 0, pointerEvents: "auto", cursor: "default",
+              opacity: active ? 1 : 0.18,
             }}>
-              <span style={{
-                width: 4, height: 4, borderRadius: "50%", background: dotColor,
-                display: "inline-block", flexShrink: 0,
-                ...(fresh && active ? { animation: "tl-blink 2s ease-in-out infinite" } : {}),
-              }} />
-              <span style={{ fontSize: 10, lineHeight: 1, userSelect: "none" }}>{meta.icon}</span>
-              <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 8, color: "#243040", letterSpacing: "0.1em" }}>{meta.short}</span>
-              <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 8, color: timeColor, letterSpacing: "0.04em", minWidth: 22, textAlign: "right" }}>{timeStr}</span>
+              <svg width="42" height="42" viewBox="0 0 42 42"
+                style={{ position: "absolute", inset: 0, filter: fresh && active ? `drop-shadow(0 0 5px ${ringColor}90)` : "none", transition: "filter 0.6s" }}>
+                {/* tinted fill */}
+                <circle cx="21" cy="21" r={R} fill={`${meta.color}18`} />
+                {/* track */}
+                <circle cx="21" cy="21" r={R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="2" />
+                {/* depleting arc */}
+                <circle cx="21" cy="21" r={R} fill="none"
+                  stroke={ringColor} strokeWidth="2.5" strokeLinecap="round"
+                  strokeDasharray={C} strokeDashoffset={C * (1 - progress)}
+                  transform="rotate(-90 21 21)"
+                  style={{ transition: "stroke-dashoffset 1s linear, stroke 0.6s" }} />
+              </svg>
+              <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
+                <span style={{ fontSize: 13, lineHeight: 1, userSelect: "none" }}>{meta.icon}</span>
+                <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 6.5, letterSpacing: "0.04em", color: ringColor, lineHeight: 1 }}>{timeStr}</span>
+              </div>
             </div>
           );
         })}
@@ -1891,7 +1893,7 @@ export default function StamfordMap() {
           background: "rgba(7,9,15,0.92)", backdropFilter: "blur(18px)", borderRight: "1px solid #0f1d2e" }}>
 
         {/* Header */}
-        <div className="px-5 pt-14 pb-4" style={{ borderBottom: "1px solid #0d1520" }}>
+        <div className="px-5 pt-12 pb-4" style={{ borderBottom: "1px solid #0d1520" }}>
           <div style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 8, color: "#22d3ee", letterSpacing: "0.2em", textTransform: "uppercase", marginBottom: 4, opacity: 0.7 }}>
             THUNDER LAKE SYSTEMS ◈ CTF
           </div>
