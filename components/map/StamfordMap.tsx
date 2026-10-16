@@ -67,6 +67,35 @@ const SECTIONS: { key: "overhead" | "atmospheric" | "city"; label: string }[] = 
   { key: "city",        label: "City Intel"  },
 ];
 
+type FeedKey = "weather" | "aircraft" | "iss" | "alerts" | "lightning" | "transit" | "rail" | "services" | "traffic" | "dispatch" | "marine" | "vessels" | "metar" | "storm" | "outages";
+
+const FEED_META: Record<FeedKey, { icon: string; short: string; color: string; maxAge: number }> = {
+  weather:   { icon: "⛅", short: "WX",    color: "#60a5fa", maxAge: 900   },
+  aircraft:  { icon: "✈",  short: "AIR",   color: "#a855f7", maxAge: 90    },
+  iss:       { icon: "🛸", short: "ISS",   color: "#a78bfa", maxAge: 90    },
+  alerts:    { icon: "⚠",  short: "ALRT",  color: "#f59e0b", maxAge: 600   },
+  lightning: { icon: "⚡", short: "LTNG",  color: "#ffe066", maxAge: 600   },
+  transit:   { icon: "🚌", short: "BUS",   color: "#60a5fa", maxAge: 90    },
+  rail:      { icon: "🚆", short: "RAIL",  color: "#4488ff", maxAge: 90    },
+  services:  { icon: "📍", short: "SVC",   color: "#4ade80", maxAge: 86400 },
+  traffic:   { icon: "🚦", short: "TFC",   color: "#f59e0b", maxAge: 600   },
+  dispatch:  { icon: "📻", short: "DISP",  color: "#ff4466", maxAge: 180   },
+  marine:    { icon: "🌊", short: "MRNE",  color: "#06b6d4", maxAge: 900   },
+  vessels:   { icon: "⛵", short: "AIS",   color: "#0ea5e9", maxAge: 90    },
+  metar:     { icon: "🛫", short: "METAR", color: "#22c55e", maxAge: 900   },
+  storm:     { icon: "🌩", short: "STRM",  color: "#38bdf8", maxAge: 900   },
+  outages:   { icon: "💡", short: "PWR",   color: "#facc15", maxAge: 900   },
+};
+
+const FEED_LAYER: Partial<Record<FeedKey, LayerKey>> = {
+  aircraft: "aircraft", iss: "iss", alerts: "alerts", lightning: "lightning",
+  transit: "transit", rail: "rail", services: "services", traffic: "traffic",
+  dispatch: "dispatch", marine: "marine", vessels: "vessels",
+  metar: "metar", storm: "storm", outages: "outages",
+};
+
+const FEED_ORDER: FeedKey[] = ["aircraft", "iss", "alerts", "lightning", "metar", "storm", "weather", "transit", "rail", "traffic", "dispatch", "marine", "vessels", "outages", "services"];
+
 // CT town centroids for Eversource service territory (hardcoded — doesn't change)
 const CT_TOWNS: Record<string, [number, number]> = {
   ASHFORD:[41.869,-72.136],BARKHAMSTED:[41.926,-72.944],BERLIN:[41.621,-72.750],
@@ -458,6 +487,7 @@ export default function StamfordMap() {
   const metarMarkersRef    = useRef<Map<string, any>>(new Map());
   const outagesTotalRef    = useRef<number>(0);
   const terminalRef        = useRef<HTMLDivElement>(null);
+  const feedLastSeenRef    = useRef<Partial<Record<FeedKey, number>>>({});
   const [trackOpacity, setTrackOpacity] = useState(() => {
     if (typeof window === "undefined") return 0.35;
     const s = parseFloat(localStorage.getItem("tl-track-opacity") ?? "0.35");
@@ -511,6 +541,10 @@ export default function StamfordMap() {
     setTermLog(prev => [...prev, { ts: Date.now(), cat, text, color }].slice(-200));
   }, []);
 
+  const touchFeed = useCallback((key: FeedKey) => {
+    feedLastSeenRef.current[key] = Date.now();
+  }, []);
+
   // ── Fetch functions ───────────────────────────────────────────────────────
 
   const fetchAircraft = useCallback((L: any) => {
@@ -519,6 +553,7 @@ export default function StamfordMap() {
       if (!g) return;
       const states: any[][] = data.states ?? [];
       setAircraftCount(states.length);
+      touchFeed("aircraft");
       if (states.length) addLog("✈", `${states.length} aircraft in sector`, "#a855f7");
 
       const now = Date.now();
@@ -596,6 +631,7 @@ export default function StamfordMap() {
   const fetchISS = useCallback((L: any) => {
     fetch("https://api.wheretheiss.at/v1/satellites/25544").then(r => r.json()).then((d: ISSPos) => {
       setIss(d);
+      touchFeed("iss");
       const g = groupRefs.current.iss;
       if (!g) return;
       animateOut(g, () => {
@@ -628,6 +664,7 @@ export default function StamfordMap() {
       const serverNow: number = d.serverNow ?? Date.now();
       const fetchTime = Date.now();
       setAlertCount(features.length);
+      touchFeed("alerts");
       setAlertTexts(features.map((f: any) =>
         [f.properties.event, f.properties.headline].filter(Boolean).join(" — ")
       ));
@@ -703,6 +740,7 @@ export default function StamfordMap() {
     fetch("/api/map/transit").then(r => r.json()).then(data => {
       const vehicles: any[] = data.vehicles ?? [];
       setTransitCount(vehicles.length);
+      touchFeed("transit");
       const g = groupRefs.current.transit;
       if (!g) return;
       animateOut(g, () => {
@@ -809,6 +847,7 @@ export default function StamfordMap() {
     fetch("/api/map/transit-rail").then(r => r.json()).then(data => {
       const trains: any[] = data.trains ?? [];
       setRailCount(trains.length);
+      touchFeed("rail");
       const g = groupRefs.current.rail;
       if (!g) return;
       if (trains.length) addLog("🚆", `${trains.length} Metro-North trains active`, "#4488ff");
@@ -877,6 +916,7 @@ export default function StamfordMap() {
     fetch("/api/map/services").then(r => r.json()).then(data => {
       const elements: any[] = data.elements ?? [];
       setServicesCount(elements.length);
+      touchFeed("services");
       if (elements.length) addLog("📍", `${elements.length} city services mapped`, "#4ade80");
       const g = groupRefs.current.services;
       if (!g) return;
@@ -906,6 +946,7 @@ export default function StamfordMap() {
       const events: any[] = data.events ?? [];
       const source: string = data.source ?? "overpass";
       setTrafficCount(events.length);
+      touchFeed("traffic");
       setTrafficTexts(events.filter(ev => ev.lat && ev.lon).map(ev =>
         [ev.subtype || ev.type.replace(/_/g, " "), ev.road, ev.direction ? `(${ev.direction})` : null].filter(Boolean).join(" · ")
       ));
@@ -964,6 +1005,7 @@ export default function StamfordMap() {
     fetch("/api/map/dispatch").then(r => r.json()).then(data => {
       const incidents: any[] = data.incidents ?? [];
       setDispatchCount(incidents.length);
+      touchFeed("dispatch");
       const dspFt = Date.now();
       setOngoingItems(prev => {
         const dspItems = incidents.map((inc: any, i: number) => ({
@@ -1003,6 +1045,7 @@ export default function StamfordMap() {
     fetch("/api/map/marine").then(r => r.json()).then(data => {
       const stations: any[] = data.stations ?? [];
       setMarineCount(stations.length);
+      touchFeed("marine");
       setMarineTexts(stations.map((st: any) => {
         const bits: string[] = [st.name];
         if (st.waterLevel != null) bits.push(`Tide ${st.waterLevel > 0 ? "+" : ""}${st.waterLevel}ft`);
@@ -1064,6 +1107,7 @@ export default function StamfordMap() {
     fetch("/api/map/metar").then(r => r.json()).then(data => {
       const stations: any[] = data.stations ?? [];
       setMetarCount(stations.length);
+      touchFeed("metar");
       const g = groupRefs.current.metar;
       if (!g) return;
       const items: { text: string; color: string }[] = [];
@@ -1140,6 +1184,7 @@ export default function StamfordMap() {
     fetch("/api/map/storm").then(r => r.json()).then(data => {
       const stations: any[] = data.stations ?? [];
       setStormCount(stations.length);
+      touchFeed("storm");
       const g = groupRefs.current.storm;
       if (!g) return;
       const raining = stations.filter((s: any) => s.precip1hIn != null && s.precip1hIn > 0.005);
@@ -1185,6 +1230,7 @@ export default function StamfordMap() {
       const summary = data.summary;
       const total: number = summary?.totalAffected ?? towns.reduce((s: number, t: any) => s + (t.custAffected ?? 0), 0);
       setOutagesCount(towns.length);
+      touchFeed("outages");
       setOutagesTotal(total);
       const g = groupRefs.current.outages;
       if (!g) return;
@@ -1229,6 +1275,7 @@ export default function StamfordMap() {
       const c = d.current;
       setWeather({ temp: c.temperature_2m, wind_speed: c.wind_speed_10m, wind_dir: c.wind_direction_10m,
         humidity: c.relative_humidity_2m, cloud_cover: c.cloud_cover, precipitation: c.precipitation, code: c.weather_code });
+      touchFeed("weather");
     }).catch(() => {});
   }, []);
 
@@ -1242,7 +1289,7 @@ export default function StamfordMap() {
       setWsStatus("connecting");
       const ws = new WebSocket(SERVERS[idx]);
       lightningWsRef.current = ws;
-      ws.onopen = () => { ws.send(JSON.stringify({ a: 111 })); setWsStatus("live"); };
+      ws.onopen = () => { ws.send(JSON.stringify({ a: 111 })); setWsStatus("live"); touchFeed("lightning"); };
       ws.onmessage = (e) => {
         try {
           const d = JSON.parse(e.data as string);
@@ -1265,6 +1312,7 @@ export default function StamfordMap() {
           marker.bindTooltip(`⚡ ${lat.toFixed(3)}, ${lon.toFixed(3)}`, { className: "tl-tt", sticky: true });
           g.addLayer(marker);
           lightningMarkersRef.current.push({ marker, born: Date.now() });
+          touchFeed("lightning");
           strikeCountMinRef.current += 1;
         } catch {}
       };
@@ -1333,6 +1381,7 @@ export default function StamfordMap() {
           BoundingBoxes: [[[-90, -180], [90, 180]]],
         }));
         addTerm("⛵", "AIS stream connected — LI Sound + NY Harbor", "#0ea5e9");
+        touchFeed("vessels");
       };
 
       ws.onmessage = async (e) => {
@@ -1535,6 +1584,7 @@ export default function StamfordMap() {
           }
         });
         setVesselCount(vesselMarkersRef.current.size);
+        if (vesselMarkersRef.current.size > 0) touchFeed("vessels");
         const batch = newVesselBatchRef.current.splice(0);
         if (batch.length > 0) {
           const total = vesselMarkersRef.current.size;
@@ -1777,6 +1827,53 @@ export default function StamfordMap() {
         </span>
       </div>
 
+      {/* ── Feed status strip ──────────────────────────────────────────────── */}
+      <div className="absolute z-10 left-0 right-0 flex items-stretch"
+        style={{ top: 31, height: 22, background: "rgba(3,5,9,0.90)", borderBottom: "1px solid rgba(255,255,255,0.05)", overflowX: "auto", scrollbarWidth: "none" }}>
+        {FEED_ORDER.map(key => {
+          const meta = FEED_META[key];
+          const layerKey = FEED_LAYER[key];
+          const active = layerKey ? enabled[layerKey] : true;
+          const lastSeen = feedLastSeenRef.current[key];
+          const ageMs = lastSeen ? nowMs - lastSeen : null;
+          const ageSec = ageMs !== null ? Math.floor(ageMs / 1000) : null;
+          const timeStr = ageSec === null ? "—"
+            : ageSec < 5    ? "now"
+            : ageSec < 60   ? `${ageSec}s`
+            : ageSec < 3600 ? `${Math.floor(ageSec / 60)}m`
+            : `${Math.floor(ageSec / 3600)}h`;
+          const fresh = ageSec !== null && ageSec <= meta.maxAge * 0.5;
+          const aging = ageSec !== null && ageSec > meta.maxAge * 0.5 && ageSec <= meta.maxAge;
+          const stale = ageSec !== null && ageSec > meta.maxAge;
+          const dotColor = !active || ageSec === null ? "#1a2535"
+            : stale ? "#ef4444"
+            : aging ? "#f59e0b"
+            : "#39d97a";
+          const timeColor = !active || ageSec === null ? "#1a2535"
+            : stale ? "#ef4444"
+            : aging ? "#f59e0b"
+            : "#39d97a";
+          return (
+            <div key={key} title={meta.short} style={{
+              display: "flex", alignItems: "center", gap: 4,
+              padding: "0 9px", height: "100%",
+              opacity: active ? 1 : 0.22,
+              borderRight: "1px solid rgba(255,255,255,0.04)",
+              flexShrink: 0, cursor: "default",
+            }}>
+              <span style={{
+                width: 4, height: 4, borderRadius: "50%", background: dotColor,
+                display: "inline-block", flexShrink: 0,
+                ...(fresh && active ? { animation: "tl-blink 2s ease-in-out infinite" } : {}),
+              }} />
+              <span style={{ fontSize: 10, lineHeight: 1, userSelect: "none" }}>{meta.icon}</span>
+              <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 8, color: "#243040", letterSpacing: "0.1em" }}>{meta.short}</span>
+              <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 8, color: timeColor, letterSpacing: "0.04em", minWidth: 22, textAlign: "right" }}>{timeStr}</span>
+            </div>
+          );
+        })}
+      </div>
+
       {/* ── Panel toggle tab ───────────────────────────────────────────────── */}
       <button onClick={() => setPanelOpen(p => !p)}
         className="absolute z-20 top-1/2 -translate-y-1/2 transition-all duration-300 tl-panel-hide"
@@ -1794,7 +1891,7 @@ export default function StamfordMap() {
           background: "rgba(7,9,15,0.92)", backdropFilter: "blur(18px)", borderRight: "1px solid #0f1d2e" }}>
 
         {/* Header */}
-        <div className="px-5 pt-12 pb-4" style={{ borderBottom: "1px solid #0d1520" }}>
+        <div className="px-5 pt-14 pb-4" style={{ borderBottom: "1px solid #0d1520" }}>
           <div style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 8, color: "#22d3ee", letterSpacing: "0.2em", textTransform: "uppercase", marginBottom: 4, opacity: 0.7 }}>
             THUNDER LAKE SYSTEMS ◈ CTF
           </div>
