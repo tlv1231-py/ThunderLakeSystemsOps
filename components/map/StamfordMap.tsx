@@ -12,8 +12,11 @@ interface OngoingItem {
   startMs: number; serverNow?: number; fetchTime?: number;
 }
 
-interface TermEntry { ts: number; cat: string; text: string; color: string; }
-interface NewsItem  { ts: number; pub: string; headline: string; }
+interface TermEntry    { ts: number; cat: string; text: string; color: string; }
+interface NewsItem    { ts: number; pub: string; headline: string; }
+interface HourlyFc   { hour: number; temp: number; code: number; precip: number; }
+interface DailyFc    { date: string; max: number; min: number; code: number; precip: number; }
+interface SsTrackInfo { type: string; id: string; detail: string; }
 
 interface WeatherNow {
   temp: number; wind_speed: number; wind_dir: number;
@@ -385,6 +388,19 @@ function destPoint(lat: number, lon: number, bearingDeg: number, distM: number):
   return [φ2 * 180 / Math.PI, λ2 * 180 / Math.PI];
 }
 
+function wmoIcon(code: number): string {
+  if (code === 0) return "☀";
+  if (code <= 2)  return "⛅";
+  if (code === 3) return "☁";
+  if (code <= 49) return "🌫";
+  if (code <= 57) return "🌦";
+  if (code <= 67) return "🌧";
+  if (code <= 77) return "❄";
+  if (code <= 82) return "🌦";
+  if (code <= 99) return "⛈";
+  return "—";
+}
+
 function distToStamford(lat: number, lon: number, clat = 41.0534, clng = -73.5387): number {
   const dlat = (lat - clat) * 111320;
   const dlon = (lon - clng) * 111320 * Math.cos(clat * Math.PI / 180);
@@ -501,6 +517,11 @@ export default function StamfordMap() {
   const reticleMarkerRef    = useRef<any>(null);
   const reticleSrcRef       = useRef<any>(null);
   const lRef                = useRef<any>(null);
+  const ssTrackMarkerRef    = useRef<any>(null);
+  const ssLastInputRef      = useRef<number>(Date.now());
+  const ssIdleTimerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const ssTrackMsgTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const trainScaleRef       = useRef<number>(1.0);
 
   const [baseKey,       setBaseKey]       = useState<BaseKey>("dark");
   const [enabled,       setEnabled]       = useState<Record<LayerKey, boolean>>({
@@ -535,6 +556,10 @@ export default function StamfordMap() {
   const [panelOpen,     setPanelOpen]     = useState(false);
   const [ssMode,        setSsMode]        = useState(false);
   const [newsItems,     setNewsItems]     = useState<NewsItem[]>([]);
+  const [hourlyForecast, setHourlyForecast] = useState<HourlyFc[]>([]);
+  const [dailyForecast,  setDailyForecast]  = useState<DailyFc[]>([]);
+  const [showControls,   setShowControls]   = useState(false);
+  const [ssTrackMsg,     setSsTrackMsg]     = useState<SsTrackInfo | null>(null);
   const [isFullscreen,  setIsFullscreen]  = useState(false);
   const [milClock,      setMilClock]      = useState("");
   const [nowMs,         setNowMs]         = useState(Date.now());
@@ -561,6 +586,17 @@ export default function StamfordMap() {
     setMarkerScale(v);
     document.documentElement.style.setProperty("--tl-mk-scale", String(v));
     if (typeof window !== "undefined") localStorage.setItem("tl-mk-scale", String(v));
+  }, []);
+
+  const [trainIconScale, setTrainIconScale] = useState(() => {
+    if (typeof window === "undefined") return 1.0;
+    const s = parseFloat(localStorage.getItem("tl-train-scale") ?? "1");
+    return isNaN(s) || s < 0.5 || s > 3 ? 1.0 : s;
+  });
+  const applyTrainIconScale = useCallback((v: number) => {
+    setTrainIconScale(v);
+    trainScaleRef.current = v;
+    if (typeof window !== "undefined") localStorage.setItem("tl-train-scale", String(v));
   }, []);
 
   const trackGroupRef      = useRef<any>(null);
@@ -609,30 +645,68 @@ export default function StamfordMap() {
     document.documentElement.style.setProperty("--tl-mk-scale", String(markerScale));
   }, [markerScale]);
 
-  // Screensaver mode: scan for new vehicles entering 10mi sector and pan+popup
+  // Sync trainScaleRef on mount
+  useEffect(() => { trainScaleRef.current = trainIconScale; }, [trainIconScale]);
+
+  // Screensaver mode: scan for new vehicles entering 10mi sector, autotrack, idle pullback
   useEffect(() => {
     ssModeRef.current = ssMode;
     if (!ssMode) {
-      if (ssScanTimerRef.current) { clearInterval(ssScanTimerRef.current); ssScanTimerRef.current = null; }
+      if (ssScanTimerRef.current)  { clearInterval(ssScanTimerRef.current);  ssScanTimerRef.current  = null; }
+      if (ssIdleTimerRef.current)  { clearInterval(ssIdleTimerRef.current);  ssIdleTimerRef.current  = null; }
+      if (ssTrackMsgTimerRef.current) { clearTimeout(ssTrackMsgTimerRef.current); ssTrackMsgTimerRef.current = null; }
       ssKnownRef.current.clear();
+      ssTrackMarkerRef.current = null;
+      setSsTrackMsg(null);
+      reticleSrcRef.current = null;
       // Restore full opacity on all moving markers
       aircraftMarkersRef.current.forEach(m => { try { m.setOpacity(1); } catch {} });
       trainMarkersRef.current.forEach(m   => { try { m.setOpacity(1); } catch {} });
       vesselMarkersRef.current.forEach(m  => { try { m.setOpacity(1); } catch {} });
       return;
     }
+
+    // On enable: fly to TLS 20mi view (zoom 11)
+    const map = mapInst.current;
+    if (map) {
+      const { lat, lng } = crosshairLatLngRef.current;
+      map.flyTo([lat, lng], 11, { animate: true, duration: 2.5 });
+    }
+    ssLastInputRef.current = Date.now();
+
     // Seed known set with all currently visible vehicles
     aircraftMarkersRef.current.forEach((_, id) => ssKnownRef.current.add(id));
     vesselMarkersRef.current.forEach((_, mmsi) => ssKnownRef.current.add(`ais-${mmsi}`));
     trainMarkersRef.current.forEach((_, id) => ssKnownRef.current.add(`train-${id}`));
 
+    // Track user input to detect idle
+    const mapEl = mapRef.current;
+    const resetIdle = () => { ssLastInputRef.current = Date.now(); ssTrackMarkerRef.current = null; setSsTrackMsg(null); };
+    if (mapEl) {
+      mapEl.addEventListener("mousedown", resetIdle, { passive: true });
+      mapEl.addEventListener("touchstart", resetIdle, { passive: true });
+      mapEl.addEventListener("wheel", resetIdle, { passive: true });
+    }
+
+    // Idle pullback: after 5s no input (and not actively tracking), fly back to TLS 20mi
+    ssIdleTimerRef.current = setInterval(() => {
+      if (!ssModeRef.current || !mapInst.current) return;
+      if (ssTrackMarkerRef.current) return; // actively tracking, let it continue
+      if (Date.now() - ssLastInputRef.current > 5000) {
+        ssLastInputRef.current = Date.now();
+        const { lat, lng } = crosshairLatLngRef.current;
+        mapInst.current.flyTo([lat, lng], 11, { animate: true, duration: 2.0 });
+      }
+    }, 1000);
+
     const SS_M = 16093; // 10 miles
     ssScanTimerRef.current = setInterval(() => {
       if (!ssModeRef.current) return;
-      const map = mapInst.current;
-      if (!map) return;
+      const mapNow = mapInst.current;
+      if (!mapNow) return;
       let newMarker: any = null;
       let newLat = 0, newLon = 0, newestMs = 0;
+      let newType = "", newId = "", newDetail = "";
       const tlsLat = crosshairLatLngRef.current.lat;
       const tlsLng = crosshairLatLngRef.current.lng;
 
@@ -641,7 +715,10 @@ export default function StamfordMap() {
         const ll = m.getLatLng();
         if (distToStamford(ll.lat, ll.lng, tlsLat, tlsLng) > SS_M) return;
         const t = aircraftStateRef.current.get(id)?.lastMs ?? Date.now();
-        if (t > newestMs) { newestMs = t; newMarker = m; newLat = ll.lat; newLon = ll.lng; }
+        if (t > newestMs) {
+          newestMs = t; newMarker = m; newLat = ll.lat; newLon = ll.lng;
+          newType = "AIRPLANE"; newId = m._tlMeta?.id ?? id; newDetail = m._tlMeta?.detail ?? "";
+        }
       });
       vesselMarkersRef.current.forEach((m, mmsi) => {
         const id = `ais-${mmsi}`;
@@ -649,14 +726,20 @@ export default function StamfordMap() {
         const ll = m.getLatLng();
         if (distToStamford(ll.lat, ll.lng, tlsLat, tlsLng) > SS_M) return;
         const t = vesselLastSeenRef.current.get(mmsi) ?? Date.now();
-        if (t > newestMs) { newestMs = t; newMarker = m; newLat = ll.lat; newLon = ll.lng; }
+        if (t > newestMs) {
+          newestMs = t; newMarker = m; newLat = ll.lat; newLon = ll.lng;
+          newType = "VESSEL"; newId = m._tlMeta?.id ?? `MMSI ${mmsi}`; newDetail = m._tlMeta?.detail ?? "";
+        }
       });
       trainMarkersRef.current.forEach((m, id) => {
         const tid = `train-${id}`;
         if (ssKnownRef.current.has(tid)) return;
         const ll = m.getLatLng();
         if (distToStamford(ll.lat, ll.lng, tlsLat, tlsLng) > SS_M) return;
-        if (!newMarker) { newMarker = m; newLat = ll.lat; newLon = ll.lng; }
+        if (!newMarker) {
+          newMarker = m; newLat = ll.lat; newLon = ll.lng;
+          newType = "TRAIN"; newId = m._tlMeta?.id ?? `Train ${id}`; newDetail = m._tlMeta?.detail ?? "";
+        }
       });
 
       // Mark all current as known
@@ -665,29 +748,35 @@ export default function StamfordMap() {
       trainMarkersRef.current.forEach((_, id) => ssKnownRef.current.add(`train-${id}`));
 
       if (newMarker) {
-        map.panTo([newLat, newLon], { animate: true, duration: 1.8, easeLinearity: 0.2 });
-        // Show scanning reticle immediately before the tooltip
-        const L2 = (map as any)._leaflet_id ? (globalThis as any)._L ?? map : map;
+        ssTrackMarkerRef.current = newMarker;
+        reticleSrcRef.current = newMarker;
+        setSsTrackMsg({ type: newType, id: newId, detail: newDetail });
+        if (ssTrackMsgTimerRef.current) clearTimeout(ssTrackMsgTimerRef.current);
+
         import("leaflet").then(mod => {
           const Lx = mod.default;
-          if (reticleMarkerRef.current) map.removeLayer(reticleMarkerRef.current);
+          if (reticleMarkerRef.current) { try { mapNow.removeLayer(reticleMarkerRef.current); } catch {} }
           reticleMarkerRef.current = Lx.marker([newLat, newLon], {
             icon: Lx.divIcon({ html: reticleHTML(true), className: "", iconSize: [44, 44], iconAnchor: [22, 22] }),
             interactive: false, keyboard: false, zIndexOffset: -1000,
-          }).addTo(map);
-          // After pan + reticle animation, open popup (popupopen will swap to locked reticle)
+          }).addTo(mapNow);
+          // Lock reticle after scan animation, don't open full popup
           setTimeout(() => {
-            newMarker.openPopup();
-            setTimeout(() => {
-              const el = document.querySelector(".leaflet-popup");
-              if (el) { el.classList.remove("tl-ss-popup"); void (el as HTMLElement).offsetWidth; el.classList.add("tl-ss-popup"); }
-            }, 50);
-          }, 750);
+            const rEl = reticleMarkerRef.current?.getElement?.();
+            const inner = rEl?.querySelector(".tl-reticle") as HTMLElement | null;
+            if (inner) { inner.classList.remove("tl-reticle-scan"); inner.classList.add("tl-reticle-lock"); }
+          }, 650);
         });
       }
     }, 6000);
     return () => {
-      if (ssScanTimerRef.current) { clearInterval(ssScanTimerRef.current); ssScanTimerRef.current = null; }
+      if (ssScanTimerRef.current)  { clearInterval(ssScanTimerRef.current);  ssScanTimerRef.current  = null; }
+      if (ssIdleTimerRef.current)  { clearInterval(ssIdleTimerRef.current);  ssIdleTimerRef.current  = null; }
+      if (mapEl) {
+        mapEl.removeEventListener("mousedown", resetIdle);
+        mapEl.removeEventListener("touchstart", resetIdle);
+        mapEl.removeEventListener("wheel", resetIdle);
+      }
     };
   }, [ssMode]);
 
@@ -747,16 +836,19 @@ export default function StamfordMap() {
             <span style="color:#5a7090">HDG</span><span>${heading}° ${degToCompass(heading)}</span>
           </div>`, "OpenSky Network");
 
+        const tlMeta = { type: "AIRPLANE", id: cs, detail: `${alt > 0 ? metersToFt(alt).toLocaleString() + "ft" : "—"} · ${speedMs > 0 ? mpsToKnots(speedMs) + "kt" : "—"} · ${degToCompass(heading)}` };
         if (aircraftMarkersRef.current.has(id)) {
           const m = aircraftMarkersRef.current.get(id);
           // Update heading arrow without tl-anim (no fade-in on update)
           m.setIcon(L.divIcon({ html: `<div>${aircraftSVG(heading)}</div>`, className: "", iconSize: [22, 22], iconAnchor: [11, 11] }));
           m.getPopup()?.setContent(popupHtml);
+          m._tlMeta = tlMeta;
         } else {
           const icon = L.divIcon({ html: `<div class="tl-anim">${aircraftSVG(heading)}</div>`, className: "", iconSize: [22, 22], iconAnchor: [11, 11] });
           const m = L.marker([lat, lon], { icon })
             .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupHtml))
             .addTo(g);
+          m._tlMeta = tlMeta;
           aircraftMarkersRef.current.set(id, m);
           addedCount++;
         }
@@ -1082,6 +1174,7 @@ export default function StamfordMap() {
           const marker = L.marker([t.lat, t.lon], { icon })
             .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupContent))
             .addTo(g);
+          marker._tlMeta = { type: "TRAIN", id: `Train ${t.tripId}`, detail: `${t.line} · ${t.stopName}` };
           trainMarkersRef.current.set(id, marker);
           addedCount++;
         }
@@ -1531,12 +1624,31 @@ export default function StamfordMap() {
     fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${STAMFORD.lat}&longitude=${STAMFORD.lng}` +
       `&current=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code,cloud_cover,relative_humidity_2m,precipitation` +
+      `&hourly=temperature_2m,weather_code,precipitation_probability&forecast_hours=24` +
+      `&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max&forecast_days=7` +
       `&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York`
     ).then(r => r.json()).then(d => {
       const c = d.current;
       setWeather({ temp: c.temperature_2m, wind_speed: c.wind_speed_10m, wind_dir: c.wind_direction_10m,
         humidity: c.relative_humidity_2m, cloud_cover: c.cloud_cover, precipitation: c.precipitation, code: c.weather_code });
       touchFeed("weather");
+      // Parse hourly (next 8 hours from now)
+      if (d.hourly?.time?.length) {
+        const nowMs = Date.now();
+        const hourly: HourlyFc[] = [];
+        for (let i = 0; i < d.hourly.time.length && hourly.length < 8; i++) {
+          if (new Date(d.hourly.time[i]).getTime() < nowMs - 30 * 60_000) continue;
+          hourly.push({ hour: new Date(d.hourly.time[i]).getHours(), temp: Math.round(d.hourly.temperature_2m[i]), code: d.hourly.weather_code[i] ?? 0, precip: d.hourly.precipitation_probability[i] ?? 0 });
+        }
+        setHourlyForecast(hourly);
+      }
+      // Parse daily (7 days)
+      if (d.daily?.time?.length) {
+        setDailyForecast(d.daily.time.map((ds: string, i: number) => ({
+          date: ds, max: Math.round(d.daily.temperature_2m_max[i]), min: Math.round(d.daily.temperature_2m_min[i]),
+          code: d.daily.weather_code[i] ?? 0, precip: d.daily.precipitation_probability_max[i] ?? 0,
+        })));
+      }
     }).catch(() => {});
   }, []);
 
@@ -1616,15 +1728,18 @@ export default function StamfordMap() {
         html: `<div${anim ? ' class="tl-anim"' : ""}>${shipSVG(hdg, sog)}</div>`,
         className: "", iconSize: [20, 20], iconAnchor: [10, 10],
       });
+      const vesselMeta = { type: "VESSEL", id: name, detail: `MMSI ${mmsi} · ${sog.toFixed(1)}kt · ${degToCompass(Math.round(hdg))}` };
       if (vesselMarkersRef.current.has(mmsi)) {
         const m = vesselMarkersRef.current.get(mmsi);
         m.setLatLng([lat, lon]);
         m.setIcon(makeIcon(false));
         m.getPopup()?.setContent(popupHtml);
+        m._tlMeta = vesselMeta;
       } else {
         const m = L.marker([lat, lon], { icon: makeIcon(true) })
           .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupHtml))
           .addTo(g);
+        m._tlMeta = vesselMeta;
         vesselMarkersRef.current.set(mmsi, m);
         newVesselBatchRef.current.push(name);
       }
@@ -1878,11 +1993,18 @@ export default function StamfordMap() {
           );
           m.setLatLng([lat, lon]);
           const inner = m._icon?.querySelector?.(".tl-train-icon") as HTMLElement | null;
-          if (inner) inner.style.transform = `rotate(${(brg - 90 + 360) % 360}deg)`;
+          if (inner) inner.style.transform = `scale(${trainScaleRef.current}) rotate(${(brg - 90 + 360) % 360}deg)`;
         });
         // Reticle follows moving source marker
         if (reticleSrcRef.current && reticleMarkerRef.current) {
           try { reticleMarkerRef.current.setLatLng(reticleSrcRef.current.getLatLng()); } catch {}
+        }
+        // Autotrack: map continuously pans to follow tracked marker
+        if (ssModeRef.current && ssTrackMarkerRef.current) {
+          try {
+            const map2 = mapInst.current;
+            if (map2) map2.panTo(ssTrackMarkerRef.current.getLatLng(), { animate: true, duration: 0.12, easeLinearity: 1.0, noMoveStart: true });
+          } catch {}
         }
         // Screensaver: distance-based opacity fade from TLS center
         if (ssModeRef.current) {
@@ -2541,52 +2663,107 @@ export default function StamfordMap() {
         </div>
       </div>
 
-      {/* ── Right column — weather header + sliders + news terminal ─────── */}
+      {/* ── Right column — weather + forecast + gear controls + news ────── */}
       <div className="absolute" style={{
         right: 10, top: 48, bottom: tickerItems.length > 0 ? 28 : 0,
-        zIndex: 15, width: 220, pointerEvents: "none",
+        zIndex: 15, width: 228, pointerEvents: "none",
         fontFamily: "Menlo,Consolas,monospace",
         display: "flex", flexDirection: "column",
       }}>
+        {/* Weather summary — always visible */}
         {weather && (
-          <div style={{ marginBottom: 10, flexShrink: 0 }}>
-            <div style={{ fontSize: Math.round(9 * uiScale), color: "#e2ecff", letterSpacing: "0.18em", fontWeight: 700, marginBottom: 2 }}>
-              STAMFORD
+          <div style={{ marginBottom: 6, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 1 }}>
+              <div style={{ fontSize: Math.round(9 * uiScale), color: "#e2ecff44", letterSpacing: "0.18em", fontWeight: 700 }}>STAMFORD</div>
+              {/* Gear icon */}
+              <button onClick={() => setShowControls(p => !p)} style={{
+                background: showControls ? "rgba(34,211,238,0.1)" : "none",
+                border: showControls ? "1px solid #22d3ee33" : "1px solid transparent",
+                borderRadius: 3, width: 18, height: 18, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                pointerEvents: "auto", transition: "all 0.2s", padding: 0,
+              }}>
+                <svg width="11" height="11" viewBox="0 0 11 11" style={{ opacity: showControls ? 0.7 : 0.3, fill: "#22d3ee" }}>
+                  <path d="M5.5 3.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM.7 6.4l.9.2c.1.4.3.7.5 1L1.6 9l1.4 1.4 1.3-.5c.3.2.6.4 1 .5l.2.9h2l.2-.9c.4-.1.7-.3 1-.5l1.3.5L11 8.9l-.5-1.3c.2-.3.4-.7.5-1l.9-.2v-2l-.9-.2c-.1-.4-.3-.7-.5-1L11 2l-1.4-1.4-1.3.5c-.3-.2-.6-.4-1-.5L7.1.7h-2l-.2.9c-.4.1-.7.3-1 .5L2.6.6 1.1 2l.5 1.3c-.2.3-.4.6-.5 1L.7 4.4v2z"/>
+                </svg>
+              </button>
             </div>
-            <div style={{ fontSize: Math.round(12 * uiScale), color: weather.precipitation > 0.005 ? "#38bdf8" : "#94a3b8", marginBottom: 1 }}>
+            <div style={{ fontSize: Math.round(11 * uiScale), color: weather.precipitation > 0.005 ? "#38bdf8" : "#94a3b8", marginBottom: 1 }}>
               {Math.round(weather.temp)}°F · {cond}
             </div>
-            <div style={{ fontSize: Math.round(9 * uiScale), color: (weather.precipitation > 0.005 ? "#38bdf8" : "#94a3b8") + "bb" }}>
-              {Math.round(weather.wind_speed)} mph {degToCompass(weather.wind_dir)} · {weather.humidity}% RH
+            <div style={{ fontSize: Math.round(8 * uiScale), color: (weather.precipitation > 0.005 ? "#38bdf8" : "#94a3b8") + "88" }}>
+              {Math.round(weather.wind_speed)}mph {degToCompass(weather.wind_dir)} · {weather.humidity}%RH
               {weather.precipitation > 0.005 ? ` · 💧${weather.precipitation.toFixed(2)}"` : ""}
             </div>
-            <div style={{ marginTop: 6, height: 1, background: "linear-gradient(to right, #1e2d4488, transparent)" }} />
           </div>
         )}
-        <div style={{ display: "flex", flexDirection: "column", gap: 3, pointerEvents: "auto", flexShrink: 0 }}>
-          {([
-            { label: "RADAR", val: Math.round(radarOpacity * 100), min: 0, max: 100, fn: (v: number) => applyRadarOpacity(v / 100), color: "#22d3ee" },
-            { label: "TRACK", val: Math.round(trackOpacity * 100), min: 0, max: 100, fn: (v: number) => applyTrackOpacity(v / 100), color: "#4488ff" },
-            { label: "SCALE", val: Math.round(uiScale * 100),      min: 50, max: 250, fn: (v: number) => applyScale(v / 100),        color: "#22d3ee" },
-            { label: "MARKS", val: Math.round(markerScale * 100),  min: 50, max: 300, fn: (v: number) => applyMarkerScale(v / 100),  color: "#f59e0b" },
-          ] as const).map(({ label, val, min, max, fn, color }) => (
-            <div key={label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <span style={{ fontSize: 7, color: color + "66", letterSpacing: "0.1em", minWidth: 36 }}>{label}</span>
-              <input
-                type="range" min={min} max={max} step="5"
-                value={val}
-                onChange={e => fn(Number(e.target.value))}
-                style={{ width: 52, cursor: "pointer", accentColor: color, opacity: 0.55 }}
-                title={`${label} ${val}%`}
-              />
-            </div>
-          ))}
-        </div>
 
-        {/* News terminal — below sliders */}
+        {/* Hourly forecast — next 8 hours */}
+        {hourlyForecast.length > 0 && (
+          <div style={{ marginBottom: 7, flexShrink: 0 }}>
+            <div style={{ display: "flex", gap: 5, overflowX: "hidden" }}>
+              {hourlyForecast.slice(0, 7).map((h, i) => {
+                const ampm = h.hour === 0 ? "12a" : h.hour < 12 ? `${h.hour}a` : h.hour === 12 ? "12p" : `${h.hour - 12}p`;
+                return (
+                  <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1, minWidth: 26 }}>
+                    <span style={{ fontSize: Math.round(6.5 * uiScale), color: "#1e3050" }}>{ampm}</span>
+                    <span style={{ fontSize: 9 }}>{wmoIcon(h.code)}</span>
+                    <span style={{ fontSize: Math.round(7 * uiScale), color: "#5a7090", fontVariantNumeric: "tabular-nums" }}>{h.temp}°</span>
+                    {h.precip >= 20 && <span style={{ fontSize: Math.round(6 * uiScale), color: "#38bdf866" }}>{h.precip}%</span>}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ marginTop: 5, height: 1, background: "linear-gradient(to right, #1e2d4420, transparent)" }} />
+          </div>
+        )}
+
+        {/* Daily forecast — 7 days */}
+        {dailyForecast.length > 0 && (
+          <div style={{ marginBottom: 7, flexShrink: 0 }}>
+            {dailyForecast.slice(0, 6).map((d, i) => {
+              const dayName = i === 0 ? "Today" : new Date(d.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short" });
+              return (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
+                  <span style={{ fontSize: Math.round(7 * uiScale), color: "#1e3050", minWidth: 28 }}>{dayName}</span>
+                  <span style={{ fontSize: 9, flexShrink: 0 }}>{wmoIcon(d.code)}</span>
+                  <span style={{ fontSize: Math.round(7 * uiScale), color: "#94a3b8", fontVariantNumeric: "tabular-nums", flex: 1 }}>{d.max}°/{d.min}°</span>
+                  {d.precip >= 20 && <span style={{ fontSize: Math.round(6.5 * uiScale), color: "#38bdf866" }}>{d.precip}%</span>}
+                </div>
+              );
+            })}
+            <div style={{ marginTop: 4, height: 1, background: "linear-gradient(to right, #1e2d4420, transparent)" }} />
+          </div>
+        )}
+
+        {/* Sliders — behind gear toggle */}
+        {showControls && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, pointerEvents: "auto", flexShrink: 0, marginBottom: 8 }}>
+            {([
+              { label: "RADAR", val: Math.round(radarOpacity * 100), min: 0,  max: 100, fn: (v: number) => applyRadarOpacity(v / 100),    color: "#22d3ee" },
+              { label: "TRACK", val: Math.round(trackOpacity * 100), min: 0,  max: 100, fn: (v: number) => applyTrackOpacity(v / 100),     color: "#4488ff" },
+              { label: "SCALE", val: Math.round(uiScale * 100),      min: 50, max: 250, fn: (v: number) => applyScale(v / 100),            color: "#22d3ee" },
+              { label: "MARKS", val: Math.round(markerScale * 100),  min: 50, max: 300, fn: (v: number) => applyMarkerScale(v / 100),      color: "#f59e0b" },
+              { label: "TRAIN", val: Math.round(trainIconScale * 100), min: 50, max: 300, fn: (v: number) => applyTrainIconScale(v / 100), color: "#4488ff" },
+            ] as const).map(({ label, val, min, max, fn, color }) => (
+              <div key={label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ fontSize: 7, color: color + "55", letterSpacing: "0.1em", minWidth: 36 }}>{label}</span>
+                <input
+                  type="range" min={min} max={max} step="5"
+                  value={val}
+                  onChange={e => fn(Number(e.target.value))}
+                  style={{ width: 52, cursor: "pointer", accentColor: color, opacity: 0.5 }}
+                  title={`${label} ${val}%`}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* News terminal — fills remaining height */}
         {newsItems.length > 0 && (
-          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", marginTop: 10 }}>
-            <div style={{ fontSize: Math.round(7 * uiScale), color: "#22d3ee55", letterSpacing: "0.16em", marginBottom: 4, flexShrink: 0, display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+            <div style={{ fontSize: Math.round(6.5 * uiScale), color: "#22d3ee33", letterSpacing: "0.16em", marginBottom: 3, flexShrink: 0, display: "flex", alignItems: "center", gap: 4 }}>
               <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#22d3ee", display: "inline-block", animation: "tl-blink 2.2s ease-in-out infinite" }} />
               NEWS FEED
             </div>
@@ -2596,17 +2773,14 @@ export default function StamfordMap() {
               WebkitMaskImage: "linear-gradient(to bottom, black 60%, transparent 100%)",
             }}>
               {newsItems.slice(0, 25).map((item, i) => {
-                const d = new Date(item.ts);
-                const hm = `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+                const nd = new Date(item.ts);
+                const hm = `${String(nd.getHours()).padStart(2,"0")}:${String(nd.getMinutes()).padStart(2,"0")}`;
                 const pubShort = item.pub === "Stamford Advocate" ? "SA" : item.pub === "CT Mirror" ? "CTM" : item.pub.slice(0, 4).toUpperCase();
                 return (
-                  <div key={i} style={{
-                    fontSize: Math.round(7 * uiScale), marginBottom: 3, lineHeight: 1.4,
-                    color: "#5a7090a0",
-                  }}>
+                  <div key={i} style={{ fontSize: Math.round(7 * uiScale), marginBottom: 3, lineHeight: 1.4 }}>
                     <span style={{ color: "#1e3050", fontVariantNumeric: "tabular-nums" }}>[{hm}</span>
-                    <span style={{ color: "#22d3ee44" }}> · {pubShort} · </span>
-                    <span style={{ color: "#7a9ab088" }}>{item.headline}]</span>
+                    <span style={{ color: "#22d3ee33" }}> · {pubShort} · </span>
+                    <span style={{ color: "#5a709080" }}>{item.headline}]</span>
                   </div>
                 );
               })}
@@ -2614,6 +2788,31 @@ export default function StamfordMap() {
           </div>
         )}
       </div>
+
+      {/* ── Screensaver tracking overlay ─────────────────────────────────────── */}
+      {ssMode && ssTrackMsg && (
+        <div className="absolute" style={{
+          bottom: tickerItems.length > 0 ? 42 : 14, left: "50%", transform: "translateX(-50%)",
+          zIndex: 22, pointerEvents: "none",
+          animation: "tl-track-msg-in 0.28s cubic-bezier(0.22,1,0.36,1) both",
+          fontFamily: "Menlo,Consolas,monospace",
+        }}>
+          <div style={{
+            background: "rgba(7,9,15,0.90)",
+            border: "1px solid #22d3ee28",
+            borderRadius: 2, padding: "5px 14px",
+            display: "flex", alignItems: "center", gap: 9,
+            whiteSpace: "nowrap",
+            boxShadow: "0 0 18px rgba(34,211,238,0.06), inset 0 0 12px rgba(34,211,238,0.03)",
+          }}>
+            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#22d3ee", flexShrink: 0, animation: "tl-blink 1s ease-in-out infinite", display: "inline-block" }} />
+            <span style={{ fontSize: 7, color: "#22d3ee55", letterSpacing: "0.2em" }}>TRACKING</span>
+            <span style={{ fontSize: 8, color: "#22d3ee99", letterSpacing: "0.16em" }}>{ssTrackMsg.type}</span>
+            <span style={{ fontSize: 9, color: "#e2ecff", letterSpacing: "0.12em", fontWeight: 700 }}>{ssTrackMsg.id}</span>
+            <span style={{ fontSize: 7, color: "#5a7090", letterSpacing: "0.08em" }}>{ssTrackMsg.detail}</span>
+          </div>
+        </div>
+      )}
 
       {/* ── Screensaver toggle ───────────────────────────────────────────────── */}
       <div className="absolute" style={{ right: 10, bottom: tickerItems.length > 0 ? 78 : 50, zIndex: 20, fontFamily: "Menlo,Consolas,monospace" }}>
@@ -2807,6 +3006,12 @@ export default function StamfordMap() {
         .tl-reticle-unlock .tl-rc-tr { animation-delay:15ms; }
         .tl-reticle-unlock .tl-rc-bl { animation-delay:30ms; }
         .tl-reticle-unlock .tl-rc-br { animation-delay:45ms; }
+
+        /* Tracking overlay slide-up */
+        @keyframes tl-track-msg-in {
+          from { opacity:0; transform:translateX(-50%) translateY(6px); }
+          to   { opacity:1; transform:translateX(-50%) translateY(0); }
+        }
 
         /* Screensaver popup tactical lock-on animation */
         @keyframes tl-ss-lock {
