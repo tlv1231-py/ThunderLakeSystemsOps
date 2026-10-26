@@ -472,6 +472,8 @@ export default function StamfordMap() {
   const wakeLockRef         = useRef<any>(null);
   const crosshairLatLngRef  = useRef(STAMFORD);
   const metarObsRef         = useRef<Record<string, number>>({});
+  const ambiCanvasRef       = useRef<HTMLCanvasElement>(null);
+  const ambiRafRef          = useRef<number>(0);
 
   const [baseKey,       setBaseKey]       = useState<BaseKey>("dark");
   const [enabled,       setEnabled]       = useState<Record<LayerKey, boolean>>({
@@ -1581,7 +1583,7 @@ export default function StamfordMap() {
 
       // Base tile — dark default
       const baseDef = BASE_LAYERS.dark;
-      baseTileRef.current = L.tileLayer(baseDef.url, { subdomains: baseDef.subdomains ?? "abc", minNativeZoom: baseDef.minNativeZoom, maxNativeZoom: baseDef.maxNativeZoom, maxZoom: 19 }).addTo(map);
+      baseTileRef.current = L.tileLayer(baseDef.url, { subdomains: baseDef.subdomains ?? "abc", minNativeZoom: baseDef.minNativeZoom, maxNativeZoom: baseDef.maxNativeZoom, maxZoom: 19, className: "tl-base-tile" }).addTo(map);
 
       L.control.attribution({ prefix: false, position: "bottomright" })
         .addAttribution('<span style="color:#2a3a52;font-size:10px">© CartoDB · ESRI · OSM · OpenSky · NWS · RainViewer · Blitzortung · UMO</span>')
@@ -1793,6 +1795,85 @@ export default function StamfordMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Ambient chromatic overlay — slow amoeba blobs + tactical glitch ────────
+  useEffect(() => {
+    const canvas = ambiCanvasRef.current;
+    if (!canvas) return;
+    const sync = () => {
+      const w = canvas.clientWidth || canvas.offsetWidth;
+      const h = canvas.clientHeight || canvas.offsetHeight;
+      if (w && h && (canvas.width !== w || canvas.height !== h)) {
+        canvas.width = w; canvas.height = h;
+      }
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(canvas);
+
+    // 7 slow-drifting blobs on elliptical orbital paths, cyberpunk palette
+    const B = [
+      { cx:0.40,cy:0.48,rx:0.32,ry:0.24,rad:0.44,T:24700,ph:0.00,pT:8200, pPh:0.0,r:34, g:211,b:238,a:0.052 }, // cyan
+      { cx:0.62,cy:0.52,rx:0.24,ry:0.30,rad:0.36,T:34100,ph:1.30,pT:11300,pPh:2.1,r:168,g:85, b:247,a:0.043 }, // violet
+      { cx:0.48,cy:0.28,rx:0.28,ry:0.20,rad:0.40,T:43700,ph:2.60,pT:14600,pPh:1.3,r:6,  g:182,b:212,a:0.038 }, // teal
+      { cx:0.26,cy:0.68,rx:0.22,ry:0.26,rad:0.32,T:38300,ph:0.90,pT:9100, pPh:3.8,r:217,g:70, b:239,a:0.036 }, // magenta
+      { cx:0.72,cy:0.30,rx:0.26,ry:0.22,rad:0.38,T:31900,ph:3.90,pT:12700,pPh:0.9,r:59, g:130,b:246,a:0.033 }, // blue
+      { cx:0.54,cy:0.76,rx:0.20,ry:0.28,rad:0.30,T:57100,ph:5.20,pT:16200,pPh:4.5,r:16, g:185,b:129,a:0.026 }, // emerald
+      { cx:0.30,cy:0.36,rx:0.16,ry:0.18,rad:0.28,T:29300,ph:4.10,pT:7800, pPh:1.7,r:99, g:102,b:241,a:0.030 }, // indigo
+    ];
+    let glitchEnd  = 0;
+    let nextGlitch = performance.now() + 9000 + Math.random() * 12000;
+
+    const draw = (now: number) => {
+      const W = canvas.width, H = canvas.height;
+      if (!W || !H) { ambiRafRef.current = requestAnimationFrame(draw); return; }
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.clearRect(0, 0, W, H);
+
+      // Amoeba blobs — overlapping radial gradients create organic merged shapes
+      for (const b of B) {
+        const t = now / b.T;
+        const x = (b.cx + b.rx * Math.cos(t * Math.PI * 2 + b.ph)) * W;
+        const y = (b.cy + b.ry * Math.sin(t * Math.PI * 2 + b.ph * 0.73)) * H;
+        const r = (b.rad + 0.08 * Math.sin(now / b.pT + b.pPh)) * Math.min(W, H);
+        const g2 = ctx.createRadialGradient(x, y, 0, x, y, r);
+        g2.addColorStop(0,    `rgba(${b.r},${b.g},${b.b},${b.a})`);
+        g2.addColorStop(0.45, `rgba(${b.r},${b.g},${b.b},${b.a * 0.45})`);
+        g2.addColorStop(1,    `rgba(${b.r},${b.g},${b.b},0)`);
+        ctx.fillStyle = g2;
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      // Glitch trigger — random, avg every ~14s
+      if (now > nextGlitch) {
+        glitchEnd  = now + 80 + Math.random() * 300;
+        nextGlitch = now + 7000 + Math.random() * 16000;
+      }
+      // Glitch artifacts
+      if (now < glitchEnd) {
+        const ft = Math.min(1, (glitchEnd - now) / 200); // fade factor 0→1
+        // Horizontal scan bands
+        const nBands = 2 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < nBands; i++) {
+          const gy = Math.random() * H;
+          const gh = 0.5 + Math.random() * 3.5;
+          const isCyan = Math.random() > 0.5;
+          ctx.fillStyle = `rgba(${isCyan ? "0,255,255" : "255,0,255"},${0.075 * ft})`;
+          ctx.fillRect(0, gy, W, gh);
+        }
+        // Diffuse chromatic aberration band
+        const by = H * (0.2 + Math.random() * 0.6);
+        const bh = H * (0.025 + Math.random() * 0.07);
+        ctx.fillStyle = `rgba(0,255,255,${0.022 * ft})`;  ctx.fillRect(0, by,     W, bh);
+        ctx.fillStyle = `rgba(255,0,255,${0.016 * ft})`;  ctx.fillRect(3, by + 2, W, bh);
+      }
+
+      ambiRafRef.current = requestAnimationFrame(draw);
+    };
+    ambiRafRef.current = requestAnimationFrame(draw);
+    return () => { cancelAnimationFrame(ambiRafRef.current); ro.disconnect(); };
+  }, []);
+
   // Weather
   useEffect(() => {
     fetchWeather();
@@ -1818,7 +1899,7 @@ export default function StamfordMap() {
       if (baseTileRef.current) map.removeLayer(baseTileRef.current);
       if (labelRef.current)    { map.removeLayer(labelRef.current); labelRef.current = null; }
       const def = BASE_LAYERS[baseKey];
-      const opts: any = { minNativeZoom: def.minNativeZoom, maxNativeZoom: def.maxNativeZoom, maxZoom: 19 };
+      const opts: any = { minNativeZoom: def.minNativeZoom, maxNativeZoom: def.maxNativeZoom, maxZoom: 19, className: "tl-base-tile" };
       if (def.subdomains) opts.subdomains = def.subdomains;
       baseTileRef.current = L.tileLayer(def.url, opts).addTo(map);
       if (baseKey === "hybrid") {
@@ -1899,6 +1980,10 @@ export default function StamfordMap() {
       style={{ background: "#07090f", transform: `translate(${orbitX}px,${orbitY}px)`, transition: "transform 1s linear" }}>
       {/* Map canvas */}
       <div ref={mapRef} className="absolute inset-0 z-0" />
+
+      {/* ── Ambient chromatic overlay — amoeba blobs + glitch ─────────────── */}
+      <canvas ref={ambiCanvasRef} className="absolute inset-0 z-1 pointer-events-none"
+        style={{ width: "100%", height: "100%", mixBlendMode: "screen" }} />
 
       {/* ── CRT scanline overlay ───────────────────────────────────────────── */}
       <div className="absolute inset-0 z-5 pointer-events-none" style={{
@@ -2367,6 +2452,19 @@ export default function StamfordMap() {
 
         /* Hide secondary top-bar items on narrow screens */
         @media (max-width: 540px) { .tl-mob-hide { display: none !important; } }
+
+        /* Base tile slow chromatic drift */
+        .tl-base-tile {
+          animation: tl-ambi-hue 88s ease-in-out infinite;
+        }
+        @keyframes tl-ambi-hue {
+          0%   { filter: hue-rotate(0deg)   saturate(0.9)  brightness(1.00); }
+          18%  { filter: hue-rotate(22deg)  saturate(1.12) brightness(1.02); }
+          40%  { filter: hue-rotate(-14deg) saturate(0.88) brightness(0.99); }
+          63%  { filter: hue-rotate(30deg)  saturate(1.08) brightness(1.01); }
+          82%  { filter: hue-rotate(-6deg)  saturate(0.95) brightness(1.00); }
+          100% { filter: hue-rotate(0deg)   saturate(0.9)  brightness(1.00); }
+        }
 
         @keyframes tl-alert-ring {
           0%   { transform: scale(0.25); opacity: 1; }
