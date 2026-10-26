@@ -3030,7 +3030,7 @@ export default function StamfordMap() {
               const labelY = Math.max(trackPx.y - 48, 8);
               return (
                 <div style={{ position: "absolute", top: labelY, left: labelX, fontFamily: "Menlo,Consolas,monospace", pointerEvents: "none" }}>
-                  <div style={{ fontSize: 6, color: "#22d3ee55", letterSpacing: "0.32em", marginBottom: 4 }}>LOCK-ON</div>
+                  <div style={{ fontSize: 6, color: "#22d3ee55", letterSpacing: "0.32em", marginBottom: 4 }}>TRACKING</div>
                   <div style={{ fontSize: 18, color: "#e2ecffcc", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, textShadow: "0 0 12px #22d3ee55" }}>
                     {ssTrackMsg.id}
                   </div>
