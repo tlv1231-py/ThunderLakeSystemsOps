@@ -41,6 +41,9 @@ export async function GET() {
           a.track ?? 0,                                             // [10] true track
           null, null, null, null, null,                             // [11–15]
           altGeoFt != null ? altGeoFt / 3.281 : null,              // [16] geo alt → metres
+          ((a.t ?? "") as string).trim(),                           // [17] ICAO type code (e.g. "B738")
+          ((a.r ?? "") as string).trim(),                           // [18] registration (e.g. "N321DD")
+          ((a.ownOp ?? a.desc ?? "") as string).trim(),             // [19] operator / description
         ];
       });
 

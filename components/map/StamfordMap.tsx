@@ -406,6 +406,18 @@ function distToStamford(lat: number, lon: number, clat = 41.0534, clng = -73.538
   const dlon = (lon - clng) * 111320 * Math.cos(clat * Math.PI / 180);
   return Math.sqrt(dlat * dlat + dlon * dlon);
 }
+function bearingStr(fromLat: number, fromLng: number, toLat: number, toLng: number): string {
+  const dLon = (toLng - fromLng) * (Math.PI / 180);
+  const lat1 = fromLat * (Math.PI / 180), lat2 = toLat * (Math.PI / 180);
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  const deg = ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+  return ["N","NE","E","SE","S","SW","W","NW","N"][Math.round(deg / 45)];
+}
+function fmtMi(meters: number): string {
+  const mi = meters / 1609.34;
+  return mi < 10 ? `${mi.toFixed(1)}mi` : `${Math.round(mi)}mi`;
+}
 function ssDistOpacity(distM: number): number {
   const MI10 = 16093, MI25 = 40233;
   if (distM <= MI10) return 1.0;
@@ -819,27 +831,34 @@ export default function StamfordMap() {
       let addedCount = 0;
 
       states.forEach(s => {
-        const [icao, callsign, country, , , lon, lat, baroAlt, , vel, hdg, , , , , , geoAlt] = s;
+        const [icao, callsign, , , , lon, lat, baroAlt, , vel, hdg, , , , , , geoAlt, acType, reg, ownOp] = s;
         if (lat == null || lon == null) return;
         const id = String(icao);
         seenIds.add(id);
         const alt = (baroAlt ?? geoAlt ?? 0) as number;
         const cs  = (callsign as string)?.trim() || String(icao);
         const heading = (hdg ?? 0) as number;
-        const speedMs = (vel ?? 0) as number; // m/s ground speed
+        const speedMs = (vel ?? 0) as number;
+        const typeStr = ((acType ?? "") as string).trim();
+        const regStr  = ((reg ?? "") as string).trim();
+        const opStr   = ((ownOp ?? "") as string).trim();
 
-        // Anchor dead-reckoning state to latest API fix
         aircraftStateRef.current.set(id, { lat, lon, heading, speedMs, lastMs: now });
 
-        const popupHtml = popupWrap(`<div style="font-size:13px;font-weight:700;color:#a855f7;margin-bottom:5px">${cs}</div>
-          <div style="color:#5a7090;font-size:10px;margin-bottom:8px;text-transform:uppercase">${country ?? "?"} · ${icao}</div>
+        const popupHtml = popupWrap(`<div style="font-size:13px;font-weight:700;color:#a855f7;margin-bottom:4px">${cs}${regStr && regStr !== cs ? `<span style="color:#a855f755;font-size:10px;margin-left:8px">${regStr}</span>` : ""}</div>
+          ${opStr ? `<div style="color:#5a7090;font-size:9px;margin-bottom:3px;letter-spacing:.07em">${opStr}</div>` : ""}
+          <div style="color:#5a7090;font-size:9px;margin-bottom:7px;letter-spacing:.06em">${typeStr || "—"} · ${String(icao).toUpperCase()}</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 14px">
             <span style="color:#5a7090">ALT</span><span>${alt > 0 ? metersToFt(alt).toLocaleString() + " ft" : "—"}</span>
             <span style="color:#5a7090">SPD</span><span>${speedMs > 0 ? mpsToKnots(speedMs) + " kt" : "—"}</span>
             <span style="color:#5a7090">HDG</span><span>${heading}° ${degToCompass(heading)}</span>
-          </div>`, "OpenSky Network");
+          </div>`, "adsb.lol");
 
-        const tlMeta = { type: "AIRPLANE", id: cs, detail: `${alt > 0 ? metersToFt(alt).toLocaleString() + "ft" : "—"} · ${speedMs > 0 ? mpsToKnots(speedMs) + "kt" : "—"} · ${degToCompass(heading)}` };
+        const tlMeta = {
+          type: "AIRPLANE", id: cs,
+          detail: `${typeStr || "—"} · ${alt > 0 ? metersToFt(alt).toLocaleString() + "ft" : "gnd"} · ${speedMs > 0 ? mpsToKnots(speedMs) + "kt" : "—"}`,
+          reg: regStr, op: opStr, acType: typeStr,
+        };
         if (aircraftMarkersRef.current.has(id)) {
           const m = aircraftMarkersRef.current.get(id);
           // Update heading arrow without tl-anim (no fade-in on update)
@@ -2334,76 +2353,78 @@ export default function StamfordMap() {
         </div>
       )}
 
+      {/* ── Screensaver map fade-to-black overlay ───────────────────────────── */}
+      {ssMode && centerPx && (
+        <div className="absolute inset-0 pointer-events-none" style={{
+          zIndex: 9,
+          background: `radial-gradient(circle at ${centerPx.x}px ${centerPx.y}px, transparent 0%, transparent 14%, rgba(7,9,15,0.25) 34%, rgba(7,9,15,0.72) 58%, rgba(7,9,15,0.93) 84%)`,
+        }} />
+      )}
 
       {/* ── Top bar ────────────────────────────────────────────────────────── */}
-      <div className="absolute top-0 left-0 right-0 z-10 flex items-start gap-3 px-3 py-2"
-        style={{ background: "linear-gradient(to bottom, rgba(7,9,15,0.97) 0%, transparent 100%)" }}>
+      <div className="absolute top-0 left-0 right-0 z-10 flex items-center gap-3 px-3 py-2"
+        style={{ background: "linear-gradient(to bottom, rgba(7,9,15,0.97) 0%, transparent 100%)", overflow: "hidden" }}>
 
-        {/* Left: weather row + hourly + daily */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
-          {/* Row 1: LIVE, lightning, current conditions, alerts */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <button onClick={toggleFullscreen} className="flex items-center gap-1.5 shrink-0"
-              style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d97a", display: "inline-block", animation: "tl-blink 1.4s ease-in-out infinite" }} />
-              <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(9 * uiScale), color: "#39d97a", letterSpacing: "0.16em" }}>LIVE</span>
-            </button>
-            <div className="flex items-center gap-1 shrink-0 tl-mob-hide">
-              <span style={{ fontSize: Math.round(10 * uiScale), color: wsStatus === "live" ? "#ffe066" : "#2a3a52" }}>⚡</span>
-              <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(9 * uiScale), color: wsStatus === "live" ? "#ffe066" : "#2a3a52", letterSpacing: "0.1em" }}>
-                {wsStatus === "live" ? (strikesPerMin > 0 ? `${strikesPerMin}/min` : "live") : wsStatus}
-              </span>
-            </div>
-            {weather ? (
-              <>
-                <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#e2ecff" }}>{Math.round(weather.temp)}°F</span>
-                <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#5a7090" }}>{cond}</span>
-                <span className="shrink-0 tl-mob-hide" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#5a7090" }}>{Math.round(weather.wind_speed)} mph {degToCompass(weather.wind_dir)}</span>
-                <span className="shrink-0 tl-mob-hide" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#5a7090" }}>{weather.humidity}% RH</span>
-              </>
-            ) : null}
-            {alertCount > 0 && (
-              <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(9 * uiScale), color: "#f59e0b",
-                background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.28)",
-                borderRadius: 4, padding: "1px 6px", letterSpacing: "0.08em" }}>
-                {alertCount} ALERT{alertCount !== 1 ? "S" : ""}
-              </span>
-            )}
-          </div>
-          {/* Row 2: Hourly forecast (next 8h) */}
-          {hourlyForecast.length > 0 && (
-            <div style={{ display: "flex", gap: 7 }}>
-              {hourlyForecast.slice(0, 8).map((h, i) => {
-                const ampm = h.hour === 0 ? "12a" : h.hour < 12 ? `${h.hour}a` : h.hour === 12 ? "12p" : `${h.hour - 12}p`;
-                return (
-                  <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
-                    <span style={{ fontSize: 6, color: "#1e3050", fontFamily: "Menlo,Consolas,monospace" }}>{ampm}</span>
-                    <span style={{ fontSize: 9, lineHeight: 1 }}>{wmoIcon(h.code)}</span>
-                    <span style={{ fontSize: 6, color: "#5a7090", fontFamily: "Menlo,Consolas,monospace", fontVariantNumeric: "tabular-nums" }}>{h.temp}°</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {/* Row 3: Daily forecast (7-day) */}
-          {dailyForecast.length > 0 && (
-            <div style={{ display: "flex", gap: 7 }}>
-              {dailyForecast.slice(0, 7).map((d, i) => {
-                const dayName = i === 0 ? "TOD" : new Date(d.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short" }).toUpperCase().slice(0, 3);
-                return (
-                  <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
-                    <span style={{ fontSize: 6, color: "#1e3050", fontFamily: "Menlo,Consolas,monospace" }}>{dayName}</span>
-                    <span style={{ fontSize: 9, lineHeight: 1 }}>{wmoIcon(d.code)}</span>
-                    <span style={{ fontSize: 6, color: "#5a7090", fontFamily: "Menlo,Consolas,monospace", fontVariantNumeric: "tabular-nums" }}>{d.max}°/{d.min}°</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+        <button onClick={toggleFullscreen} className="flex items-center gap-1.5 shrink-0"
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d97a", display: "inline-block", animation: "tl-blink 1.4s ease-in-out infinite" }} />
+          <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(9 * uiScale), color: "#39d97a", letterSpacing: "0.16em" }}>LIVE</span>
+        </button>
+        <div className="flex items-center gap-1 shrink-0 tl-mob-hide">
+          <span style={{ fontSize: Math.round(10 * uiScale), color: wsStatus === "live" ? "#ffe066" : "#2a3a52" }}>⚡</span>
+          <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(9 * uiScale), color: wsStatus === "live" ? "#ffe066" : "#2a3a52", letterSpacing: "0.1em" }}>
+            {wsStatus === "live" ? (strikesPerMin > 0 ? `${strikesPerMin}/min` : "live") : wsStatus}
+          </span>
         </div>
+        {weather ? (
+          <>
+            <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#e2ecff" }}>{Math.round(weather.temp)}°F</span>
+            <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#5a7090" }}>{cond}</span>
+            <span className="shrink-0 tl-mob-hide" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#5a7090" }}>{Math.round(weather.wind_speed)} mph {degToCompass(weather.wind_dir)}</span>
+            <span className="shrink-0 tl-mob-hide" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#5a7090" }}>{weather.humidity}% RH</span>
+          </>
+        ) : null}
+        {alertCount > 0 && (
+          <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(9 * uiScale), color: "#f59e0b",
+            background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.28)",
+            borderRadius: 4, padding: "1px 6px", letterSpacing: "0.08em" }}>
+            {alertCount} ALERT{alertCount !== 1 ? "S" : ""}
+          </span>
+        )}
 
-        {/* Right: clock, cycles Zulu / UTC / local every 2.5s */}
-        <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(13 * uiScale), color: "#39d97a", letterSpacing: "0.12em", fontWeight: 700, paddingTop: 2 }}>
+        {/* Hourly + daily forecast — between conditions and clock */}
+        <div style={{ flex: 1 }} />
+        {hourlyForecast.length > 0 && (
+          <div className="tl-mob-hide" style={{ display: "flex", gap: 6, alignItems: "center", borderLeft: "1px solid #1e2d4430", paddingLeft: 10 }}>
+            {hourlyForecast.slice(0, 7).map((h, i) => {
+              const ampm = h.hour === 0 ? "12a" : h.hour < 12 ? `${h.hour}a` : h.hour === 12 ? "12p" : `${h.hour - 12}p`;
+              return (
+                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
+                  <span style={{ fontSize: 6, color: "#1e3050", fontFamily: "Menlo,Consolas,monospace" }}>{ampm}</span>
+                  <span style={{ fontSize: 9, lineHeight: 1 }}>{wmoIcon(h.code)}</span>
+                  <span style={{ fontSize: 6, color: "#5a7090", fontFamily: "Menlo,Consolas,monospace", fontVariantNumeric: "tabular-nums" }}>{h.temp}°</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {dailyForecast.length > 0 && (
+          <div className="tl-mob-hide" style={{ display: "flex", gap: 6, alignItems: "center", borderLeft: "1px solid #1e2d4430", paddingLeft: 10 }}>
+            {dailyForecast.slice(0, 6).map((d, i) => {
+              const dayName = i === 0 ? "TOD" : new Date(d.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short" }).toUpperCase().slice(0, 3);
+              return (
+                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
+                  <span style={{ fontSize: 6, color: "#1e3050", fontFamily: "Menlo,Consolas,monospace" }}>{dayName}</span>
+                  <span style={{ fontSize: 9, lineHeight: 1 }}>{wmoIcon(d.code)}</span>
+                  <span style={{ fontSize: 6, color: "#5a7090", fontFamily: "Menlo,Consolas,monospace", fontVariantNumeric: "tabular-nums" }}>{d.max}°/{d.min}°</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Clock — cycles Zulu / UTC / local every 2.5s */}
+        <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(13 * uiScale), color: "#39d97a", letterSpacing: "0.12em", fontWeight: 700, borderLeft: "1px solid #1e2d4430", paddingLeft: 10 }}>
           {clockDisplay}
         </span>
       </div>
@@ -2733,14 +2754,26 @@ export default function StamfordMap() {
             return (
               <>
                 <div style={{ fontSize: sz2, color: "#22d3ee40", letterSpacing: "0.12em", marginBottom: 3, fontVariantNumeric: "tabular-nums" }}>─ 10mi</div>
-                {S10.length > 0 ? S10.map((e, i) => (
-                  <div key={i} style={{ display: "flex", gap: 4, fontSize: sz, marginBottom: 2, lineHeight: 1.3 }}>
-                    <span style={{ color: e.color + "70", flexShrink: 0, minWidth: 30, fontSize: sz2, letterSpacing: "0.06em" }}>{e.type}</span>
-                    <span style={{ color: "#e2ecff70", flexShrink: 0, maxWidth: 62, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
-                    <span style={{ color: "#5a709055", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: sz2 }}>{e.info}</span>
-                    <span style={{ color: "#1e305088", flexShrink: 0, fontSize: sz2, fontVariantNumeric: "tabular-nums" }}>[{e.age}s]</span>
-                  </div>
-                )) : <div style={{ fontSize: sz2, color: "#1e3050", marginBottom: 2 }}>NO CONTACTS</div>}
+                {S10.length > 0 ? (() => {
+                  const trainCount10 = S10.filter(e => e.type === "TRAIN").length;
+                  const nonTrain10   = S10.filter(e => e.type !== "TRAIN");
+                  return (<>
+                    {nonTrain10.map((e, i) => (
+                      <div key={i} style={{ display: "flex", gap: 4, fontSize: sz, marginBottom: 2, lineHeight: 1.3 }}>
+                        <span style={{ color: e.color + "70", flexShrink: 0, minWidth: 30, fontSize: sz2, letterSpacing: "0.06em" }}>{e.type}</span>
+                        <span style={{ color: "#e2ecff70", flexShrink: 0, maxWidth: 62, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
+                        <span style={{ color: "#5a709055", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: sz2 }}>{e.info}</span>
+                        <span style={{ color: "#1e305088", flexShrink: 0, fontSize: sz2, fontVariantNumeric: "tabular-nums" }}>[{e.age}s]</span>
+                      </div>
+                    ))}
+                    {trainCount10 > 0 && (
+                      <div style={{ display: "flex", gap: 4, fontSize: sz, marginBottom: 2, lineHeight: 1.3 }}>
+                        <span style={{ color: "#4488ff70", flexShrink: 0, minWidth: 30, fontSize: sz2, letterSpacing: "0.06em" }}>TRAIN</span>
+                        <span style={{ color: "#e2ecff55" }}>× {trainCount10}</span>
+                      </div>
+                    )}
+                  </>);
+                })() : <div style={{ fontSize: sz2, color: "#1e3050", marginBottom: 2 }}>NO CONTACTS</div>}
                 <div style={{ fontSize: sz2, color: "#22d3ee30", letterSpacing: "0.12em", marginTop: 7, marginBottom: 3 }}>─ 20mi</div>
                 {S20.length > 0 ? S20.map((e, i) => (
                   <div key={i} style={{ display: "flex", gap: 4, fontSize: sz, marginBottom: 2, lineHeight: 1.3 }}>
@@ -2820,9 +2853,9 @@ export default function StamfordMap() {
                 const pubShort = item.pub === "Stamford Advocate" ? "SA" : item.pub === "CT Mirror" ? "CTM" : item.pub.slice(0, 4).toUpperCase();
                 return (
                   <div key={i} style={{ fontSize: Math.round(7 * uiScale), marginBottom: 3, lineHeight: 1.4 }}>
-                    <span style={{ color: "#1e3050", fontVariantNumeric: "tabular-nums" }}>[{hm}</span>
-                    <span style={{ color: "#22d3ee33" }}> · {pubShort} · </span>
-                    <span style={{ color: "#5a709080" }}>{item.headline}]</span>
+                    <span style={{ color: "#22d3ee77", fontVariantNumeric: "tabular-nums" }}>[{hm}</span>
+                    <span style={{ color: "#22d3ee55" }}> · {pubShort} · </span>
+                    <span style={{ color: "#94a3b8" }}>{item.headline}]</span>
                   </div>
                 );
               })}
@@ -2855,6 +2888,60 @@ export default function StamfordMap() {
           </div>
         </div>
       )}
+
+      {/* ── Nearest vehicles list ────────────────────────────────────────────── */}
+      {mapInst.current && (() => {
+        const tlsLat = crosshairLatLngRef.current.lat;
+        const tlsLng = crosshairLatLngRef.current.lng;
+        const MI20 = 32186;
+        const nearby: Array<{ distM: number; bearing: string; emoji: string; name: string }> = [];
+        aircraftMarkersRef.current.forEach((m) => {
+          try {
+            const ll = m.getLatLng();
+            const d = distToStamford(ll.lat, ll.lng, tlsLat, tlsLng);
+            if (d > MI20) return;
+            const meta = (m as any)._tlMeta;
+            nearby.push({ distM: d, bearing: bearingStr(tlsLat, tlsLng, ll.lat, ll.lng), emoji: "✈", name: meta?.id ?? "?" });
+          } catch {}
+        });
+        trainMarkersRef.current.forEach((m) => {
+          try {
+            const ll = m.getLatLng();
+            const d = distToStamford(ll.lat, ll.lng, tlsLat, tlsLng);
+            if (d > MI20) return;
+            const meta = (m as any)._tlMeta;
+            nearby.push({ distM: d, bearing: bearingStr(tlsLat, tlsLng, ll.lat, ll.lng), emoji: "🚆", name: meta?.id ?? "?" });
+          } catch {}
+        });
+        vesselMarkersRef.current.forEach((m) => {
+          try {
+            const ll = m.getLatLng();
+            const d = distToStamford(ll.lat, ll.lng, tlsLat, tlsLng);
+            if (d > MI20) return;
+            const meta = (m as any)._tlMeta;
+            nearby.push({ distM: d, bearing: bearingStr(tlsLat, tlsLng, ll.lat, ll.lng), emoji: "⛵", name: meta?.id ?? "?" });
+          } catch {}
+        });
+        nearby.sort((a, b) => a.distM - b.distM);
+        if (nearby.length === 0) return null;
+        const saverBottom = tickerItems.length > 0 ? 78 : 50;
+        return (
+          <div className="absolute" style={{ right: 10, bottom: saverBottom + 36, zIndex: 20, fontFamily: "Menlo,Consolas,monospace",
+            background: "rgba(7,9,15,0.82)", border: "1px solid #0d1a2666", borderRadius: 4,
+            padding: "6px 8px", minWidth: 130, maxHeight: 160, overflowY: "auto",
+            scrollbarWidth: "none",
+          }}>
+            <div style={{ fontSize: 6, color: "#22d3ee44", letterSpacing: "0.14em", marginBottom: 4 }}>NEAREST</div>
+            {nearby.slice(0, 10).map((v, i) => (
+              <div key={i} style={{ display: "flex", gap: 5, fontSize: 8, lineHeight: 1.5, color: "#5a7090" }}>
+                <span style={{ color: "#22d3ee66", flexShrink: 0, minWidth: 44, fontVariantNumeric: "tabular-nums" }}>{fmtMi(v.distM)} {v.bearing}</span>
+                <span style={{ flexShrink: 0 }}>{v.emoji}</span>
+                <span style={{ color: "#e2ecff88", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 80 }}>{v.name}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* ── Screensaver toggle ───────────────────────────────────────────────── */}
       <div className="absolute" style={{ right: 10, bottom: tickerItems.length > 0 ? 78 : 50, zIndex: 20, fontFamily: "Menlo,Consolas,monospace" }}>
