@@ -13,7 +13,6 @@ interface OngoingItem {
 }
 
 interface TermEntry    { ts: number; cat: string; text: string; color: string; }
-interface NewsItem    { ts: number; pub: string; headline: string; }
 interface HourlyFc   { hour: number; temp: number; code: number; precip: number; }
 interface DailyFc    { date: string; max: number; min: number; code: number; precip: number; }
 interface SsTrackInfo { type: string; id: string; detail: string; enteredMs: number; }
@@ -574,7 +573,6 @@ export default function StamfordMap() {
   const [wsStatus,      setWsStatus]      = useState<"connecting" | "live" | "offline">("connecting");
   const [panelOpen,     setPanelOpen]     = useState(false);
   const [ssMode,        setSsMode]        = useState(false);
-  const [newsItems,     setNewsItems]     = useState<NewsItem[]>([]);
   const [hourlyForecast, setHourlyForecast] = useState<HourlyFc[]>([]);
   const [dailyForecast,  setDailyForecast]  = useState<DailyFc[]>([]);
   const [showControls,   setShowControls]   = useState(false);
@@ -1688,12 +1686,6 @@ export default function StamfordMap() {
     }).catch(() => {});
   }, [addLog]);
 
-  const fetchNews = useCallback(() => {
-    fetch("/api/map/news")
-      .then(r => r.json())
-      .then(d => setNewsItems(d.items ?? []))
-      .catch(() => {});
-  }, []);
 
   const fetchWeather = useCallback(() => {
     fetch(
@@ -2241,12 +2233,6 @@ export default function StamfordMap() {
     return () => clearInterval(id);
   }, [fetchWeather]);
 
-  // News headlines
-  useEffect(() => {
-    fetchNews();
-    const id = setInterval(fetchNews, 5 * 60_000);
-    return () => clearInterval(id);
-  }, [fetchNews]);
 
 
   // Fullscreen listener
@@ -2920,33 +2906,46 @@ export default function StamfordMap() {
           </div>
         )}
 
-        {/* News terminal */}
-        {newsItems.length > 0 && (
-          <div style={{ flex: "0 1 auto", minHeight: 0, display: "flex", flexDirection: "column", marginBottom: 6 }}>
-            <div style={{ fontSize: Math.round(6.5 * uiScale), color: "#22d3ee33", letterSpacing: "0.16em", marginBottom: 3, flexShrink: 0, display: "flex", alignItems: "center", gap: 4 }}>
-              <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#22d3ee", display: "inline-block", animation: "tl-blink 2.2s ease-in-out infinite" }} />
-              NEWS FEED
-            </div>
-            <div style={{
-              flex: "0 1 auto", overflowY: "auto", scrollbarWidth: "none",
-              maskImage: "linear-gradient(to bottom, black 70%, transparent 100%)",
-              WebkitMaskImage: "linear-gradient(to bottom, black 70%, transparent 100%)",
-            }}>
-              {newsItems.slice(0, 20).map((item, i) => {
-                const nd = new Date(item.ts);
-                const hm = `${String(nd.getHours()).padStart(2,"0")}:${String(nd.getMinutes()).padStart(2,"0")}`;
-                const pubShort = item.pub === "Stamford Advocate" ? "SA" : item.pub === "CT Mirror" ? "CTM" : item.pub.slice(0, 4).toUpperCase();
-                return (
-                  <div key={i} style={{ fontSize: Math.round(7 * uiScale), marginBottom: 3, lineHeight: 1.4 }}>
-                    <span style={{ color: "#22d3ee77", fontVariantNumeric: "tabular-nums" }}>[{hm}</span>
-                    <span style={{ color: "#22d3ee55" }}> · {pubShort} · </span>
-                    <span style={{ color: "#94a3b8" }}>{item.headline}]</span>
+        {/* Saver detail pane — visible only when autotracker has a lock */}
+        {ssMode && ssTrackMsg && (() => {
+          const meta = (ssTrackMarkerRef.current as any)?._tlMeta;
+          const lockSec = Math.floor((nowMs - ssTrackMsg.enteredMs) / 1000);
+          const lockMin = Math.floor(lockSec / 60);
+          const lockDisplay = lockMin > 0 ? `${lockMin}m ${lockSec % 60}s` : `${lockSec}s`;
+          const typeLabel = ssTrackMsg.type;
+          const rows: Array<{ label: string; value: string }> = [];
+          if (meta?.acType) rows.push({ label: "TYPE", value: meta.acType });
+          if (meta?.reg)    rows.push({ label: "REG",  value: meta.reg });
+          if (meta?.op)     rows.push({ label: "OPR",  value: meta.op });
+          // Parse detail string for individual fields
+          if (!meta?.acType && ssTrackMsg.detail) rows.push({ label: "INFO", value: ssTrackMsg.detail });
+          rows.push({ label: "LOCK", value: lockDisplay });
+          return (
+            <div style={{ flex: "0 0 auto", marginBottom: 8, borderLeft: "1px solid #22d3ee22", paddingLeft: 10 }}>
+              <div style={{ fontSize: 6, color: "#22d3ee44", letterSpacing: "0.32em", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#22d3ee", display: "inline-block", animation: "tl-blink 1.2s ease-in-out infinite" }} />
+                TRACKING
+              </div>
+              <div style={{ fontSize: 8, color: "#22d3ee55", letterSpacing: "0.22em", marginBottom: 4 }}>{typeLabel}</div>
+              <div style={{ fontSize: Math.round(22 * uiScale), color: "#e2ecffcc", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, marginBottom: 6, textShadow: "0 0 16px #22d3ee33" }}>
+                {ssTrackMsg.id}
+              </div>
+              {meta?.acType && ssTrackMsg.detail && (
+                <div style={{ fontSize: 8, color: "#22d3ee55", letterSpacing: "0.04em", marginBottom: 10, lineHeight: 1.5 }}>
+                  {ssTrackMsg.detail}
+                </div>
+              )}
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {rows.filter(r => r.label !== "INFO" || !meta?.acType).map(({ label, value }) => (
+                  <div key={label} style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+                    <span style={{ fontSize: 6, color: "#22d3ee33", letterSpacing: "0.22em", minWidth: 28 }}>{label}</span>
+                    <span style={{ fontSize: Math.round(8 * uiScale), color: label === "LOCK" ? "#22d3ee88" : "#94a3b8cc", letterSpacing: "0.04em" }}>{value}</span>
                   </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Nearest vehicles — inline below news feed */}
         {(() => {
