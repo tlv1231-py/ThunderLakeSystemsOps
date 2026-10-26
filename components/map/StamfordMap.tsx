@@ -2440,12 +2440,6 @@ export default function StamfordMap() {
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d97a", display: "inline-block", animation: "tl-blink 1.4s ease-in-out infinite" }} />
           <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(9 * uiScale), color: "#39d97a", letterSpacing: "0.16em" }}>LIVE</span>
         </button>
-        <div className="flex items-center gap-1 shrink-0 tl-mob-hide">
-          <span style={{ fontSize: Math.round(10 * uiScale), color: wsStatus === "live" ? "#ffe066" : "#2a3a52" }}>⚡</span>
-          <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(9 * uiScale), color: wsStatus === "live" ? "#ffe066" : "#2a3a52", letterSpacing: "0.1em" }}>
-            {wsStatus === "live" ? (strikesPerMin > 0 ? `${strikesPerMin}/min` : "live") : wsStatus}
-          </span>
-        </div>
         {weather ? (
           <>
             <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#e2ecff" }}>{Math.round(weather.temp)}°F</span>
@@ -3024,30 +3018,30 @@ export default function StamfordMap() {
         ];
         return (
           <div key={ssTrackMsg.id} className={`absolute inset-0 pointer-events-none ${lockExiting ? "tl-lockon-exit" : "tl-lockon-overlay"}`} style={{ zIndex: 22 }}>
-            {/* SVG: corner brackets + leader line */}
+            {/* SVG: corner brackets only */}
             <svg style={{ position: "absolute", top: 0, left: 0, width: W, height: H, overflow: "visible" }}>
               {brackets.flat().map((pts, i) => (
                 <polyline key={i} points={pts} fill="none" stroke="#22d3ee" strokeWidth="1.5" strokeOpacity="0.65" />
               ))}
-              {trackPx && (
-                <line x1={W-M} y1={H-M} x2={trackPx.x} y2={trackPx.y}
-                  stroke="#22d3ee" strokeWidth="0.8" strokeOpacity="0.28" strokeDasharray="7 11" />
-              )}
             </svg>
-            {/* Top-left: callsign + detail */}
-            <div style={{ position: "absolute", top: M+8, left: M+8, fontFamily: "Menlo,Consolas,monospace" }}>
-              <div style={{ fontSize: 7, color: "#22d3ee55", letterSpacing: "0.32em", marginBottom: 8 }}>LOCK-ON</div>
-              <div style={{ fontSize: 21, color: "#e2ecffcc", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, textShadow: "0 0 14px #22d3ee44" }}>
-                {ssTrackMsg.id}
-              </div>
-              {ssTrackMsg.detail && (
-                <div style={{ fontSize: 9, color: "#22d3ee66", marginTop: 6, letterSpacing: "0.08em" }}>{ssTrackMsg.detail}</div>
-              )}
-            </div>
-            {/* Top-right: age counter */}
-            <div style={{ position: "absolute", top: M+8, right: M+8, fontFamily: "Menlo,Consolas,monospace", textAlign: "right" }}>
-              <div style={{ fontSize: 9, color: "#22d3ee44", letterSpacing: "0.18em" }}>[{lockSec}s]</div>
-            </div>
+            {/* Callsign label floats near the reticle */}
+            {trackPx && (() => {
+              const pad = 50; // offset from reticle center
+              const labelX = Math.min(trackPx.x + pad, W - 160);
+              const labelY = Math.max(trackPx.y - 48, 8);
+              return (
+                <div style={{ position: "absolute", top: labelY, left: labelX, fontFamily: "Menlo,Consolas,monospace", pointerEvents: "none" }}>
+                  <div style={{ fontSize: 6, color: "#22d3ee55", letterSpacing: "0.32em", marginBottom: 4 }}>LOCK-ON</div>
+                  <div style={{ fontSize: 18, color: "#e2ecffcc", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, textShadow: "0 0 12px #22d3ee55" }}>
+                    {ssTrackMsg.id}
+                  </div>
+                  {ssTrackMsg.detail && (
+                    <div style={{ fontSize: 8, color: "#22d3ee66", marginTop: 4, letterSpacing: "0.08em" }}>{ssTrackMsg.detail}</div>
+                  )}
+                  <div style={{ fontSize: 8, color: "#22d3ee44", marginTop: 3, letterSpacing: "0.18em" }}>[{lockSec}s]</div>
+                </div>
+              );
+            })()}
           </div>
         );
       })()}
