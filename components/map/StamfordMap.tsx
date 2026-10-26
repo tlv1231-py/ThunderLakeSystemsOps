@@ -2407,7 +2407,7 @@ export default function StamfordMap() {
             : ageSec < 60   ? `${ageSec}s`
             : ageSec < 3600 ? `${Math.floor(ageSec / 60)}m`
             : `${Math.floor(ageSec / 3600)}h`;
-          const R = 16, C = 2 * Math.PI * R;
+          const countVal = layerKey ? layerBadge[layerKey] : undefined;
           const ageStr = ageSec === null ? "No data yet"
             : ageSec < 5    ? "Just now"
             : ageSec < 60   ? `${ageSec}s ago`
@@ -2417,22 +2417,52 @@ export default function StamfordMap() {
           const maxAgeStr = meta.maxAge >= 3600 ? `${meta.maxAge/3600}h` : meta.maxAge >= 60 ? `${meta.maxAge/60}m` : `${meta.maxAge}s`;
           return (
             <div key={key} className="tl-orb-wrap" style={{
-              position: "relative", width: 42, height: 42, flexShrink: 0, pointerEvents: "auto", cursor: "default",
+              position: "relative", width: 44, height: 72,
+              flexShrink: 0, pointerEvents: "auto", cursor: "default",
               opacity: active ? 1 : 0.18,
+              background: `linear-gradient(180deg, ${meta.color}0f 0%, #050710 100%)`,
+              border: `1px solid ${active && fresh ? meta.color + "55" : "#0d1a2b"}`,
+              borderRadius: 2,
+              boxShadow: active && fresh ? `0 0 10px ${meta.color}25, inset 0 0 10px ${meta.color}09` : "none",
+              transition: "border-color 0.6s, box-shadow 0.6s",
             }}>
-              <svg width="42" height="42" viewBox="0 0 42 42"
-                style={{ position: "absolute", inset: 0, filter: fresh && active ? `drop-shadow(0 0 5px ${ringColor}90)` : "none", transition: "filter 0.6s" }}>
-                <circle cx="21" cy="21" r={R} fill={`${meta.color}18`} />
-                <circle cx="21" cy="21" r={R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="2" />
-                <circle cx="21" cy="21" r={R} fill="none"
-                  stroke={ringColor} strokeWidth="2.5" strokeLinecap="round"
-                  strokeDasharray={C} strokeDashoffset={C * (1 - progress)}
-                  transform="rotate(-90 21 21)"
-                  style={{ transition: "stroke-dashoffset 1s linear, stroke 0.6s" }} />
-              </svg>
-              <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
-                <span style={{ fontSize: 13, lineHeight: 1, userSelect: "none" }}>{meta.icon}</span>
-                <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 9, letterSpacing: "0.04em", color: ringColor, lineHeight: 1 }}>{timeStr}</span>
+              {/* Corner brackets */}
+              {([
+                { top: 2, left: 2, borderTop: `1px solid ${active && fresh ? meta.color + "bb" : meta.color + "3a"}`, borderLeft: `1px solid ${active && fresh ? meta.color + "bb" : meta.color + "3a"}` } as React.CSSProperties,
+                { top: 2, right: 2, borderTop: `1px solid ${active && fresh ? meta.color + "bb" : meta.color + "3a"}`, borderRight: `1px solid ${active && fresh ? meta.color + "bb" : meta.color + "3a"}` } as React.CSSProperties,
+                { bottom: 2, left: 2, borderBottom: `1px solid ${active && fresh ? meta.color + "bb" : meta.color + "3a"}`, borderLeft: `1px solid ${active && fresh ? meta.color + "bb" : meta.color + "3a"}` } as React.CSSProperties,
+                { bottom: 2, right: 2, borderBottom: `1px solid ${active && fresh ? meta.color + "bb" : meta.color + "3a"}`, borderRight: `1px solid ${active && fresh ? meta.color + "bb" : meta.color + "3a"}` } as React.CSSProperties,
+              ]).map((s, i) => (
+                <div key={i} style={{ position: "absolute", width: 5, height: 5, ...s }} />
+              ))}
+              {/* Icon zone */}
+              <div style={{ height: 30, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ fontSize: 14, lineHeight: 1, userSelect: "none",
+                  filter: active && fresh ? `drop-shadow(0 0 4px ${meta.color}99)` : "none",
+                  transition: "filter 0.6s" }}>{meta.icon}</span>
+              </div>
+              {/* Progress bar */}
+              <div style={{ height: 18, position: "relative", background: "rgba(255,255,255,0.035)",
+                borderTop: "1px solid rgba(255,255,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                <div style={{ position: "absolute", left: 0, top: 0, bottom: 0,
+                  width: `${progress * 100}%`, background: ringColor, opacity: 0.55,
+                  transition: "width 1s linear, background 0.6s" }} />
+                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center",
+                  justifyContent: "center", fontFamily: "Menlo,Consolas,monospace",
+                  fontSize: 8, color: "#cdd8ec", letterSpacing: "0.05em", zIndex: 1,
+                  textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>{timeStr}</div>
+              </div>
+              {/* Count / label zone */}
+              <div style={{ height: 22, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ fontFamily: "Menlo,Consolas,monospace",
+                  fontSize: countVal ? (String(countVal).length > 5 ? 7 : String(countVal).length > 3 ? 9 : 11) : 7,
+                  fontWeight: 700,
+                  color: countVal ? (active && fresh ? meta.color : meta.color + "99") : "#1e3050",
+                  letterSpacing: "0.03em", lineHeight: 1,
+                  textShadow: countVal && active && fresh ? `0 0 8px ${meta.color}55` : "none",
+                  transition: "color 0.6s, text-shadow 0.6s" }}>
+                  {countVal ?? meta.short}
+                </span>
               </div>
               <div className="tl-orb-tip">
                 <div style={{ color: meta.color, fontWeight: 700, marginBottom: 4 }}>{meta.label}</div>
