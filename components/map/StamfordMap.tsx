@@ -321,10 +321,11 @@ function stormSVG(_icao: string, precip1hIn: number | null, _windKt: number | nu
   return `<div style="width:7px;height:7px;border-radius:50%;background:${color};opacity:${hasRain ? 0.85 : 0.45};
     box-shadow:0 0 4px ${color}88;cursor:pointer"></div>`;
 }
-function popupWrap(inner: string) {
+function popupWrap(inner: string, src?: string) {
+  const srcBadge = src ? `<div style="color:#1a3050;font-size:7px;margin-top:5px;border-top:1px solid #0a1520;padding-top:3px;letter-spacing:0.09em">SRC · ${src}</div>` : "";
   return `<div style="font-family:Menlo,Consolas,monospace;font-size:11px;color:#d8e3f0;background:#07090fee;
     border:1px solid #1e2d44;border-radius:8px;padding:10px 14px;min-width:180px;line-height:1.9;
-    backdrop-filter:blur(8px)">${inner}</div>`;
+    backdrop-filter:blur(8px)">${inner}${srcBadge}</div>`;
 }
 function trainMarkerSVG(): string {
   return `<div class="tl-train-icon" style="width:28px;height:10px;transform-origin:50% 50%">
@@ -374,6 +375,12 @@ function destPoint(lat: number, lon: number, bearingDeg: number, distM: number):
   const φ2 = Math.asin(Math.sin(φ1) * Math.cos(d) + Math.cos(φ1) * Math.sin(d) * Math.cos(b));
   const λ2 = λ1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(φ1), Math.cos(d) - Math.sin(φ1) * Math.sin(φ2));
   return [φ2 * 180 / Math.PI, λ2 * 180 / Math.PI];
+}
+
+function distToStamford(lat: number, lon: number): number {
+  const dlat = (lat - 41.0534) * 111320;
+  const dlon = (lon - (-73.5387)) * 111320 * Math.cos(41.0534 * Math.PI / 180);
+  return Math.sqrt(dlat * dlat + dlon * dlon);
 }
 
 // ── MNR track geometry (hardcoded — ordered stop sequences per line) ───────────
@@ -474,6 +481,9 @@ export default function StamfordMap() {
   const metarObsRef         = useRef<Record<string, number>>({});
   const ambiCanvasRef       = useRef<HTMLCanvasElement>(null);
   const ambiRafRef          = useRef<number>(0);
+  const ssModeRef           = useRef(false);
+  const ssKnownRef          = useRef<Set<string>>(new Set());
+  const ssScanTimerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [baseKey,       setBaseKey]       = useState<BaseKey>("dark");
   const [enabled,       setEnabled]       = useState<Record<LayerKey, boolean>>({
@@ -506,6 +516,7 @@ export default function StamfordMap() {
   const [strikesPerMin, setStrikesPerMin] = useState(0);
   const [wsStatus,      setWsStatus]      = useState<"connecting" | "live" | "offline">("connecting");
   const [panelOpen,     setPanelOpen]     = useState(false);
+  const [ssMode,        setSsMode]        = useState(false);
   const [isFullscreen,  setIsFullscreen]  = useState(false);
   const [milClock,      setMilClock]      = useState("");
   const [nowMs,         setNowMs]         = useState(Date.now());
@@ -580,6 +591,71 @@ export default function StamfordMap() {
     document.documentElement.style.setProperty("--tl-mk-scale", String(markerScale));
   }, [markerScale]);
 
+  // Screensaver mode: scan for new vehicles entering 10mi sector and pan+popup
+  useEffect(() => {
+    ssModeRef.current = ssMode;
+    if (!ssMode) {
+      if (ssScanTimerRef.current) { clearInterval(ssScanTimerRef.current); ssScanTimerRef.current = null; }
+      ssKnownRef.current.clear();
+      return;
+    }
+    // Seed known set with all currently visible vehicles
+    aircraftMarkersRef.current.forEach((_, id) => ssKnownRef.current.add(id));
+    vesselMarkersRef.current.forEach((_, mmsi) => ssKnownRef.current.add(`ais-${mmsi}`));
+    trainMarkersRef.current.forEach((_, id) => ssKnownRef.current.add(`train-${id}`));
+
+    const SS_M = 16093; // 10 miles
+    ssScanTimerRef.current = setInterval(() => {
+      if (!ssModeRef.current) return;
+      const map = mapInst.current;
+      if (!map) return;
+      let newMarker: any = null;
+      let newLat = 0, newLon = 0, newestMs = 0;
+
+      aircraftMarkersRef.current.forEach((m, id) => {
+        if (ssKnownRef.current.has(id)) return;
+        const ll = m.getLatLng();
+        if (distToStamford(ll.lat, ll.lng) > SS_M) return;
+        const t = aircraftStateRef.current.get(id)?.lastMs ?? Date.now();
+        if (t > newestMs) { newestMs = t; newMarker = m; newLat = ll.lat; newLon = ll.lng; }
+      });
+      vesselMarkersRef.current.forEach((m, mmsi) => {
+        const id = `ais-${mmsi}`;
+        if (ssKnownRef.current.has(id)) return;
+        const ll = m.getLatLng();
+        if (distToStamford(ll.lat, ll.lng) > SS_M) return;
+        const t = vesselLastSeenRef.current.get(mmsi) ?? Date.now();
+        if (t > newestMs) { newestMs = t; newMarker = m; newLat = ll.lat; newLon = ll.lng; }
+      });
+      trainMarkersRef.current.forEach((m, id) => {
+        const tid = `train-${id}`;
+        if (ssKnownRef.current.has(tid)) return;
+        const ll = m.getLatLng();
+        if (distToStamford(ll.lat, ll.lng) > SS_M) return;
+        if (!newMarker) { newMarker = m; newLat = ll.lat; newLon = ll.lng; }
+      });
+
+      // Mark all current as known
+      aircraftMarkersRef.current.forEach((_, id) => ssKnownRef.current.add(id));
+      vesselMarkersRef.current.forEach((_, mmsi) => ssKnownRef.current.add(`ais-${mmsi}`));
+      trainMarkersRef.current.forEach((_, id) => ssKnownRef.current.add(`train-${id}`));
+
+      if (newMarker) {
+        map.panTo([newLat, newLon], { animate: true, duration: 1.8, easeLinearity: 0.2 });
+        setTimeout(() => {
+          newMarker.openPopup();
+          setTimeout(() => {
+            const el = document.querySelector(".leaflet-popup");
+            if (el) { el.classList.remove("tl-ss-popup"); void (el as HTMLElement).offsetWidth; el.classList.add("tl-ss-popup"); }
+          }, 50);
+        }, 700);
+      }
+    }, 6000);
+    return () => {
+      if (ssScanTimerRef.current) { clearInterval(ssScanTimerRef.current); ssScanTimerRef.current = null; }
+    };
+  }, [ssMode]);
+
   // Newest-on-top: always stay scrolled to top so fresh entries are visible
   useEffect(() => {
     const el = terminalRef.current;
@@ -634,7 +710,7 @@ export default function StamfordMap() {
             <span style="color:#5a7090">ALT</span><span>${alt > 0 ? metersToFt(alt).toLocaleString() + " ft" : "—"}</span>
             <span style="color:#5a7090">SPD</span><span>${speedMs > 0 ? mpsToKnots(speedMs) + " kt" : "—"}</span>
             <span style="color:#5a7090">HDG</span><span>${heading}° ${degToCompass(heading)}</span>
-          </div>`);
+          </div>`, "OpenSky Network");
 
         if (aircraftMarkersRef.current.has(id)) {
           const m = aircraftMarkersRef.current.get(id);
@@ -716,7 +792,7 @@ export default function StamfordMap() {
             <span style="color:#5a7090">ALT</span><span>${Math.round(d.altitude)} km</span>
             <span style="color:#5a7090">SPD</span><span>${Math.round(d.velocity)} km/h</span>
             <span style="color:#5a7090">VIS</span><span>${d.visibility}</span>
-          </div>`)))
+          </div>`, "wheretheiss.at")))
         .addTo(g);
       }); // end animateOut
     }).catch(() => {});
@@ -791,7 +867,7 @@ export default function StamfordMap() {
             </span>
           </div>
           ${desc ? `<div style="font-size:9px;color:#c8d8e8;border-top:1px solid #0d1a26;padding-top:6px;line-height:1.6;max-height:120px;overflow-y:auto;scrollbar-width:none">${desc}</div>` : ""}
-        `);
+        `, "NWS Alerts API");
         const icon = L.divIcon({ html: alertPingSVG(shortEvt, onsetMs), className: "", iconSize: [52, 76], iconAnchor: [26, 46] });
         const marker = L.marker(center, { icon })
           .bindPopup(L.popup({ className: "tl-popup", maxWidth: 340, offset: [0, -4] }).setContent(buildPopup()));
@@ -827,7 +903,7 @@ export default function StamfordMap() {
                 <span style="color:#5a7090">BUS</span><span>${v.id}</span>
                 <span style="color:#5a7090">HDG</span><span>${v.heading}° ${degToCompass(v.heading)}</span>
                 <span style="color:#5a7090">SPD</span><span>${v.speedKmHr} km/h</span>
-              </div>`)))
+              </div>`, "CT Transit GTFS")))
             .addTo(g);
         });
       });
@@ -898,7 +974,7 @@ export default function StamfordMap() {
         fillOpacity: op * 0.85, opacity: op, weight: 1.5,
       }).bindPopup(L.popup({ className: "tl-popup", maxWidth: 200, offset: [0, -6] }).setContent(
         popupWrap(`<div style="font-size:13px;font-weight:700;color:#4488ff">${st.name}</div>
-          <div style="color:#5a7090;font-size:10px;margin-top:2px">Metro-North Station</div>`)
+          <div style="color:#5a7090;font-size:10px;margin-top:2px">Metro-North Station</div>`, "Metro-North / MTA")
       )).addTo(g);
     });
 
@@ -945,7 +1021,7 @@ export default function StamfordMap() {
             <span style="color:#5a7090">DIR</span><span>${t.dir === "outbound" ? "→ New Haven" : "← Grand Central"}</span>
             <span style="color:#5a7090">NEXT</span><span>${t.stopName}</span>
             <span style="color:#5a7090">DEP</span><span>${depStr}</span>
-          </div>`);
+          </div>`, "MTA Rail API");
 
         // Update interpolation state for animation loop
         if (t.prevLat != null && t.prevDepMs != null && t.nextArrMs > t.prevDepMs) {
@@ -1008,7 +1084,7 @@ export default function StamfordMap() {
             popupWrap(`<div style="font-size:13px;font-weight:700;color:${s.color};margin-bottom:4px">${name}</div>
             <div style="color:#5a7090;text-transform:capitalize;font-size:10px">${amenity.replace(/_/g, " ")}</div>
             ${addr ? `<div style="color:#7a9ab0;font-size:10px;margin-top:3px">${addr}</div>` : ""}
-            ${el.tags?.phone ? `<div style="color:#7a9ab0;font-size:10px">${el.tags.phone}</div>` : ""}`)))
+            ${el.tags?.phone ? `<div style="color:#7a9ab0;font-size:10px">${el.tags.phone}</div>` : ""}`, "OpenStreetMap")))
           .addTo(g);
       });
     }).catch(() => {});
@@ -1052,30 +1128,29 @@ export default function StamfordMap() {
             `<div style="font-size:12px;font-weight:700;color:${ev.color};margin-bottom:4px">🚧 ${ev.subtype || typeLabel}</div>
             ${ev.road      ? `<div style="color:#7a9ab0">${ev.road}${ev.direction ? " · " + ev.direction : ""}</div>` : ""}
             ${ev.severity  ? `<div style="color:#5a7090;font-size:10px">Severity: ${ev.severity}</div>` : ""}
-            ${ev.closure   ? `<div style="color:#ff2244;font-size:10px">⛔ Full closure</div>` : ""}
-            ${ev.description ? `<div style="color:#5a7090;font-size:10px;margin-top:3px">${ev.description}</div>` : ""}`
+            ${ev.closure   ? `<div style="color:#ff2244;font-size:10px">&#9940; Full closure</div>` : ""}
+            ${ev.description ? `<div style="color:#5a7090;font-size:10px;margin-top:3px">${ev.description}</div>` : ""}`,
+            source === "ct511" ? "CT 511" : "OSM Overpass"
           );
-          const onsetLabel = evStartMs
-            ? `<span data-tl-mkr-onset="${evStartMs}" style="position:absolute;top:20px;left:50%;transform:translateX(-50%);
-                font-family:Menlo,Consolas,monospace;font-size:calc(10px * var(--tl-mk-scale,1));color:${ev.color}cc;
-                font-variant-numeric:tabular-nums;letter-spacing:0.06em;white-space:nowrap">${fmtElapsed(Date.now() - evStartMs)}</span>`
-            : "";
           if (ev.roadCoords?.length >= 2) {
-            // Draw highlighted road segment
+            // Draw highlighted road segment — orange
             L.polyline(ev.roadCoords, {
-              color: ev.color, weight: ev.closure ? 6 : 4,
-              opacity: 0.72, dashArray: ev.closure ? undefined : "10 6",
+              color: "#f97316", weight: ev.closure ? 6 : 4,
+              opacity: 0.82, dashArray: ev.closure ? undefined : "10 6",
               className: "tl-anim",
             }).bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupContent)).addTo(g);
-            // Marker at midpoint
+            // Timer label below midpoint — no diamond
             const mid = ev.roadCoords[Math.floor(ev.roadCoords.length / 2)];
-            const midHtml = `<div class="tl-anim" style="position:relative;width:18px;height:18px;overflow:visible">${trafficSVG(ev.color)}${onsetLabel}</div>`;
-            L.marker(mid, {
-              icon: L.divIcon({ html: midHtml, className: "", iconSize: [18, 18], iconAnchor: [9, 9] }),
-            }).bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupContent)).addTo(g);
+            if (evStartMs) {
+              const timerHtml = `<span data-tl-mkr-onset="${evStartMs}" style="font-family:Menlo,Consolas,monospace;font-size:9px;color:#f97316cc;font-variant-numeric:tabular-nums;letter-spacing:0.06em;white-space:nowrap;text-shadow:0 0 4px #000">${fmtElapsed(Date.now() - evStartMs)}</span>`;
+              L.marker(mid, {
+                icon: L.divIcon({ html: timerHtml, className: "", iconSize: [60, 14], iconAnchor: [30, -4] }),
+                interactive: false, keyboard: false,
+              }).addTo(g);
+            }
           } else {
-            // Fallback: floating diamond marker
-            const markerHtml = `<div class="tl-anim" style="position:relative;width:18px;height:18px;overflow:visible">${trafficSVG(ev.color)}${onsetLabel}</div>`;
+            // Fallback: floating orange marker for unmatched events
+            const markerHtml = `<div class="tl-anim" style="position:relative;width:18px;height:18px;overflow:visible">${trafficSVG("#f97316")}${evStartMs ? `<span data-tl-mkr-onset="${evStartMs}" style="position:absolute;top:20px;left:50%;transform:translateX(-50%);font-family:Menlo,Consolas,monospace;font-size:9px;color:#f97316cc;font-variant-numeric:tabular-nums;white-space:nowrap">${fmtElapsed(Date.now() - evStartMs)}</span>` : ""}</div>`;
             L.marker([ev.lat, ev.lon], {
               icon: L.divIcon({ html: markerHtml, className: "", iconSize: [18, 18], iconAnchor: [9, 9] }),
             }).bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupContent)).addTo(g);
@@ -1090,28 +1165,28 @@ export default function StamfordMap() {
     if (!g) return;
     g.clearLayers();
     const cx = STAMFORD.lat, cy = STAMFORD.lng;
-    const RINGS_NM = [1, 2, 5, 10, 20];
-    const OUTER_M  = RINGS_NM[RINGS_NM.length - 1] * 1852;
+    const RINGS_MI = [5, 10, 15, 20, 25];
+    const OUTER_M  = 25 * 1609.344;
 
     // Concentric range rings
-    RINGS_NM.forEach(nm => {
-      const rm = nm * 1852;
+    RINGS_MI.forEach(mi => {
+      const rm = mi * 1609.344;
       const pts: [number, number][] = Array.from({ length: 73 }, (_, i) => {
         const [la, lo] = destPoint(cx, cy, i * 5, rm);
         return [la, lo] as [number, number];
       });
-      const isFive = nm === 5;
+      const isTen = mi === 10;
       L.polyline(pts, {
-        color: "#22d3ee", weight: isFive ? 1 : 0.5,
-        opacity: isFive ? 0.28 : 0.15,
-        dashArray: isFive ? "6 9" : "2 14",
+        color: "#22d3ee", weight: isTen ? 1 : 0.5,
+        opacity: isTen ? 0.28 : 0.15,
+        dashArray: isTen ? "6 9" : "2 14",
         interactive: false,
       }).addTo(g);
-      // nm label just north of each ring
+      // mi label just north of each ring
       const [lLat, lLon] = destPoint(cx, cy, 358, rm);
       L.marker([lLat, lLon], {
         icon: L.divIcon({
-          html: `<span style="font-size:7.5px;color:#22d3ee90;font-family:Menlo,Consolas,monospace;font-weight:700;text-shadow:0 0 3px #000c">${nm}nm</span>`,
+          html: `<span style="font-size:7.5px;color:#22d3ee90;font-family:Menlo,Consolas,monospace;font-weight:700;text-shadow:0 0 3px #000c">${mi}mi</span>`,
           className: "", iconSize: [28, 12], iconAnchor: [14, 12],
         }),
         interactive: false, keyboard: false,
@@ -1177,7 +1252,7 @@ export default function StamfordMap() {
                 popupWrap(`<div style="font-size:12px;font-weight:700;color:#ff4466;margin-bottom:4px">🚨 ${inc.callType}</div>
                 <div style="color:#7a9ab0">${inc.address}</div>
                 ${inc.unit ? `<div style="color:#5a7090;font-size:10px">Unit: ${inc.unit}</div>` : ""}
-                ${inc.timestamp ? `<div style="color:#5a7090;font-size:10px">${inc.timestamp}</div>` : ""}`)))
+                ${inc.timestamp ? `<div style="color:#5a7090;font-size:10px">${inc.timestamp}</div>` : ""}`, "911 Dispatch")))
               .addTo(g);
           });
         }
@@ -1216,7 +1291,7 @@ export default function StamfordMap() {
             .bindPopup(L.popup({ className: "tl-popup", maxWidth: 230, offset: [0, -4] }).setContent(
               popupWrap(`<div style="font-size:12px;font-weight:700;color:#06b6d4;margin-bottom:4px">${st.type === "buoy" ? "⚓" : "≈"} ${st.name}</div>
               <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px">${rows}</div>
-              ${st.updated ? `<div style="color:#2a3a52;font-size:9px;margin-top:5px">${st.updated} UTC</div>` : ""}`)))
+              ${st.updated ? `<div style="color:#2a3a52;font-size:9px;margin-top:5px">${st.updated} UTC</div>` : ""}`, "NOAA NDBC")))
             .addTo(g);
         });
       });
@@ -1291,7 +1366,7 @@ export default function StamfordMap() {
             ${st.wxString ? `<span style="color:#5a7090">WX</span><span>${st.wxString}</span>` : ""}
           </div>
           <div style="color:#2a3a52;font-size:7.5px;word-break:break-all;border-top:1px solid #0d1a26;padding-top:4px;line-height:1.6">${st.rawOb ?? ""}</div>
-        `);
+        `, "METAR / FAA");
         const icon = L.divIcon({
           html: `<div${obsChanged ? ' class="tl-anim"' : ""}>${metarCircleSVG(st.icaoId, st.fltCat ?? "?", st.wspd ?? null, st.wdir ?? null, st.wxString ?? null, st.cover ?? null)}</div>`,
           className: "", iconSize: [80, 88], iconAnchor: [40, 42],
@@ -1355,7 +1430,7 @@ export default function StamfordMap() {
               <span style="color:#5a7090">PCPN 6H</span><span>${precip6Str}</span>
               <span style="color:#5a7090">PCPN 24H</span><span>${precip24Str}</span>
               ${st.humidity != null ? `<span style="color:#5a7090">RH</span><span>${Math.round(st.humidity)}%</span>` : ""}
-            </div>`);
+            </div>`, "ASOS / NOAA");
           const icon = L.divIcon({
             html: `<div class="tl-anim">${stormSVG(st.id, st.precip1hIn, st.windKt, st.windDir)}</div>`,
             className: "", iconSize: [7, 7], iconAnchor: [3, 3],
@@ -1398,7 +1473,7 @@ export default function StamfordMap() {
               <span style="color:#5a7090">AFFECTED</span><span style="color:${color};font-weight:700">${(t.custAffected ?? 0).toLocaleString()}</span>
               <span style="color:#5a7090">SERVED</span><span>${(t.custServed ?? 0).toLocaleString()}</span>
               <span style="color:#5a7090">PCT OUT</span><span style="color:${color}">${t.pct ?? "?"}%</span>
-            </div>`);
+            </div>`, "Eversource CT");
           L.circleMarker(coords, {
             radius: outageRadius(t.custAffected ?? 0),
             color, weight: 1.5, fillColor: color, fillOpacity: 0.25, opacity: 0.9,
@@ -1492,7 +1567,8 @@ export default function StamfordMap() {
           <span style="color:#5a7090">SOG</span><span>${sog.toFixed(1)} kt</span>
           <span style="color:#5a7090">HDG</span><span>${Math.round(hdg)}° ${degToCompass(Math.round(hdg))}</span>
           <span style="color:#5a7090">STATUS</span><span style="grid-column:span 1;font-size:9px">${status}</span>
-        </div>`
+        </div>`,
+        "AIS / AISstream"
       );
       const makeIcon = (anim: boolean) => L.divIcon({
         html: `<div${anim ? ' class="tl-anim"' : ""}>${shipSVG(hdg, sog)}</div>`,
@@ -1585,10 +1661,11 @@ export default function StamfordMap() {
       const baseDef = BASE_LAYERS.dark;
       baseTileRef.current = L.tileLayer(baseDef.url, { subdomains: baseDef.subdomains ?? "abc", minNativeZoom: baseDef.minNativeZoom, maxNativeZoom: baseDef.maxNativeZoom, maxZoom: 19, className: "tl-base-tile" }).addTo(map);
 
-      L.control.attribution({ prefix: false, position: "bottomright" })
-        .addAttribution('<span style="color:#2a3a52;font-size:10px">© CartoDB · ESRI · OSM · OpenSky · NWS · RainViewer · Blitzortung · UMO</span>')
-        .addTo(map);
-      L.control.zoom({ position: "bottomright" }).addTo(map);
+      map.on("zoomend", () => {
+        const z = map.getZoom();
+        mapRef.current?.setAttribute("data-zoom", String(Math.round(z)));
+      });
+      mapRef.current?.setAttribute("data-zoom", "12");
 
       // Data layer groups
       groupRefs.current = {
@@ -2386,6 +2463,22 @@ export default function StamfordMap() {
         </div>
       </div>
 
+      {/* ── Screensaver toggle ───────────────────────────────────────────────── */}
+      <div className="absolute" style={{ right: 10, bottom: tickerItems.length > 0 ? 78 : 50, zIndex: 20, fontFamily: "Menlo,Consolas,monospace" }}>
+        <button onClick={() => setSsMode(p => !p)} title="Screensaver mode" style={{
+          background: ssMode ? "rgba(34,211,238,0.12)" : "rgba(7,9,15,0.88)",
+          border: `1px solid ${ssMode ? "#22d3ee66" : "#0d1a2688"}`,
+          borderRadius: 4, padding: "5px 10px", cursor: "pointer",
+          fontSize: 8, color: ssMode ? "#22d3ee" : "#22d3ee44", letterSpacing: "0.14em",
+          boxShadow: ssMode ? "0 0 14px #22d3ee2a, inset 0 0 6px #22d3ee12" : "none",
+          transition: "all 0.3s", display: "flex", alignItems: "center", gap: 5,
+        }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: ssMode ? "#22d3ee" : "#1e2d44", display: "inline-block",
+            boxShadow: ssMode ? "0 0 6px #22d3ee" : "none", transition: "all 0.3s", flexShrink: 0 }} />
+          <span>SAVER</span>
+        </button>
+      </div>
+
       {/* ── Scanner / audio feeds ─────────────────────────────────────────── */}
       <div className="absolute" style={{ right: 10, bottom: tickerItems.length > 0 ? 38 : 10, zIndex: 20, fontFamily: "Menlo,Consolas,monospace" }}>
         {audioOpen ? (
@@ -2519,12 +2612,31 @@ export default function StamfordMap() {
 
         /* Map base */
         .leaflet-container { background: #07090f; }
-        .leaflet-control-zoom a { background: rgba(7,9,15,0.9) !important; border-color: #1e2d44 !important; color: #5a7090 !important; }
-        .leaflet-control-zoom a:hover { color: #22d3ee !important; background: rgba(34,211,238,0.08) !important; }
         .leaflet-bar { border: 1px solid #1e2d44 !important; box-shadow: none !important; }
+        /* Hide Leaflet attribution control (attributionControl:false at init) */
+        .leaflet-control-attribution { display: none !important; }
 
         /* Stamford boundary glow */
         .stamford-boundary-path { filter: drop-shadow(0 0 3px rgba(34,211,238,0.6)); }
+
+        /* Zoom-out density: scale icons down at low zoom so marker overlap is less jarring */
+        [data-zoom="9"] .leaflet-marker-icon { transform-origin: center; filter: opacity(0.75); }
+        [data-zoom="8"] .leaflet-marker-icon { transform-origin: center; filter: opacity(0.6); }
+        [data-zoom="7"] .leaflet-marker-icon, [data-zoom="6"] .leaflet-marker-icon,
+        [data-zoom="5"] .leaflet-marker-icon { transform-origin: center; filter: opacity(0.4); }
+
+        /* Screensaver popup tactical lock-on animation */
+        @keyframes tl-ss-lock {
+          0%   { clip-path: inset(100% 0 0 0); opacity: 0; }
+          25%  { clip-path: inset(0% 0 65% 0); opacity: 1; }
+          55%  { clip-path: inset(0% 0 25% 0); opacity: 1; }
+          75%  { clip-path: inset(0%); opacity: 1; transform: scale(1.02); }
+          88%  { clip-path: inset(0%); opacity: 1; transform: scale(0.98); }
+          100% { clip-path: inset(0%); opacity: 1; transform: scale(1); }
+        }
+        .tl-ss-popup .leaflet-popup-content-wrapper {
+          animation: tl-ss-lock 0.52s cubic-bezier(0.4, 0, 0.2, 1) both;
+        }
       `}</style>
     </div>
   );
