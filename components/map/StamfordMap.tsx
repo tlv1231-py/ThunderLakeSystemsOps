@@ -16,7 +16,7 @@ interface TermEntry    { ts: number; cat: string; text: string; color: string; }
 interface NewsItem    { ts: number; pub: string; headline: string; }
 interface HourlyFc   { hour: number; temp: number; code: number; precip: number; }
 interface DailyFc    { date: string; max: number; min: number; code: number; precip: number; }
-interface SsTrackInfo { type: string; id: string; detail: string; }
+interface SsTrackInfo { type: string; id: string; detail: string; enteredMs: number; }
 
 interface WeatherNow {
   temp: number; wind_speed: number; wind_dir: number;
@@ -693,6 +693,24 @@ export default function StamfordMap() {
     vesselMarkersRef.current.forEach((m, mmsi) => { try { if (distToStamford(m.getLatLng().lat, m.getLatLng().lng, tlsLat0, tlsLng0) <= SS_SEED_M) ssKnownRef.current.add(`ais-${mmsi}`); } catch {} });
     trainMarkersRef.current.forEach((m, id) => { try { if (distToStamford(m.getLatLng().lat, m.getLatLng().lng, tlsLat0, tlsLng0) <= SS_SEED_M) ssKnownRef.current.add(`train-${id}`); } catch {} });
 
+    // Immediate lock: on ssMode activate, lock the closest vehicle already within 10mi
+    let initM: any = null, initDist = Infinity, initType2 = "", initId2 = "", initDetail2 = "";
+    aircraftMarkersRef.current.forEach((m, id) => { try { const ll = m.getLatLng(); const d = distToStamford(ll.lat, ll.lng, tlsLat0, tlsLng0); if (d <= SS_SEED_M && d < initDist) { initDist = d; initM = m; initType2 = "AIRPLANE"; initId2 = m._tlMeta?.id ?? id; initDetail2 = m._tlMeta?.detail ?? ""; } } catch {} });
+    vesselMarkersRef.current.forEach((m, mmsi) => { try { const ll = m.getLatLng(); const d = distToStamford(ll.lat, ll.lng, tlsLat0, tlsLng0); if (d <= SS_SEED_M && d < initDist) { initDist = d; initM = m; initType2 = "VESSEL"; initId2 = m._tlMeta?.id ?? `MMSI ${mmsi}`; initDetail2 = m._tlMeta?.detail ?? ""; } } catch {} });
+    if (initM) {
+      ssTrackMarkerRef.current = initM;
+      reticleSrcRef.current = initM;
+      setSsTrackMsg({ type: initType2, id: initId2, detail: initDetail2, enteredMs: Date.now() });
+      import("leaflet").then(mod => {
+        const Lx = mod.default;
+        if (reticleMarkerRef.current) { try { map.removeLayer(reticleMarkerRef.current); } catch {} }
+        reticleMarkerRef.current = Lx.marker([initM.getLatLng().lat, initM.getLatLng().lng], {
+          icon: Lx.divIcon({ html: reticleHTML(false), className: "", iconSize: [44, 44], iconAnchor: [22, 22] }),
+          interactive: false, keyboard: false, zIndexOffset: -1000,
+        }).addTo(map);
+      });
+    }
+
     // Track user input to detect idle
     const mapEl = mapRef.current;
     const resetIdle = () => { ssLastInputRef.current = Date.now(); };
@@ -702,7 +720,7 @@ export default function StamfordMap() {
       mapEl.addEventListener("touchstart", resetIdle, { passive: true });
     }
     map.on("dragstart", cancelTrack);
-    map.on("zoomstart", cancelTrack);
+    // zoomstart omitted — programmatic flyTo fires it and must not cancel lock
 
     // Idle pullback: after 5s no input (and not actively tracking), fly back to TLS 20mi
     ssIdleTimerRef.current = setInterval(() => {
@@ -766,7 +784,7 @@ export default function StamfordMap() {
       if (newMarker) {
         ssTrackMarkerRef.current = newMarker;
         reticleSrcRef.current = newMarker;
-        setSsTrackMsg({ type: newType, id: newId, detail: newDetail });
+        setSsTrackMsg({ type: newType, id: newId, detail: newDetail, enteredMs: Date.now() });
         if (ssTrackMsgTimerRef.current) clearTimeout(ssTrackMsgTimerRef.current);
 
         import("leaflet").then(mod => {
@@ -2311,9 +2329,20 @@ export default function StamfordMap() {
   const orbitX = isFullscreen ? +(4 * Math.sin(2 * Math.PI * _t / 210)).toFixed(2) : 0;
   const orbitY = isFullscreen ? +(4 * Math.sin(2 * Math.PI * _t / 282 + Math.PI / 2)).toFixed(2) : 0;
 
+  // Tracked marker screen position — recomputed every nowMs tick via render
+  const trackPx = (() => {
+    if (!ssMode || !ssTrackMsg || !ssTrackMarkerRef.current || !mapInst.current) return null;
+    try { const pt = mapInst.current.latLngToContainerPoint(ssTrackMarkerRef.current.getLatLng()); return { x: pt.x, y: pt.y }; } catch { return null; }
+  })();
+
   return (
-    <div className="relative w-full overflow-hidden tl-fullvp"
-      style={{ background: "#07090f", transform: `translate(${orbitX}px,${orbitY}px)`, transition: "transform 1s linear" }}>
+    <div className="relative overflow-hidden tl-fullvp"
+      style={{
+        background: "#07090f",
+        transform: `translate(${orbitX}px,${orbitY}px)`,
+        transition: "transform 1s linear",
+        ...(isFullscreen ? { position: "fixed", inset: 0, width: "100vw", height: "100vh", zIndex: 9999 } : { width: "100%" }),
+      }}>
       {/* Map canvas */}
       <div ref={mapRef} className="absolute inset-0 z-0" />
 
@@ -2948,30 +2977,47 @@ export default function StamfordMap() {
         })()}
       </div>
 
-      {/* ── Screensaver tracking overlay ─────────────────────────────────────── */}
-      {ssMode && ssTrackMsg && (
-        <div className="absolute" style={{
-          bottom: tickerItems.length > 0 ? 42 : 14, left: "50%", transform: "translateX(-50%)",
-          zIndex: 22, pointerEvents: "none",
-          animation: "tl-track-msg-in 0.28s cubic-bezier(0.22,1,0.36,1) both",
-          fontFamily: "Menlo,Consolas,monospace",
-        }}>
-          <div style={{
-            background: "rgba(7,9,15,0.90)",
-            border: "1px solid #22d3ee28",
-            borderRadius: 2, padding: "5px 14px",
-            display: "flex", alignItems: "center", gap: 9,
-            whiteSpace: "nowrap",
-            boxShadow: "0 0 18px rgba(34,211,238,0.06), inset 0 0 12px rgba(34,211,238,0.03)",
-          }}>
-            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#22d3ee", flexShrink: 0, animation: "tl-blink 1s ease-in-out infinite", display: "inline-block" }} />
-            <span style={{ fontSize: 7, color: "#22d3ee55", letterSpacing: "0.2em" }}>TRACKING</span>
-            <span style={{ fontSize: 8, color: "#22d3ee99", letterSpacing: "0.16em" }}>{ssTrackMsg.type}</span>
-            <span style={{ fontSize: 9, color: "#e2ecff", letterSpacing: "0.12em", fontWeight: 700 }}>{ssTrackMsg.id}</span>
-            <span style={{ fontSize: 7, color: "#5a7090", letterSpacing: "0.08em" }}>{ssTrackMsg.detail}</span>
+      {/* ── LOCK-ON tactical overlay ─────────────────────────────────────────── */}
+      {ssMode && ssTrackMsg && (() => {
+        const W = mapRef.current?.offsetWidth ?? 800;
+        const H = mapRef.current?.offsetHeight ?? 600;
+        const M = 20; // margin from edge
+        const S = 36; // bracket arm length
+        const lockSec = Math.floor((nowMs - ssTrackMsg.enteredMs) / 1000);
+        // SVG corner bracket polylines
+        const brackets: [string, string][] = [
+          [`${M+S},${M} ${M},${M} ${M},${M+S}`, `${W-M-S},${M} ${W-M},${M} ${W-M},${M+S}`],
+          [`${M+S},${H-M} ${M},${H-M} ${M},${H-M-S}`, `${W-M-S},${H-M} ${W-M},${H-M} ${W-M},${H-M-S}`],
+        ];
+        return (
+          <div key={ssTrackMsg.id} className="absolute inset-0 tl-lockon-overlay pointer-events-none" style={{ zIndex: 22 }}>
+            {/* SVG: corner brackets + leader line */}
+            <svg style={{ position: "absolute", top: 0, left: 0, width: W, height: H, overflow: "visible" }}>
+              {brackets.flat().map((pts, i) => (
+                <polyline key={i} points={pts} fill="none" stroke="#22d3ee" strokeWidth="1.5" strokeOpacity="0.65" />
+              ))}
+              {trackPx && (
+                <line x1={W-M} y1={H-M} x2={trackPx.x} y2={trackPx.y}
+                  stroke="#22d3ee" strokeWidth="0.8" strokeOpacity="0.28" strokeDasharray="7 11" />
+              )}
+            </svg>
+            {/* Top-left: callsign + detail */}
+            <div style={{ position: "absolute", top: M+8, left: M+8, fontFamily: "Menlo,Consolas,monospace" }}>
+              <div style={{ fontSize: 7, color: "#22d3ee55", letterSpacing: "0.32em", marginBottom: 8 }}>LOCK-ON</div>
+              <div style={{ fontSize: 21, color: "#e2ecffcc", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, textShadow: "0 0 14px #22d3ee44" }}>
+                {ssTrackMsg.id}
+              </div>
+              {ssTrackMsg.detail && (
+                <div style={{ fontSize: 9, color: "#22d3ee66", marginTop: 6, letterSpacing: "0.08em" }}>{ssTrackMsg.detail}</div>
+              )}
+            </div>
+            {/* Top-right: age counter */}
+            <div style={{ position: "absolute", top: M+8, right: M+8, fontFamily: "Menlo,Consolas,monospace", textAlign: "right" }}>
+              <div style={{ fontSize: 9, color: "#22d3ee44", letterSpacing: "0.18em" }}>[{lockSec}s]</div>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Screensaver toggle ───────────────────────────────────────────────── */}
       <div className="absolute" style={{ right: 10, bottom: tickerItems.length > 0 ? 78 : 50, zIndex: 20, fontFamily: "Menlo,Consolas,monospace" }}>
@@ -3164,11 +3210,14 @@ export default function StamfordMap() {
         }
         .tl-clock-flip { animation: tl-clock-flip 0.26s ease-out both; }
 
-        /* Tracking overlay slide-up */
-        @keyframes tl-track-msg-in {
-          from { opacity:0; transform:translateX(-50%) translateY(6px); }
-          to   { opacity:1; transform:translateX(-50%) translateY(0); }
+        /* LOCK-ON tactical overlay */
+        @keyframes tl-lockon-in {
+          0%   { opacity: 0; clip-path: inset(4% 4% 4% 4%); }
+          40%  { opacity: 0.8; clip-path: inset(0% 0% 0% 0%); }
+          65%  { opacity: 1; clip-path: inset(0%); transform: scale(1.005); }
+          100% { opacity: 1; clip-path: inset(0%); transform: scale(1); }
         }
+        .tl-lockon-overlay { animation: tl-lockon-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
         /* Screensaver popup tactical lock-on animation */
         @keyframes tl-ss-lock {
