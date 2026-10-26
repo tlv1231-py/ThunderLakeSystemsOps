@@ -173,6 +173,26 @@ const AC_SHAPES: Record<string, AcShape> = {
   CL30:{ fl:33, fw:2.5, ws:23, wr:11, wt:4,   wy:-6, wswp:10, hs:8,  hr:5.5, ht:2,  hy:24, hswp:4.5, en:2, ex:5.5, ey:20, el:4.5, ew:2  },
 };
 
+// ── Wingspan SVG API slugs (ICAO type code → slug) ─────────────────────────
+const WS_SLUGS: Record<string, string> = {
+  A318:"a318", A319:"a319", A320:"a320", A321:"a321",
+  A19N:"a319neo", A20N:"a320neo", A21N:"a321neo",
+  BCS1:"a220-100", BCS3:"a220-300",
+  B737:"737-700", B738:"737-800", B739:"737-900er",
+  B37M:"737-max-7", B38M:"737-max-8", B39M:"737-max-9", B3XM:"737-max-10",
+  B752:"757-200", B762:"767-200er", B763:"767-300er",
+  B788:"787-8", B789:"787-9", B78X:"787-10",
+  A332:"a330-200", A333:"a330-300", A338:"a330-200", A339:"a330-300",
+  A359:"a350-900", A35K:"a350-1000", A388:"a380",
+  E170:"e170", E175:"e175", E75L:"e175-e2", E75S:"e175",
+  E190:"e190", E195:"e195", E290:"e190-e2", E295:"e195-e2",
+  CRJ2:"crj200", CRJ7:"crj700", CRJ9:"crj900", CRJX:"crj1000",
+  DH8D:"q400",
+  C172:"cessna-172", C182:"cessna-182", PA28:"pa-28", SR22:"sr22", PC12:"pc-12",
+  C25C:"citation-cj4", E55P:"phenom-300",
+  GL5T:"g550", GLEX:"g650er",
+};
+
 interface WeatherNow {
   temp: number; wind_speed: number; wind_dir: number;
   humidity: number; cloud_cover: number; precipitation: number; code: number;
@@ -2937,7 +2957,7 @@ export default function StamfordMap() {
           maskImage: "linear-gradient(to bottom, black 70%, transparent 100%)",
           WebkitMaskImage: "linear-gradient(to bottom, black 70%, transparent 100%)" }}>
           {(() => {
-            const S10: Array<{ type: string; name: string; info: string; age: number; color: string }> = [];
+            const S10: Array<{ type: string; name: string; info: string; age: number; color: string; acType?: string }> = [];
             const S20: typeof S10 = [];
             const tlsLat = crosshairLatLngRef.current.lat;
             const tlsLng = crosshairLatLngRef.current.lng;
@@ -2951,7 +2971,7 @@ export default function StamfordMap() {
                   const st = aircraftStateRef.current?.get(id);
                   const age = st?.lastMs ? Math.round((nowMs - st.lastMs) / 1000) : 0;
                   const meta = (m as any)._tlMeta;
-                  (d <= MI10 ? S10 : S20).push({ type: "AIR", name: meta?.id ?? id, info: meta?.detail ?? "", age, color: "#a855f7" });
+                  (d <= MI10 ? S10 : S20).push({ type: "AIR", name: meta?.id ?? id, info: meta?.detail ?? "", age, color: "#a855f7", acType: meta?.acType ?? "" });
                 } catch {}
               });
               trainMarkersRef.current.forEach((m, id) => {
@@ -2979,54 +2999,126 @@ export default function StamfordMap() {
               S10.sort((a, b) => a.age - b.age);
               S20.sort((a, b) => a.age - b.age);
             }
-            const sz = Math.round(7 * uiScale);
-            const sz2 = Math.round(6 * uiScale);
+            const sz = Math.round(14 * uiScale);
+            const sz2 = Math.round(11 * uiScale);
             return (
               <>
-                <div style={{ fontSize: sz2, color: "#22d3ee40", letterSpacing: "0.12em", marginBottom: 3, fontVariantNumeric: "tabular-nums" }}>─ 10mi</div>
+                <div style={{ fontSize: sz2, color: "#22d3ee40", letterSpacing: "0.12em", marginBottom: 6, fontVariantNumeric: "tabular-nums" }}>─ 10mi</div>
                 {S10.length > 0 ? (() => {
                   const trainCount10 = S10.filter(e => e.type === "TRAIN").length;
                   const nonTrain10   = S10.filter(e => e.type !== "TRAIN");
-                  const typeIcon = (t: string) => t === "AIR" ? "✈" : t === "AIS" ? "≈" : "·";
                   return (<>
-                    {nonTrain10.map((e) => (
-                      <div key={e.name} style={{ display: "flex", alignItems: "baseline", gap: 3, fontSize: sz, marginBottom: 2, lineHeight: 1.35 }}>
-                        <span style={{ color: e.color + "cc", flexShrink: 0, fontSize: sz + 1 }}>{typeIcon(e.type)}</span>
-                        <span style={{ color: "#e2ecff88", flexShrink: 0, maxWidth: 58, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
-                        {e.info && <span style={{ color: "#5a709044", fontSize: sz2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}> · {e.info}</span>}
-                        <span style={{ color: "#22d3ee33", flexShrink: 0, fontSize: sz2, fontVariantNumeric: "tabular-nums" }}> · {e.age}s</span>
-                      </div>
-                    ))}
+                    {nonTrain10.map((e) => {
+                      const acCode = e.acType ?? "";
+                      const acFull = acCode ? (ICAO_NAMES[acCode] ?? acCode) : "";
+                      const acSh = acCode ? AC_SHAPES[acCode] : undefined;
+                      return (
+                        <div key={e.name} style={{ display: "flex", gap: 10, marginBottom: 14, paddingBottom: 12, borderBottom: "1px solid #22d3ee08" }}>
+                          <div style={{ width: 42, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.7 }}>
+                            {acSh ? (
+                              <div style={{ width: 34, height: 44 }}
+                                dangerouslySetInnerHTML={{ __html: genAcSVG(acSh) }} />
+                            ) : e.type === "AIS" ? (
+                              <span style={{ fontSize: 24, color: e.color + "88" }}>≈</span>
+                            ) : (
+                              <span style={{ fontSize: 22, color: e.color + "88" }}>✈</span>
+                            )}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: sz, fontWeight: 700, color: "#e8f4ff", letterSpacing: "0.04em", lineHeight: 1.1, marginBottom: 3,
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {e.name}
+                            </div>
+                            {acFull && (
+                              <div style={{ fontSize: sz2, color: "#88aabb88", lineHeight: 1.3, marginBottom: 2,
+                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {acFull}
+                              </div>
+                            )}
+                            {e.info && (
+                              <div style={{ fontSize: sz2, color: "#5a709066", lineHeight: 1.3, marginBottom: 3,
+                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {e.info}
+                              </div>
+                            )}
+                            <div style={{ fontSize: sz2, color: "#22d3ee55", fontVariantNumeric: "tabular-nums", letterSpacing: "0.12em" }}>
+                              [{e.age}s]
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                     {trainCount10 > 0 && (
-                      <div style={{ display: "flex", alignItems: "baseline", gap: 3, fontSize: sz, marginBottom: 2, lineHeight: 1.35 }}>
-                        <span style={{ color: "#4488ffcc", flexShrink: 0, fontSize: sz + 1 }}>▬</span>
-                        <span style={{ color: "#e2ecff55" }}>TRAIN × {trainCount10}</span>
+                      <div style={{ display: "flex", gap: 10, marginBottom: 14, paddingBottom: 12, borderBottom: "1px solid #22d3ee08" }}>
+                        <div style={{ width: 42, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <span style={{ fontSize: 24, color: "#4488ffcc" }}>▬</span>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: sz, fontWeight: 700, color: "#e2ecff55" }}>TRAIN × {trainCount10}</div>
+                          <div style={{ fontSize: sz2, color: "#4488ff33", marginTop: 3, letterSpacing: "0.12em" }}>Rail Services</div>
+                        </div>
                       </div>
                     )}
                   </>);
-                })() : <div style={{ fontSize: sz2, color: "#1e3050", marginBottom: 2 }}>NO CONTACTS</div>}
-                <div style={{ fontSize: sz2, color: "#22d3ee30", letterSpacing: "0.12em", marginTop: 7, marginBottom: 3 }}>─ 20mi</div>
+                })() : <div style={{ fontSize: sz2, color: "#1e3050", marginBottom: 4 }}>NO CONTACTS</div>}
+                <div style={{ fontSize: sz2, color: "#22d3ee30", letterSpacing: "0.12em", marginTop: 10, marginBottom: 6 }}>─ 20mi</div>
                 {S20.length > 0 ? (() => {
                   const trainCount20 = S20.filter(e => e.type === "TRAIN").length;
                   const nonTrain20   = S20.filter(e => e.type !== "TRAIN");
-                  const typeIcon20 = (t: string) => t === "AIR" ? "✈" : t === "AIS" ? "≈" : "·";
                   return (<>
-                    {nonTrain20.map((e) => (
-                      <div key={e.name} style={{ display: "flex", alignItems: "baseline", gap: 3, fontSize: sz, marginBottom: 2, lineHeight: 1.35 }}>
-                        <span style={{ color: e.color + "99", flexShrink: 0, fontSize: sz + 1 }}>{typeIcon20(e.type)}</span>
-                        <span style={{ color: "#e2ecff66", flexShrink: 0, maxWidth: 58, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
-                        {e.info && <span style={{ color: "#5a709033", fontSize: sz2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}> · {e.info}</span>}
-                        <span style={{ color: "#22d3ee22", flexShrink: 0, fontSize: sz2, fontVariantNumeric: "tabular-nums" }}> · {e.age}s</span>
-                      </div>
-                    ))}
+                    {nonTrain20.map((e) => {
+                      const acCode20 = e.acType ?? "";
+                      const acFull20 = acCode20 ? (ICAO_NAMES[acCode20] ?? acCode20) : "";
+                      const acSh20 = acCode20 ? AC_SHAPES[acCode20] : undefined;
+                      return (
+                        <div key={e.name} style={{ display: "flex", gap: 10, marginBottom: 14, paddingBottom: 12, borderBottom: "1px solid #22d3ee05" }}>
+                          <div style={{ width: 42, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.5 }}>
+                            {acSh20 ? (
+                              <div style={{ width: 34, height: 44 }}
+                                dangerouslySetInnerHTML={{ __html: genAcSVG(acSh20) }} />
+                            ) : e.type === "AIS" ? (
+                              <span style={{ fontSize: 24, color: e.color + "66" }}>≈</span>
+                            ) : (
+                              <span style={{ fontSize: 22, color: e.color + "66" }}>✈</span>
+                            )}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: sz, fontWeight: 700, color: "#e8f4ffcc", letterSpacing: "0.04em", lineHeight: 1.1, marginBottom: 3,
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {e.name}
+                            </div>
+                            {acFull20 && (
+                              <div style={{ fontSize: sz2, color: "#88aabb66", lineHeight: 1.3, marginBottom: 2,
+                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {acFull20}
+                              </div>
+                            )}
+                            {e.info && (
+                              <div style={{ fontSize: sz2, color: "#5a709044", lineHeight: 1.3, marginBottom: 3,
+                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {e.info}
+                              </div>
+                            )}
+                            <div style={{ fontSize: sz2, color: "#22d3ee33", fontVariantNumeric: "tabular-nums", letterSpacing: "0.12em" }}>
+                              [{e.age}s]
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                     {trainCount20 > 0 && (
-                      <div style={{ display: "flex", alignItems: "baseline", gap: 3, fontSize: sz, marginBottom: 2, lineHeight: 1.35 }}>
-                        <span style={{ color: "#4488ff88", flexShrink: 0, fontSize: sz + 1 }}>▬</span>
-                        <span style={{ color: "#e2ecff44" }}>TRAIN × {trainCount20}</span>
+                      <div style={{ display: "flex", gap: 10, marginBottom: 14, paddingBottom: 12, borderBottom: "1px solid #22d3ee05" }}>
+                        <div style={{ width: 42, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <span style={{ fontSize: 24, color: "#4488ff88" }}>▬</span>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: sz, fontWeight: 700, color: "#e2ecff44" }}>TRAIN × {trainCount20}</div>
+                          <div style={{ fontSize: sz2, color: "#4488ff22", marginTop: 3, letterSpacing: "0.12em" }}>Rail Services</div>
+                        </div>
                       </div>
                     )}
                   </>);
-                })() : <div style={{ fontSize: sz2, color: "#1e3050", marginBottom: 2 }}>NO CONTACTS</div>}
+                })() : <div style={{ fontSize: sz2, color: "#1e3050", marginBottom: 4 }}>NO CONTACTS</div>}
               </>
             );
           })()}
@@ -3067,8 +3159,8 @@ export default function StamfordMap() {
           });
           nearby2.sort((a, b) => a.distM - b.distM);
           if (nearby2.length === 0) return null;
-          const sz = Math.round(7 * uiScale);
-          const sz2 = Math.round(6 * uiScale);
+          const sz = Math.round(14 * uiScale);
+          const sz2 = Math.round(11 * uiScale);
           return (
             <div style={{ flexShrink: 0, paddingTop: 8, borderTop: "1px solid #22d3ee11" }}>
               <div style={{ fontSize: sz2, color: "#22d3ee44", letterSpacing: "0.16em", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
@@ -3141,6 +3233,7 @@ export default function StamfordMap() {
           const typeLabel = ssTrackMsg.type;
           const acTypeCode = meta?.acType ?? "";
           const acFullName = acTypeCode ? (ICAO_NAMES[acTypeCode] ?? acTypeCode) : "";
+          const acSlug = acTypeCode ? WS_SLUGS[acTypeCode] : undefined;
           const acShape = acTypeCode ? AC_SHAPES[acTypeCode] : undefined;
           const rows: Array<{ label: string; value: string }> = [];
           if (acTypeCode) rows.push({ label: "TYPE", value: acTypeCode });
@@ -3151,32 +3244,39 @@ export default function StamfordMap() {
           return (
             <div key={ssTrackMsg.id} className="tl-track-pane-reveal" style={{ flex: "0 0 auto", marginBottom: 8, borderLeft: "2px solid #22d3ee33", paddingLeft: 10 }}>
               {/* Header */}
-              <div style={{ fontSize: 7, color: "#22d3eecc", letterSpacing: "0.32em", marginBottom: 6, display: "flex", alignItems: "center", gap: 5, fontWeight: 700 }}>
+              <div style={{ fontSize: 12, color: "#22d3eecc", letterSpacing: "0.32em", marginBottom: 6, display: "flex", alignItems: "center", gap: 5, fontWeight: 700 }}>
                 <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#22d3ee", display: "inline-block", animation: "tl-blink 1.2s ease-in-out infinite", flexShrink: 0,
                   boxShadow: "0 0 5px #22d3ee" }} />
                 TRACKING
               </div>
               {/* Aircraft type */}
-              <div style={{ fontSize: 9, color: "#22d3ee99", letterSpacing: "0.18em", marginBottom: 3, fontWeight: 600 }}>{typeLabel}</div>
+              <div style={{ fontSize: 16, color: "#22d3ee99", letterSpacing: "0.18em", marginBottom: 3, fontWeight: 600 }}>{typeLabel}</div>
               {/* Callsign — large */}
-              <div style={{ fontSize: Math.round(26 * uiScale), color: "#e8f4ff", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, marginBottom: 5,
+              <div style={{ fontSize: Math.round(38 * uiScale), color: "#e8f4ff", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, marginBottom: 5,
                 textShadow: "0 0 20px #22d3ee55, 0 0 4px #22d3ee33" }}>
                 {ssTrackMsg.id}
               </div>
               {/* Full aircraft name */}
               {acFullName && (
-                <div className="tl-track-typereveal" style={{ fontSize: 9, color: "#94c8e8cc", letterSpacing: "0.04em", marginBottom: 8, lineHeight: 1.4, fontWeight: 500 }}>
+                <div className="tl-track-typereveal" style={{ fontSize: 14, color: "#94c8e8cc", letterSpacing: "0.04em", marginBottom: 8, lineHeight: 1.4, fontWeight: 500 }}>
                   {acFullName}
                 </div>
               )}
-              {/* Top-down SVG schematic */}
-              {acShape && (
+              {/* Aircraft silhouette */}
+              {acSlug ? (
+                <div style={{ marginBottom: 8 }}>
+                  <img src={`https://checkwingspan.vercel.app/api/svg/${acSlug}`}
+                    style={{ width: 70, height: 90, objectFit: "contain", opacity: 0.85,
+                      filter: "brightness(0) invert(1) sepia(1) saturate(500%) hue-rotate(148deg) brightness(0.85)" }}
+                    alt={acTypeCode} />
+                </div>
+              ) : acShape ? (
                 <div style={{ width: 52, height: 65, marginBottom: 8, opacity: 0.85 }}
                   dangerouslySetInnerHTML={{ __html: genAcSVG(acShape) }} />
-              )}
+              ) : null}
               {/* Detail string */}
               {acTypeCode && ssTrackMsg.detail && (
-                <div style={{ fontSize: 8.5, color: "#7ab8cc99", letterSpacing: "0.04em", marginBottom: 8, lineHeight: 1.5 }}>
+                <div style={{ fontSize: 14, color: "#7ab8cc99", letterSpacing: "0.04em", marginBottom: 8, lineHeight: 1.5 }}>
                   {ssTrackMsg.detail}
                 </div>
               )}
@@ -3185,8 +3285,8 @@ export default function StamfordMap() {
                 {rows.filter(r => r.label !== "INFO" || !acTypeCode).map(({ label, value }, i) => (
                   <div key={label} className="tl-track-rowreveal" style={{ display: "flex", gap: 8, alignItems: "baseline",
                     animationDelay: `${0.18 + i * 0.07}s` }}>
-                    <span style={{ fontSize: 7, color: "#22d3ee55", letterSpacing: "0.22em", minWidth: 30 }}>{label}</span>
-                    <span style={{ fontSize: Math.round(9.5 * uiScale), color: label === "LOCK" ? "#22d3eebb" : "#b0cce0ee", letterSpacing: "0.04em", fontWeight: 500 }}>{value}</span>
+                    <span style={{ fontSize: 11, color: "#22d3ee55", letterSpacing: "0.22em", minWidth: 30 }}>{label}</span>
+                    <span style={{ fontSize: Math.round(14 * uiScale), color: label === "LOCK" ? "#22d3eebb" : "#b0cce0ee", letterSpacing: "0.04em", fontWeight: 500 }}>{value}</span>
                   </div>
                 ))}
               </div>
