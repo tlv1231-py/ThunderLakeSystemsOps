@@ -681,12 +681,14 @@ export default function StamfordMap() {
 
     // Track user input to detect idle
     const mapEl = mapRef.current;
-    const resetIdle = () => { ssLastInputRef.current = Date.now(); ssTrackMarkerRef.current = null; setSsTrackMsg(null); };
+    const resetIdle = () => { ssLastInputRef.current = Date.now(); };
+    const cancelTrack = () => { ssTrackMarkerRef.current = null; setSsTrackMsg(null); };
     if (mapEl) {
-      mapEl.addEventListener("mousedown", resetIdle, { passive: true });
-      mapEl.addEventListener("touchstart", resetIdle, { passive: true });
       mapEl.addEventListener("wheel", resetIdle, { passive: true });
+      mapEl.addEventListener("touchstart", resetIdle, { passive: true });
     }
+    map.on("dragstart", cancelTrack);
+    map.on("zoomstart", cancelTrack);
 
     // Idle pullback: after 5s no input (and not actively tracking), fly back to TLS 20mi
     ssIdleTimerRef.current = setInterval(() => {
@@ -773,10 +775,11 @@ export default function StamfordMap() {
       if (ssScanTimerRef.current)  { clearInterval(ssScanTimerRef.current);  ssScanTimerRef.current  = null; }
       if (ssIdleTimerRef.current)  { clearInterval(ssIdleTimerRef.current);  ssIdleTimerRef.current  = null; }
       if (mapEl) {
-        mapEl.removeEventListener("mousedown", resetIdle);
-        mapEl.removeEventListener("touchstart", resetIdle);
         mapEl.removeEventListener("wheel", resetIdle);
+        mapEl.removeEventListener("touchstart", resetIdle);
       }
+      map.off("dragstart", cancelTrack);
+      map.off("zoomstart", cancelTrack);
     };
   }, [ssMode]);
 
@@ -2126,9 +2129,6 @@ export default function StamfordMap() {
       { cx:0.54,cy:0.76,rx:0.20,ry:0.28,rad:0.30,T:57100,ph:5.20,pT:16200,pPh:4.5,r:16, g:185,b:129,a:0.026 }, // emerald
       { cx:0.30,cy:0.36,rx:0.16,ry:0.18,rad:0.28,T:29300,ph:4.10,pT:7800, pPh:1.7,r:99, g:102,b:241,a:0.030 }, // indigo
     ];
-    let glitchEnd  = 0;
-    let nextGlitch = performance.now() + 9000 + Math.random() * 12000;
-
     const draw = (now: number) => {
       const W = canvas.width, H = canvas.height;
       if (!W || !H) { ambiRafRef.current = requestAnimationFrame(draw); return; }
@@ -2148,30 +2148,6 @@ export default function StamfordMap() {
         g2.addColorStop(1,    `rgba(${b.r},${b.g},${b.b},0)`);
         ctx.fillStyle = g2;
         ctx.fillRect(0, 0, W, H);
-      }
-
-      // Glitch trigger — random, avg every ~14s
-      if (now > nextGlitch) {
-        glitchEnd  = now + 80 + Math.random() * 300;
-        nextGlitch = now + 7000 + Math.random() * 16000;
-      }
-      // Glitch artifacts
-      if (now < glitchEnd) {
-        const ft = Math.min(1, (glitchEnd - now) / 200); // fade factor 0→1
-        // Horizontal scan bands
-        const nBands = 2 + Math.floor(Math.random() * 3);
-        for (let i = 0; i < nBands; i++) {
-          const gy = Math.random() * H;
-          const gh = 0.5 + Math.random() * 3.5;
-          const isCyan = Math.random() > 0.5;
-          ctx.fillStyle = `rgba(${isCyan ? "0,255,255" : "255,0,255"},${0.075 * ft})`;
-          ctx.fillRect(0, gy, W, gh);
-        }
-        // Diffuse chromatic aberration band
-        const by = H * (0.2 + Math.random() * 0.6);
-        const bh = H * (0.025 + Math.random() * 0.07);
-        ctx.fillStyle = `rgba(0,255,255,${0.022 * ft})`;  ctx.fillRect(0, by,     W, bh);
-        ctx.fillStyle = `rgba(255,0,255,${0.016 * ft})`;  ctx.fillRect(3, by + 2, W, bh);
       }
 
       ambiRafRef.current = requestAnimationFrame(draw);
@@ -2258,6 +2234,20 @@ export default function StamfordMap() {
     : (WMO[weather.code] ?? "Unknown")
     : null;
   const panelW = 232;
+
+  const clockDisplay = (() => {
+    const n = new Date(nowMs);
+    const uh = String(n.getUTCHours()).padStart(2, "0");
+    const um = String(n.getUTCMinutes()).padStart(2, "0");
+    const us = String(n.getUTCSeconds()).padStart(2, "0");
+    const lh = String(n.getHours()).padStart(2, "0");
+    const lm2 = String(n.getMinutes()).padStart(2, "0");
+    const tz = new Intl.DateTimeFormat("en-US", { timeZoneName: "short" }).formatToParts(n).find(p => p.type === "timeZoneName")?.value ?? "EST";
+    const mode = Math.floor(nowMs / 2500) % 3;
+    if (mode === 0) return `${uh}${um}${us}Z`;
+    if (mode === 1) return `${uh}:${um}:${us} UTC`;
+    return `${lh}${lm2} ${tz}`;
+  })();
 
   const fmtFeedAge = (key: FeedKey) => {
     const t = feedLastSeenRef.current[key];
@@ -2346,49 +2336,81 @@ export default function StamfordMap() {
 
 
       {/* ── Top bar ────────────────────────────────────────────────────────── */}
-      <div className="absolute top-0 left-0 right-0 z-10 flex items-center gap-3 px-3 py-2"
-        style={{ background: "linear-gradient(to bottom, rgba(7,9,15,0.95) 0%, transparent 100%)", overflow: "hidden" }}>
+      <div className="absolute top-0 left-0 right-0 z-10 flex items-start gap-3 px-3 py-2"
+        style={{ background: "linear-gradient(to bottom, rgba(7,9,15,0.97) 0%, transparent 100%)" }}>
 
-        <button onClick={toggleFullscreen} className="flex items-center gap-1.5 shrink-0"
-          style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d97a", display: "inline-block", animation: "tl-blink 1.4s ease-in-out infinite" }} />
-          <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(9 * uiScale), color: "#39d97a", letterSpacing: "0.16em" }}>LIVE</span>
-        </button>
-
-        {/* Lightning WS */}
-        <div className="flex items-center gap-1 shrink-0 tl-mob-hide">
-          <span style={{ fontSize: Math.round(10 * uiScale), color: wsStatus === "live" ? "#ffe066" : "#2a3a52" }}>⚡</span>
-          <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(9 * uiScale), color: wsStatus === "live" ? "#ffe066" : "#2a3a52", letterSpacing: "0.1em" }}>
-            {wsStatus === "live" ? (strikesPerMin > 0 ? `${strikesPerMin}/min` : "live") : wsStatus}
-          </span>
+        {/* Left: weather row + hourly + daily */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
+          {/* Row 1: LIVE, lightning, current conditions, alerts */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <button onClick={toggleFullscreen} className="flex items-center gap-1.5 shrink-0"
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#39d97a", display: "inline-block", animation: "tl-blink 1.4s ease-in-out infinite" }} />
+              <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(9 * uiScale), color: "#39d97a", letterSpacing: "0.16em" }}>LIVE</span>
+            </button>
+            <div className="flex items-center gap-1 shrink-0 tl-mob-hide">
+              <span style={{ fontSize: Math.round(10 * uiScale), color: wsStatus === "live" ? "#ffe066" : "#2a3a52" }}>⚡</span>
+              <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(9 * uiScale), color: wsStatus === "live" ? "#ffe066" : "#2a3a52", letterSpacing: "0.1em" }}>
+                {wsStatus === "live" ? (strikesPerMin > 0 ? `${strikesPerMin}/min` : "live") : wsStatus}
+              </span>
+            </div>
+            {weather ? (
+              <>
+                <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#e2ecff" }}>{Math.round(weather.temp)}°F</span>
+                <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#5a7090" }}>{cond}</span>
+                <span className="shrink-0 tl-mob-hide" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#5a7090" }}>{Math.round(weather.wind_speed)} mph {degToCompass(weather.wind_dir)}</span>
+                <span className="shrink-0 tl-mob-hide" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#5a7090" }}>{weather.humidity}% RH</span>
+              </>
+            ) : null}
+            {alertCount > 0 && (
+              <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(9 * uiScale), color: "#f59e0b",
+                background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.28)",
+                borderRadius: 4, padding: "1px 6px", letterSpacing: "0.08em" }}>
+                {alertCount} ALERT{alertCount !== 1 ? "S" : ""}
+              </span>
+            )}
+          </div>
+          {/* Row 2: Hourly forecast (next 8h) */}
+          {hourlyForecast.length > 0 && (
+            <div style={{ display: "flex", gap: 7 }}>
+              {hourlyForecast.slice(0, 8).map((h, i) => {
+                const ampm = h.hour === 0 ? "12a" : h.hour < 12 ? `${h.hour}a` : h.hour === 12 ? "12p" : `${h.hour - 12}p`;
+                return (
+                  <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
+                    <span style={{ fontSize: 6, color: "#1e3050", fontFamily: "Menlo,Consolas,monospace" }}>{ampm}</span>
+                    <span style={{ fontSize: 9, lineHeight: 1 }}>{wmoIcon(h.code)}</span>
+                    <span style={{ fontSize: 6, color: "#5a7090", fontFamily: "Menlo,Consolas,monospace", fontVariantNumeric: "tabular-nums" }}>{h.temp}°</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {/* Row 3: Daily forecast (7-day) */}
+          {dailyForecast.length > 0 && (
+            <div style={{ display: "flex", gap: 7 }}>
+              {dailyForecast.slice(0, 7).map((d, i) => {
+                const dayName = i === 0 ? "TOD" : new Date(d.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short" }).toUpperCase().slice(0, 3);
+                return (
+                  <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
+                    <span style={{ fontSize: 6, color: "#1e3050", fontFamily: "Menlo,Consolas,monospace" }}>{dayName}</span>
+                    <span style={{ fontSize: 9, lineHeight: 1 }}>{wmoIcon(d.code)}</span>
+                    <span style={{ fontSize: 6, color: "#5a7090", fontFamily: "Menlo,Consolas,monospace", fontVariantNumeric: "tabular-nums" }}>{d.max}°/{d.min}°</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {weather ? (
-          <>
-            <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#e2ecff" }}>{Math.round(weather.temp)}°F</span>
-            <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#5a7090" }}>{cond}</span>
-            <span className="shrink-0 tl-mob-hide" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#5a7090" }}>{Math.round(weather.wind_speed)} mph {degToCompass(weather.wind_dir)}</span>
-            <span className="shrink-0 tl-mob-hide" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(11 * uiScale), color: "#5a7090" }}>{weather.humidity}% RH</span>
-          </>
-        ) : null}
-
-        {alertCount > 0 && (
-          <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(9 * uiScale), color: "#f59e0b",
-            background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.28)",
-            borderRadius: 4, padding: "1px 6px", letterSpacing: "0.08em" }}>
-            {alertCount} ALERT{alertCount !== 1 ? "S" : ""}
-          </span>
-        )}
-
-        {/* Military clock — right side */}
-        <span className="ml-auto shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(13 * uiScale), color: "#39d97a", letterSpacing: "0.12em", fontWeight: 700 }}>
-          {milClock}
+        {/* Right: clock, cycles Zulu / UTC / local every 2.5s */}
+        <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(13 * uiScale), color: "#39d97a", letterSpacing: "0.12em", fontWeight: 700, paddingTop: 2 }}>
+          {clockDisplay}
         </span>
       </div>
 
       {/* ── Feed orbs ──────────────────────────────────────────────────────── */}
       <div className="absolute z-10 left-0 right-0 flex justify-center"
-        style={{ top: 34, gap: 6, padding: "0 10px", pointerEvents: "none" }}>
+        style={{ top: 92, gap: 6, padding: "0 10px", pointerEvents: "none" }}>
         {FEED_ORDER.map(key => {
           const meta   = FEED_META[key];
           const layerKey = FEED_LAYER[key];
@@ -2653,118 +2675,108 @@ export default function StamfordMap() {
       {/* ── Left column — terminal feed ────────────────────────────────────── */}
       <div className="absolute" style={{
         left: panelOpen ? panelW + 10 : 10,
-        top: 48, bottom: tickerItems.length > 0 ? 28 : 0,
+        top: 170, bottom: tickerItems.length > 0 ? 28 : 0,
         zIndex: 15, width: 320, pointerEvents: "none",
         fontFamily: "Menlo,Consolas,monospace",
         display: "flex", flexDirection: "column",
         transition: "left 0.3s",
       }}>
-        {/* Terminal feed — transparent, full-height, bottom-fade */}
-        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-          <div style={{ fontSize: Math.round(7 * uiScale), color: "#e2ecff", letterSpacing: "0.14em", marginBottom: 3, flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
-            {(() => { const n = new Date(nowMs); return `${String(n.getHours()).padStart(2,"0")}:${String(n.getMinutes()).padStart(2,"0")}:${String(n.getSeconds()).padStart(2,"0")}`; })()}
-          </div>
-          <div
-            ref={terminalRef}
-            style={{
-              flex: 1, minHeight: 0, overflowY: "auto", scrollbarWidth: "none",
-              background: "transparent",
-              padding: "2px 4px",
-              pointerEvents: "auto",
-              maskImage: "linear-gradient(to bottom, black 55%, transparent 100%)",
-              WebkitMaskImage: "linear-gradient(to bottom, black 55%, transparent 100%)",
-            }}
-          >
-            {[...termLog].reverse().map((e, i) => {
-              const d = new Date(e.ts);
-              const hms = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
-              return (
-                <div key={i} style={{
-                  display: "flex", gap: 5, fontSize: Math.round(7.5 * uiScale),
-                  marginBottom: 1, lineHeight: 1.35,
-                }}>
-                  <span style={{ color: "#1e3050", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{hms}</span>
-                  <span style={{ color: e.color + "bb", flexShrink: 0 }}>{e.cat}</span>
-                  <span style={{ color: e.color + "99", wordBreak: "break-word", minWidth: 0 }}>{e.text}</span>
-                </div>
-              );
-            })}
-          </div>
+        {/* Sector intel — live contacts by distance ring */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", scrollbarWidth: "none", padding: "2px 0",
+          maskImage: "linear-gradient(to bottom, black 70%, transparent 100%)",
+          WebkitMaskImage: "linear-gradient(to bottom, black 70%, transparent 100%)" }}>
+          {(() => {
+            const S10: Array<{ type: string; name: string; info: string; age: number; color: string }> = [];
+            const S20: typeof S10 = [];
+            const tlsLat = crosshairLatLngRef.current.lat;
+            const tlsLng = crosshairLatLngRef.current.lng;
+            const MI10 = 16093, MI20 = 32186;
+            if (mapInst.current) {
+              aircraftMarkersRef.current.forEach((m, id) => {
+                try {
+                  const ll = m.getLatLng();
+                  const d = distToStamford(ll.lat, ll.lng, tlsLat, tlsLng);
+                  if (d > MI20) return;
+                  const st = aircraftStateRef.current?.get(id);
+                  const age = st?.lastMs ? Math.round((nowMs - st.lastMs) / 1000) : 0;
+                  const meta = (m as any)._tlMeta;
+                  (d <= MI10 ? S10 : S20).push({ type: "AIR", name: meta?.id ?? id, info: meta?.detail ?? "", age, color: "#a855f7" });
+                } catch {}
+              });
+              trainMarkersRef.current.forEach((m, id) => {
+                try {
+                  const ll = m.getLatLng();
+                  const d = distToStamford(ll.lat, ll.lng, tlsLat, tlsLng);
+                  if (d > MI20) return;
+                  const rts = feedLastSeenRef.current["rail"];
+                  const age = rts ? Math.round((nowMs - rts) / 1000) : 0;
+                  const meta = (m as any)._tlMeta;
+                  (d <= MI10 ? S10 : S20).push({ type: "TRAIN", name: meta?.id ?? String(id), info: meta?.detail ?? "", age, color: "#4488ff" });
+                } catch {}
+              });
+              vesselMarkersRef.current.forEach((m, mmsi) => {
+                try {
+                  const ll = m.getLatLng();
+                  const d = distToStamford(ll.lat, ll.lng, tlsLat, tlsLng);
+                  if (d > MI20) return;
+                  const vts = vesselLastSeenRef.current.get(mmsi);
+                  const age = vts ? Math.round((nowMs - vts) / 1000) : 0;
+                  const meta = (m as any)._tlMeta;
+                  (d <= MI10 ? S10 : S20).push({ type: "AIS", name: meta?.id ?? String(mmsi), info: meta?.detail ?? "", age, color: "#0ea5e9" });
+                } catch {}
+              });
+              S10.sort((a, b) => a.age - b.age);
+              S20.sort((a, b) => a.age - b.age);
+            }
+            const sz = Math.round(7 * uiScale);
+            const sz2 = Math.round(6 * uiScale);
+            return (
+              <>
+                <div style={{ fontSize: sz2, color: "#22d3ee40", letterSpacing: "0.12em", marginBottom: 3, fontVariantNumeric: "tabular-nums" }}>─ 10mi</div>
+                {S10.length > 0 ? S10.map((e, i) => (
+                  <div key={i} style={{ display: "flex", gap: 4, fontSize: sz, marginBottom: 2, lineHeight: 1.3 }}>
+                    <span style={{ color: e.color + "70", flexShrink: 0, minWidth: 30, fontSize: sz2, letterSpacing: "0.06em" }}>{e.type}</span>
+                    <span style={{ color: "#e2ecff70", flexShrink: 0, maxWidth: 62, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
+                    <span style={{ color: "#5a709055", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: sz2 }}>{e.info}</span>
+                    <span style={{ color: "#1e305088", flexShrink: 0, fontSize: sz2, fontVariantNumeric: "tabular-nums" }}>[{e.age}s]</span>
+                  </div>
+                )) : <div style={{ fontSize: sz2, color: "#1e3050", marginBottom: 2 }}>NO CONTACTS</div>}
+                <div style={{ fontSize: sz2, color: "#22d3ee30", letterSpacing: "0.12em", marginTop: 7, marginBottom: 3 }}>─ 20mi</div>
+                {S20.length > 0 ? S20.map((e, i) => (
+                  <div key={i} style={{ display: "flex", gap: 4, fontSize: sz, marginBottom: 2, lineHeight: 1.3 }}>
+                    <span style={{ color: e.color + "70", flexShrink: 0, minWidth: 30, fontSize: sz2, letterSpacing: "0.06em" }}>{e.type}</span>
+                    <span style={{ color: "#e2ecff70", flexShrink: 0, maxWidth: 62, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
+                    <span style={{ color: "#5a709055", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: sz2 }}>{e.info}</span>
+                    <span style={{ color: "#1e305088", flexShrink: 0, fontSize: sz2, fontVariantNumeric: "tabular-nums" }}>[{e.age}s]</span>
+                  </div>
+                )) : <div style={{ fontSize: sz2, color: "#1e3050", marginBottom: 2 }}>NO CONTACTS</div>}
+              </>
+            );
+          })()}
         </div>
       </div>
 
-      {/* ── Right column — weather + forecast + gear controls + news ────── */}
+      {/* ── Right column — gear controls + news ────────────────────────── */}
       <div className="absolute" style={{
-        right: 10, top: 48, bottom: tickerItems.length > 0 ? 28 : 0,
+        right: 10, top: 170, bottom: tickerItems.length > 0 ? 28 : 0,
         zIndex: 15, width: 228, pointerEvents: "none",
         fontFamily: "Menlo,Consolas,monospace",
         display: "flex", flexDirection: "column",
       }}>
-        {/* Weather summary — always visible */}
-        {weather && (
-          <div style={{ marginBottom: 6, flexShrink: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 1 }}>
-              <div style={{ fontSize: Math.round(9 * uiScale), color: "#e2ecff44", letterSpacing: "0.18em", fontWeight: 700 }}>STAMFORD</div>
-              {/* Gear icon */}
-              <button onClick={() => setShowControls(p => !p)} style={{
-                background: showControls ? "rgba(34,211,238,0.1)" : "none",
-                border: showControls ? "1px solid #22d3ee33" : "1px solid transparent",
-                borderRadius: 3, width: 18, height: 18, cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                pointerEvents: "auto", transition: "all 0.2s", padding: 0,
-              }}>
-                <svg width="11" height="11" viewBox="0 0 11 11" style={{ opacity: showControls ? 0.7 : 0.3, fill: "#22d3ee" }}>
-                  <path d="M5.5 3.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM.7 6.4l.9.2c.1.4.3.7.5 1L1.6 9l1.4 1.4 1.3-.5c.3.2.6.4 1 .5l.2.9h2l.2-.9c.4-.1.7-.3 1-.5l1.3.5L11 8.9l-.5-1.3c.2-.3.4-.7.5-1l.9-.2v-2l-.9-.2c-.1-.4-.3-.7-.5-1L11 2l-1.4-1.4-1.3.5c-.3-.2-.6-.4-1-.5L7.1.7h-2l-.2.9c-.4.1-.7.3-1 .5L2.6.6 1.1 2l.5 1.3c-.2.3-.4.6-.5 1L.7 4.4v2z"/>
-                </svg>
-              </button>
-            </div>
-            <div style={{ fontSize: Math.round(11 * uiScale), color: weather.precipitation > 0.005 ? "#38bdf8" : "#94a3b8", marginBottom: 1 }}>
-              {Math.round(weather.temp)}°F · {cond}
-            </div>
-            <div style={{ fontSize: Math.round(8 * uiScale), color: (weather.precipitation > 0.005 ? "#38bdf8" : "#94a3b8") + "88" }}>
-              {Math.round(weather.wind_speed)}mph {degToCompass(weather.wind_dir)} · {weather.humidity}%RH
-              {weather.precipitation > 0.005 ? ` · 💧${weather.precipitation.toFixed(2)}"` : ""}
-            </div>
-          </div>
-        )}
-
-        {/* Hourly forecast — next 8 hours */}
-        {hourlyForecast.length > 0 && (
-          <div style={{ marginBottom: 7, flexShrink: 0 }}>
-            <div style={{ display: "flex", gap: 5, overflowX: "hidden" }}>
-              {hourlyForecast.slice(0, 7).map((h, i) => {
-                const ampm = h.hour === 0 ? "12a" : h.hour < 12 ? `${h.hour}a` : h.hour === 12 ? "12p" : `${h.hour - 12}p`;
-                return (
-                  <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1, minWidth: 26 }}>
-                    <span style={{ fontSize: Math.round(6.5 * uiScale), color: "#1e3050" }}>{ampm}</span>
-                    <span style={{ fontSize: 9 }}>{wmoIcon(h.code)}</span>
-                    <span style={{ fontSize: Math.round(7 * uiScale), color: "#5a7090", fontVariantNumeric: "tabular-nums" }}>{h.temp}°</span>
-                    {h.precip >= 20 && <span style={{ fontSize: Math.round(6 * uiScale), color: "#38bdf866" }}>{h.precip}%</span>}
-                  </div>
-                );
-              })}
-            </div>
-            <div style={{ marginTop: 5, height: 1, background: "linear-gradient(to right, #1e2d4420, transparent)" }} />
-          </div>
-        )}
-
-        {/* Daily forecast — 7 days */}
-        {dailyForecast.length > 0 && (
-          <div style={{ marginBottom: 7, flexShrink: 0 }}>
-            {dailyForecast.slice(0, 6).map((d, i) => {
-              const dayName = i === 0 ? "Today" : new Date(d.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short" });
-              return (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
-                  <span style={{ fontSize: Math.round(7 * uiScale), color: "#1e3050", minWidth: 28 }}>{dayName}</span>
-                  <span style={{ fontSize: 9, flexShrink: 0 }}>{wmoIcon(d.code)}</span>
-                  <span style={{ fontSize: Math.round(7 * uiScale), color: "#94a3b8", fontVariantNumeric: "tabular-nums", flex: 1 }}>{d.max}°/{d.min}°</span>
-                  {d.precip >= 20 && <span style={{ fontSize: Math.round(6.5 * uiScale), color: "#38bdf866" }}>{d.precip}%</span>}
-                </div>
-              );
-            })}
-            <div style={{ marginTop: 4, height: 1, background: "linear-gradient(to right, #1e2d4420, transparent)" }} />
-          </div>
-        )}
+        {/* Gear button — standalone at top of column */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", marginBottom: 6, flexShrink: 0 }}>
+          <button onClick={() => setShowControls(p => !p)} style={{
+            background: showControls ? "rgba(34,211,238,0.1)" : "none",
+            border: showControls ? "1px solid #22d3ee33" : "1px solid transparent",
+            borderRadius: 3, width: 18, height: 18, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            pointerEvents: "auto", transition: "all 0.2s", padding: 0,
+          }}>
+            <svg width="11" height="11" viewBox="0 0 11 11" style={{ opacity: showControls ? 0.7 : 0.3, fill: "#22d3ee" }}>
+              <path d="M5.5 3.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM.7 6.4l.9.2c.1.4.3.7.5 1L1.6 9l1.4 1.4 1.3-.5c.3.2.6.4 1 .5l.2.9h2l.2-.9c.4-.1.7-.3 1-.5l1.3.5L11 8.9l-.5-1.3c.2-.3.4-.7.5-1l.9-.2v-2l-.9-.2c-.1-.4-.3-.7-.5-1L11 2l-1.4-1.4-1.3.5c-.3-.2-.6-.4-1-.5L7.1.7h-2l-.2.9c-.4.1-.7.3-1 .5L2.6.6 1.1 2l.5 1.3c-.2.3-.4.6-.5 1L.7 4.4v2z"/>
+            </svg>
+          </button>
+        </div>
 
         {/* Sliders — behind gear toggle */}
         {showControls && (
@@ -2927,18 +2939,8 @@ export default function StamfordMap() {
         /* Hide secondary top-bar items on narrow screens */
         @media (max-width: 540px) { .tl-mob-hide { display: none !important; } }
 
-        /* Base tile slow chromatic drift */
-        .tl-base-tile {
-          animation: tl-ambi-hue 88s ease-in-out infinite;
-        }
-        @keyframes tl-ambi-hue {
-          0%   { filter: hue-rotate(0deg)   saturate(0.9)  brightness(1.00); }
-          18%  { filter: hue-rotate(22deg)  saturate(1.12) brightness(1.02); }
-          40%  { filter: hue-rotate(-14deg) saturate(0.88) brightness(0.99); }
-          63%  { filter: hue-rotate(30deg)  saturate(1.08) brightness(1.01); }
-          82%  { filter: hue-rotate(-6deg)  saturate(0.95) brightness(1.00); }
-          100% { filter: hue-rotate(0deg)   saturate(0.9)  brightness(1.00); }
-        }
+        /* Base tile */
+        .tl-base-tile {}
 
         @keyframes tl-alert-ring {
           0%   { transform: scale(0.25); opacity: 1; }
