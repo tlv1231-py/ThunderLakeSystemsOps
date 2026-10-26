@@ -322,10 +322,17 @@ function stormSVG(_icao: string, precip1hIn: number | null, _windKt: number | nu
     box-shadow:0 0 4px ${color}88;cursor:pointer"></div>`;
 }
 function popupWrap(inner: string, src?: string) {
+  const built = Date.now();
   const srcBadge = src ? `<div style="color:#1a3050;font-size:7px;margin-top:5px;border-top:1px solid #0a1520;padding-top:3px;letter-spacing:0.09em">SRC · ${src}</div>` : "";
+  const ageLine = `<div class="tl-popup-age" data-built="${built}" style="color:#1a3050;font-size:7px;margin-top:2px;letter-spacing:0.09em">DATA · <span class="tl-age-val">0s ago</span></div>`;
   return `<div style="font-family:Menlo,Consolas,monospace;font-size:11px;color:#d8e3f0;background:#07090fee;
     border:1px solid #1e2d44;border-radius:8px;padding:10px 14px;min-width:180px;line-height:1.9;
-    backdrop-filter:blur(8px)">${inner}${srcBadge}</div>`;
+    backdrop-filter:blur(8px)">${inner}${srcBadge}${ageLine}</div>`;
+}
+
+function reticleHTML(scanning: boolean): string {
+  const cls = scanning ? "tl-reticle-scan" : "tl-reticle-lock";
+  return `<div class="tl-reticle ${cls}"><span class="tl-rc tl-rc-tl"></span><span class="tl-rc tl-rc-tr"></span><span class="tl-rc tl-rc-bl"></span><span class="tl-rc tl-rc-br"></span></div>`;
 }
 function trainMarkerSVG(): string {
   return `<div class="tl-train-icon" style="width:28px;height:10px;transform-origin:50% 50%">
@@ -484,6 +491,7 @@ export default function StamfordMap() {
   const ssModeRef           = useRef(false);
   const ssKnownRef          = useRef<Set<string>>(new Set());
   const ssScanTimerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const reticleMarkerRef    = useRef<any>(null);
 
   const [baseKey,       setBaseKey]       = useState<BaseKey>("dark");
   const [enabled,       setEnabled]       = useState<Record<LayerKey, boolean>>({
@@ -642,13 +650,24 @@ export default function StamfordMap() {
 
       if (newMarker) {
         map.panTo([newLat, newLon], { animate: true, duration: 1.8, easeLinearity: 0.2 });
-        setTimeout(() => {
-          newMarker.openPopup();
+        // Show scanning reticle immediately before the tooltip
+        const L2 = (map as any)._leaflet_id ? (globalThis as any)._L ?? map : map;
+        import("leaflet").then(mod => {
+          const Lx = mod.default;
+          if (reticleMarkerRef.current) map.removeLayer(reticleMarkerRef.current);
+          reticleMarkerRef.current = Lx.marker([newLat, newLon], {
+            icon: Lx.divIcon({ html: reticleHTML(true), className: "", iconSize: [44, 44], iconAnchor: [22, 22] }),
+            interactive: false, keyboard: false, zIndexOffset: -1000,
+          }).addTo(map);
+          // After pan + reticle animation, open popup (popupopen will swap to locked reticle)
           setTimeout(() => {
-            const el = document.querySelector(".leaflet-popup");
-            if (el) { el.classList.remove("tl-ss-popup"); void (el as HTMLElement).offsetWidth; el.classList.add("tl-ss-popup"); }
-          }, 50);
-        }, 700);
+            newMarker.openPopup();
+            setTimeout(() => {
+              const el = document.querySelector(".leaflet-popup");
+              if (el) { el.classList.remove("tl-ss-popup"); void (el as HTMLElement).offsetWidth; el.classList.add("tl-ss-popup"); }
+            }, 50);
+          }, 750);
+        });
       }
     }, 6000);
     return () => {
@@ -1667,6 +1686,35 @@ export default function StamfordMap() {
       });
       mapRef.current?.setAttribute("data-zoom", "12");
 
+      // Popup age counter + targeting reticle
+      map.on("popupopen", (e: any) => {
+        // Start live age counter
+        const ageEl = e.popup.getElement?.()?.querySelector(".tl-popup-age");
+        const valEl = ageEl?.querySelector(".tl-age-val");
+        if (ageEl && valEl) {
+          const built = parseInt(ageEl.getAttribute("data-built") || "0");
+          if (built) {
+            const tick = () => { valEl.textContent = `${Math.round((Date.now() - built) / 1000)}s ago`; };
+            tick();
+            e.popup._tlAgeTimer = setInterval(tick, 1000);
+          }
+        }
+        // Add locked reticle on the source marker
+        const src = e.popup.getSourceLayer?.() ?? e.popup._source;
+        if (src?.getLatLng) {
+          const ll = src.getLatLng();
+          if (reticleMarkerRef.current) map.removeLayer(reticleMarkerRef.current);
+          reticleMarkerRef.current = L.marker(ll, {
+            icon: L.divIcon({ html: reticleHTML(false), className: "", iconSize: [44, 44], iconAnchor: [22, 22] }),
+            interactive: false, keyboard: false, zIndexOffset: -1000,
+          }).addTo(map);
+        }
+      });
+      map.on("popupclose", (e: any) => {
+        if (e.popup._tlAgeTimer) { clearInterval(e.popup._tlAgeTimer); e.popup._tlAgeTimer = null; }
+        if (reticleMarkerRef.current) { map.removeLayer(reticleMarkerRef.current); reticleMarkerRef.current = null; }
+      });
+
       // Data layer groups
       groupRefs.current = {
         aircraft:  L.layerGroup().addTo(map),
@@ -2624,6 +2672,31 @@ export default function StamfordMap() {
         [data-zoom="8"] .leaflet-marker-icon { transform-origin: center; filter: opacity(0.6); }
         [data-zoom="7"] .leaflet-marker-icon, [data-zoom="6"] .leaflet-marker-icon,
         [data-zoom="5"] .leaflet-marker-icon { transform-origin: center; filter: opacity(0.4); }
+
+        /* Targeting reticle corner brackets */
+        .tl-reticle { position:relative; width:44px; height:44px; }
+        .tl-rc { position:absolute; width:9px; height:9px; border-color:#22d3ee; border-style:solid; }
+        .tl-rc-tl { top:0; left:0; border-width:1.5px 0 0 1.5px; }
+        .tl-rc-tr { top:0; right:0; border-width:1.5px 1.5px 0 0; }
+        .tl-rc-bl { bottom:0; left:0; border-width:0 0 1.5px 1.5px; }
+        .tl-rc-br { bottom:0; right:0; border-width:0 1.5px 1.5px 0; }
+        @keyframes tl-rc-lock { from { opacity:0; transform:scale(1.4); } to { opacity:0.9; transform:scale(1); } }
+        .tl-reticle-lock .tl-rc { animation:tl-rc-lock 0.18s ease both; }
+        .tl-reticle-lock .tl-rc-tl { animation-delay:0ms; }
+        .tl-reticle-lock .tl-rc-tr { animation-delay:25ms; }
+        .tl-reticle-lock .tl-rc-bl { animation-delay:50ms; }
+        .tl-reticle-lock .tl-rc-br { animation-delay:75ms; }
+        @keyframes tl-rc-scan {
+          0%   { opacity:0; transform:scale(2.2); }
+          45%  { opacity:1; transform:scale(1.05); }
+          75%  { transform:scale(0.94); }
+          100% { opacity:0.9; transform:scale(1); }
+        }
+        .tl-reticle-scan .tl-rc { animation:tl-rc-scan 0.55s cubic-bezier(0.34,1.56,0.64,1) both; }
+        .tl-reticle-scan .tl-rc-tl { animation-delay:0ms; }
+        .tl-reticle-scan .tl-rc-tr { animation-delay:55ms; }
+        .tl-reticle-scan .tl-rc-bl { animation-delay:110ms; }
+        .tl-reticle-scan .tl-rc-br { animation-delay:165ms; }
 
         /* Screensaver popup tactical lock-on animation */
         @keyframes tl-ss-lock {
