@@ -2670,100 +2670,55 @@ export default function StamfordMap() {
         </span>
       </div>
 
-      {/* ── Feed orbs ──────────────────────────────────────────────────────── */}
+      {/* ── Feed status strip ──────────────────────────────────────────────── */}
       <div className="absolute z-10 left-0 right-0 flex justify-center"
-        style={{ top: 92, gap: 6, padding: "0 10px", pointerEvents: "none" }}>
+        style={{ top: 92, gap: 3, padding: "0 10px", pointerEvents: "none", flexWrap: "wrap" }}>
         {FEED_ORDER.map(key => {
-          const meta   = FEED_META[key];
+          const meta     = FEED_META[key];
           const layerKey = FEED_LAYER[key];
-          const active = layerKey ? enabled[layerKey] : true;
+          const active   = layerKey ? enabled[layerKey] : true;
           const lastSeen = feedLastSeenRef.current[key];
-          const ageMs  = lastSeen ? nowMs - lastSeen : null;
-          const ageSec = ageMs !== null ? Math.floor(ageMs / 1000) : null;
-          const progress = ageSec === null ? 0 : Math.max(0, 1 - ageSec / meta.maxAge);
-          const stale  = ageSec !== null && ageSec > meta.maxAge;
-          const aging  = ageSec !== null && ageSec > meta.maxAge * 0.55 && !stale;
-          const fresh  = ageSec !== null && !aging && !stale;
-          const ringColor = !active || ageSec === null ? "#182232"
+          const ageMs    = lastSeen ? nowMs - lastSeen : null;
+          const ageSec   = ageMs !== null ? Math.floor(ageMs / 1000) : null;
+          const stale    = ageSec !== null && ageSec > meta.maxAge;
+          const aging    = ageSec !== null && ageSec > meta.maxAge * 0.55 && !stale;
+          const fresh    = ageSec !== null && !aging && !stale;
+          const dotColor = !active || ageSec === null ? "#1a2a3a"
             : stale ? "#ef4444" : aging ? "#f59e0b" : meta.color;
-          const timeStr = ageSec === null ? "—"
-            : ageSec < 5    ? "now"
-            : ageSec < 60   ? `${ageSec}s`
-            : ageSec < 3600 ? `${Math.floor(ageSec / 60)}m`
-            : `${Math.floor(ageSec / 3600)}h`;
+          const labelColor = !active ? meta.color + "1a"
+            : fresh && !ssMode ? meta.color + "cc" : aging && !ssMode ? meta.color + "55" : meta.color + "28";
           const countVal = layerKey ? layerBadge[layerKey] : undefined;
-          const ageStr = ageSec === null ? "No data yet"
-            : ageSec < 5    ? "Just now"
-            : ageSec < 60   ? `${ageSec}s ago`
-            : ageSec < 3600 ? `${Math.floor(ageSec / 60)}m ${ageSec % 60}s ago`
-            : `${Math.floor(ageSec / 3600)}h ago`;
-          const statusStr = ageSec === null ? "Waiting" : stale ? "Stale" : aging ? "Aging" : "Fresh";
-          const maxAgeStr = meta.maxAge >= 3600 ? `${meta.maxAge/3600}h` : meta.maxAge >= 60 ? `${meta.maxAge/60}m` : `${meta.maxAge}s`;
+          const timeStr = ageSec === null ? "" : ageSec < 5 ? "" : ageSec < 60 ? `${ageSec}s` : ageSec < 3600 ? `${Math.floor(ageSec/60)}m` : `${Math.floor(ageSec/3600)}h`;
           return (
-            <div key={key} className="tl-orb-wrap" style={{
-              position: "relative", width: 44, height: 72,
-              flexShrink: 0, pointerEvents: "auto", cursor: "default",
-              opacity: active ? (ssMode ? 0.22 : 1) : 0.14,
-              background: active && fresh && !ssMode
-                ? `linear-gradient(180deg, ${meta.color}14 0%, #030508 100%)`
-                : "linear-gradient(180deg, #080c14 0%, #030508 100%)",
-              border: `1px solid ${active && fresh && !ssMode ? meta.color + "44" : "#0c1520"}`,
-              borderRadius: 1,
-              boxShadow: active && fresh && !ssMode ? `0 0 8px ${meta.color}18, inset 0 0 8px ${meta.color}07` : "none",
-              transition: "border-color 0.8s, box-shadow 0.8s, opacity 1.4s, background 0.8s",
+            <div key={key} title={`${meta.label}${ageSec !== null ? ` · ${ageSec < 5 ? "just now" : ageSec < 60 ? `${ageSec}s ago` : `${Math.floor(ageSec/60)}m ago`}` : ""}`} style={{
+              display: "flex", alignItems: "center", gap: 3,
+              opacity: active ? (ssMode ? 0.08 : 1) : 0.1,
+              padding: "2px 5px",
+              background: fresh && active && !ssMode ? meta.color + "0d" : "rgba(3,5,8,0.72)",
+              border: `1px solid ${fresh && active && !ssMode ? meta.color + "2a" : "#0c1a2866"}`,
+              borderRadius: 2,
+              transition: "opacity 1.4s, background 0.8s, border-color 0.8s",
+              pointerEvents: "auto", cursor: "default",
             }}>
-              {/* Corner brackets */}
-              {([
-                { top: 2, left: 2, borderTop: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}`, borderLeft: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}` } as React.CSSProperties,
-                { top: 2, right: 2, borderTop: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}`, borderRight: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}` } as React.CSSProperties,
-                { bottom: 2, left: 2, borderBottom: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}`, borderLeft: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}` } as React.CSSProperties,
-                { bottom: 2, right: 2, borderBottom: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}`, borderRight: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}` } as React.CSSProperties,
-              ]).map((s, i) => (
-                <div key={i} style={{ position: "absolute", width: 5, height: 5, ...s }} />
-              ))}
-              {/* Callsign zone — monospace signal code, no emoji */}
-              <div style={{ height: 30, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <span style={{
-                  fontFamily: "Menlo,Consolas,monospace",
-                  fontSize: meta.short.length > 3 ? 6 : 7,
-                  letterSpacing: "0.10em",
-                  color: active && fresh && !ssMode ? meta.color : meta.color + "44",
-                  border: `1px solid ${active && fresh && !ssMode ? meta.color + "55" : meta.color + "18"}`,
-                  padding: "2px 3px", lineHeight: 1.2, userSelect: "none",
-                  textShadow: active && fresh && !ssMode ? `0 0 6px ${meta.color}88` : "none",
-                  transition: "all 0.8s",
-                }}>{meta.short}</span>
-              </div>
-              {/* Progress bar */}
-              <div style={{ height: 18, position: "relative", background: "rgba(255,255,255,0.035)",
-                borderTop: "1px solid rgba(255,255,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                <div style={{ position: "absolute", left: 0, top: 0, bottom: 0,
-                  width: `${progress * 100}%`, background: ringColor, opacity: 0.55,
-                  transition: "width 1s linear, background 0.6s" }} />
-                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center",
-                  justifyContent: "center", fontFamily: "Menlo,Consolas,monospace",
-                  fontSize: 8, color: "#cdd8ec", letterSpacing: "0.05em", zIndex: 1,
-                  textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>{timeStr}</div>
-              </div>
-              {/* Count / label zone */}
-              <div style={{ height: 22, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <span style={{ fontFamily: "Menlo,Consolas,monospace",
-                  fontSize: countVal ? (String(countVal).length > 5 ? 7 : String(countVal).length > 3 ? 9 : 11) : 7,
-                  fontWeight: 700,
-                  color: countVal ? (active && fresh ? meta.color : meta.color + "99") : "#1e3050",
-                  letterSpacing: "0.03em", lineHeight: 1,
-                  textShadow: countVal && active && fresh ? `0 0 8px ${meta.color}55` : "none",
-                  transition: "color 0.6s, text-shadow 0.6s" }}>
-                  {countVal ?? meta.short}
+              <span style={{ width: 4, height: 4, borderRadius: "50%", background: dotColor, flexShrink: 0,
+                boxShadow: fresh && active && !ssMode ? `0 0 4px ${dotColor}aa` : "none",
+                transition: "background 0.6s, box-shadow 0.6s" }} />
+              <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 6, letterSpacing: "0.08em",
+                color: labelColor, transition: "color 0.8s", lineHeight: 1, userSelect: "none" }}>
+                {meta.short}
+              </span>
+              {countVal !== undefined && countVal !== "0" && (
+                <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 6, lineHeight: 1,
+                  color: fresh && active && !ssMode ? meta.color + "88" : "#1e3050" }}>
+                  {Number(countVal) > 9999 ? `${Math.round(Number(countVal)/1000)}k` : countVal}
                 </span>
-              </div>
-              <div className="tl-orb-tip">
-                <div style={{ color: meta.color, fontWeight: 700, marginBottom: 4 }}>{meta.label}</div>
-                <div><span style={{ color: "#475569" }}>Updated: </span><span style={{ color: "#e2ecff" }}>{ageStr}</span></div>
-                <div><span style={{ color: "#475569" }}>Status: </span><span style={{ color: ringColor }}>{statusStr}</span></div>
-                {layerKey && <div><span style={{ color: "#475569" }}>Layer: </span><span style={{ color: active ? "#4ade80" : "#475569" }}>{active ? "On" : "Off"}</span></div>}
-                <div style={{ color: "#2a3a4a", marginTop: 3 }}>Refresh window: {maxAgeStr}</div>
-              </div>
+              )}
+              {timeStr && (
+                <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 5, lineHeight: 1,
+                  color: stale ? "#ef444466" : "#22344466" }}>
+                  {timeStr}
+                </span>
+              )}
             </div>
           );
         })}
@@ -3025,23 +2980,23 @@ export default function StamfordMap() {
                             )}
                           </div>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: sz, fontWeight: 700, color: "#e8f4ff", letterSpacing: "0.04em", lineHeight: 1.1, marginBottom: 3,
+                            <div style={{ fontSize: sz, fontWeight: 700, color: "#e8f4ffaa", letterSpacing: "0.04em", lineHeight: 1.1, marginBottom: 3,
                               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                               {e.name}
                             </div>
                             {acFull && (
-                              <div style={{ fontSize: sz2, color: "#88aabb88", lineHeight: 1.3, marginBottom: 2,
+                              <div style={{ fontSize: sz2, color: "#88aabb66", lineHeight: 1.3, marginBottom: 2,
                                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                 {acFull}
                               </div>
                             )}
                             {e.info && (
-                              <div style={{ fontSize: sz2, color: "#5a709066", lineHeight: 1.3, marginBottom: 3,
+                              <div style={{ fontSize: sz2, color: "#5a709055", lineHeight: 1.3, marginBottom: 3,
                                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                 {e.info}
                               </div>
                             )}
-                            <div style={{ fontSize: sz2, color: "#22d3ee55", fontVariantNumeric: "tabular-nums", letterSpacing: "0.12em" }}>
+                            <div style={{ fontSize: sz2, color: "#22d3ee44", fontVariantNumeric: "tabular-nums", letterSpacing: "0.12em" }}>
                               [{e.age}s]
                             </div>
                           </div>
@@ -3083,23 +3038,23 @@ export default function StamfordMap() {
                             )}
                           </div>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: sz, fontWeight: 700, color: "#e8f4ffcc", letterSpacing: "0.04em", lineHeight: 1.1, marginBottom: 3,
+                            <div style={{ fontSize: sz, fontWeight: 700, color: "#e8f4ff88", letterSpacing: "0.04em", lineHeight: 1.1, marginBottom: 3,
                               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                               {e.name}
                             </div>
                             {acFull20 && (
-                              <div style={{ fontSize: sz2, color: "#88aabb66", lineHeight: 1.3, marginBottom: 2,
+                              <div style={{ fontSize: sz2, color: "#88aabb44", lineHeight: 1.3, marginBottom: 2,
                                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                 {acFull20}
                               </div>
                             )}
                             {e.info && (
-                              <div style={{ fontSize: sz2, color: "#5a709044", lineHeight: 1.3, marginBottom: 3,
+                              <div style={{ fontSize: sz2, color: "#5a709033", lineHeight: 1.3, marginBottom: 3,
                                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                 {e.info}
                               </div>
                             )}
-                            <div style={{ fontSize: sz2, color: "#22d3ee33", fontVariantNumeric: "tabular-nums", letterSpacing: "0.12em" }}>
+                            <div style={{ fontSize: sz2, color: "#22d3ee28", fontVariantNumeric: "tabular-nums", letterSpacing: "0.12em" }}>
                               [{e.age}s]
                             </div>
                           </div>
@@ -3318,19 +3273,32 @@ export default function StamfordMap() {
             </svg>
             {/* Callsign label floats near the reticle */}
             {trackPx && (() => {
-              const pad = 50; // offset from reticle center
-              const labelX = Math.min(trackPx.x + pad, W - 160);
+              const pad = 50;
+              const labelX = Math.min(trackPx.x + pad, W - 170);
               const labelY = Math.max(trackPx.y - 48, 8);
+              const parts = ssTrackMsg.detail ? ssTrackMsg.detail.split(" · ") : [];
+              const acTypePart = parts.find(p => !p.includes("ft") && !p.includes("kt") && p !== "gnd" && p !== "—") ?? "";
+              const altPart    = parts.find(p => p.includes("ft") || p === "gnd") ?? "";
+              const spdPart    = parts.find(p => p.includes("kt")) ?? "";
+              const tooltipRows: { label: string; val: string }[] = [];
+              if (acTypePart && acTypePart !== "—") tooltipRows.push({ label: "TYPE", val: acTypePart });
+              if (altPart) tooltipRows.push({ label: "ALT", val: altPart });
+              if (spdPart) tooltipRows.push({ label: "SPD", val: spdPart });
+              tooltipRows.push({ label: "LOCK", val: `${lockSec}s` });
               return (
                 <div style={{ position: "absolute", top: labelY, left: labelX, fontFamily: "Menlo,Consolas,monospace", pointerEvents: "none" }}>
                   <div style={{ fontSize: 6, color: "#22d3ee55", letterSpacing: "0.32em", marginBottom: 4 }}>TRACKING</div>
-                  <div style={{ fontSize: 18, color: "#e2ecffcc", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, textShadow: "0 0 12px #22d3ee55" }}>
+                  <div style={{ fontSize: 18, color: "#e2ecffcc", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, textShadow: "0 0 12px #22d3ee55", marginBottom: 6 }}>
                     {ssTrackMsg.id}
                   </div>
-                  {ssTrackMsg.detail && (
-                    <div style={{ fontSize: 8, color: "#22d3ee66", marginTop: 4, letterSpacing: "0.08em" }}>{ssTrackMsg.detail}</div>
-                  )}
-                  <div style={{ fontSize: 8, color: "#22d3ee44", marginTop: 3, letterSpacing: "0.18em" }}>[{lockSec}s]</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    {tooltipRows.map(({ label, val }) => (
+                      <div key={label} style={{ display: "flex", gap: 6, alignItems: "baseline" }}>
+                        <span style={{ fontSize: 6, color: "#22d3ee44", letterSpacing: "0.22em", minWidth: 28 }}>{label}</span>
+                        <span style={{ fontSize: 10, color: label === "LOCK" ? "#22d3ee88" : "#b0cce0cc", letterSpacing: "0.06em", fontWeight: 500 }}>{val}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               );
             })()}
