@@ -515,7 +515,6 @@ function reticleHTML(phase: "enter" | "lock" | "scan"): string {
     <div class="tl-rc-ring-inner"></div>
     <span class="tl-rc tl-rc-tl"></span><span class="tl-rc tl-rc-tr"></span>
     <span class="tl-rc tl-rc-bl"></span><span class="tl-rc tl-rc-br"></span>
-    <div class="tl-rc-cross-h"></div><div class="tl-rc-cross-v"></div>
     <div class="tl-rc-center"></div>
   </div>`;
 }
@@ -2670,55 +2669,86 @@ export default function StamfordMap() {
         </span>
       </div>
 
-      {/* ── Feed status strip ──────────────────────────────────────────────── */}
+      {/* ── Feed orbs ──────────────────────────────────────────────────────── */}
       <div className="absolute z-10 left-0 right-0 flex justify-center"
-        style={{ top: 92, gap: 3, padding: "0 10px", pointerEvents: "none", flexWrap: "wrap" }}>
+        style={{ top: 92, gap: 6, padding: "0 10px", pointerEvents: "none" }}>
         {FEED_ORDER.map(key => {
-          const meta     = FEED_META[key];
+          const meta   = FEED_META[key];
           const layerKey = FEED_LAYER[key];
-          const active   = layerKey ? enabled[layerKey] : true;
+          const active = layerKey ? enabled[layerKey] : true;
           const lastSeen = feedLastSeenRef.current[key];
-          const ageMs    = lastSeen ? nowMs - lastSeen : null;
-          const ageSec   = ageMs !== null ? Math.floor(ageMs / 1000) : null;
-          const stale    = ageSec !== null && ageSec > meta.maxAge;
-          const aging    = ageSec !== null && ageSec > meta.maxAge * 0.55 && !stale;
-          const fresh    = ageSec !== null && !aging && !stale;
-          const dotColor = !active || ageSec === null ? "#1a2a3a"
+          const ageMs  = lastSeen ? nowMs - lastSeen : null;
+          const ageSec = ageMs !== null ? Math.floor(ageMs / 1000) : null;
+          const progress = ageSec === null ? 0 : Math.max(0, 1 - ageSec / meta.maxAge);
+          const stale  = ageSec !== null && ageSec > meta.maxAge;
+          const aging  = ageSec !== null && ageSec > meta.maxAge * 0.55 && !stale;
+          const fresh  = ageSec !== null && !aging && !stale;
+          const ringColor = !active || ageSec === null ? "#182232"
             : stale ? "#ef4444" : aging ? "#f59e0b" : meta.color;
-          const labelColor = !active ? meta.color + "1a"
-            : fresh && !ssMode ? meta.color + "cc" : aging && !ssMode ? meta.color + "55" : meta.color + "28";
+          const timeStr = ageSec === null ? "—"
+            : ageSec < 5    ? "now"
+            : ageSec < 60   ? `${ageSec}s`
+            : ageSec < 3600 ? `${Math.floor(ageSec / 60)}m`
+            : `${Math.floor(ageSec / 3600)}h`;
           const countVal = layerKey ? layerBadge[layerKey] : undefined;
-          const timeStr = ageSec === null ? "" : ageSec < 5 ? "" : ageSec < 60 ? `${ageSec}s` : ageSec < 3600 ? `${Math.floor(ageSec/60)}m` : `${Math.floor(ageSec/3600)}h`;
           return (
-            <div key={key} title={`${meta.label}${ageSec !== null ? ` · ${ageSec < 5 ? "just now" : ageSec < 60 ? `${ageSec}s ago` : `${Math.floor(ageSec/60)}m ago`}` : ""}`} style={{
-              display: "flex", alignItems: "center", gap: 3,
-              opacity: active ? (ssMode ? 0.08 : 1) : 0.1,
-              padding: "2px 5px",
-              background: fresh && active && !ssMode ? meta.color + "0d" : "rgba(3,5,8,0.72)",
-              border: `1px solid ${fresh && active && !ssMode ? meta.color + "2a" : "#0c1a2866"}`,
-              borderRadius: 2,
-              transition: "opacity 1.4s, background 0.8s, border-color 0.8s",
-              pointerEvents: "auto", cursor: "default",
+            <div key={key} className="tl-orb-wrap" style={{
+              position: "relative", width: 44, height: 72,
+              flexShrink: 0, pointerEvents: "auto", cursor: "default",
+              opacity: active ? (ssMode ? 0.22 : 1) : 0.14,
+              background: active && fresh && !ssMode
+                ? `linear-gradient(180deg, ${meta.color}14 0%, #030508 100%)`
+                : "linear-gradient(180deg, #080c14 0%, #030508 100%)",
+              border: `1px solid ${active && fresh && !ssMode ? meta.color + "44" : "#0c1520"}`,
+              borderRadius: 1,
+              boxShadow: active && fresh && !ssMode ? `0 0 8px ${meta.color}18, inset 0 0 8px ${meta.color}07` : "none",
+              transition: "border-color 0.8s, box-shadow 0.8s, opacity 1.4s, background 0.8s",
             }}>
-              <span style={{ width: 4, height: 4, borderRadius: "50%", background: dotColor, flexShrink: 0,
-                boxShadow: fresh && active && !ssMode ? `0 0 4px ${dotColor}aa` : "none",
-                transition: "background 0.6s, box-shadow 0.6s" }} />
-              <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 6, letterSpacing: "0.08em",
-                color: labelColor, transition: "color 0.8s", lineHeight: 1, userSelect: "none" }}>
-                {meta.short}
-              </span>
-              {countVal !== undefined && countVal !== "0" && (
-                <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 6, lineHeight: 1,
-                  color: fresh && active && !ssMode ? meta.color + "88" : "#1e3050" }}>
-                  {Number(countVal) > 9999 ? `${Math.round(Number(countVal)/1000)}k` : countVal}
+              {/* Corner brackets */}
+              {([
+                { top: 2, left: 2, borderTop: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}`, borderLeft: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}` } as React.CSSProperties,
+                { top: 2, right: 2, borderTop: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}`, borderRight: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}` } as React.CSSProperties,
+                { bottom: 2, left: 2, borderBottom: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}`, borderLeft: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}` } as React.CSSProperties,
+                { bottom: 2, right: 2, borderBottom: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}`, borderRight: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}` } as React.CSSProperties,
+              ]).map((s, i) => (
+                <div key={i} style={{ position: "absolute", width: 5, height: 5, ...s }} />
+              ))}
+              {/* Signal code */}
+              <div style={{ height: 30, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{
+                  fontFamily: "Menlo,Consolas,monospace",
+                  fontSize: meta.short.length > 3 ? 6 : 7,
+                  letterSpacing: "0.10em",
+                  color: active && fresh && !ssMode ? meta.color : meta.color + "44",
+                  border: `1px solid ${active && fresh && !ssMode ? meta.color + "55" : meta.color + "18"}`,
+                  padding: "2px 3px", lineHeight: 1.2, userSelect: "none",
+                  textShadow: active && fresh && !ssMode ? `0 0 6px ${meta.color}88` : "none",
+                  transition: "all 0.8s",
+                }}>{meta.short}</span>
+              </div>
+              {/* Progress bar */}
+              <div style={{ height: 18, position: "relative", background: "rgba(255,255,255,0.035)",
+                borderTop: "1px solid rgba(255,255,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                <div style={{ position: "absolute", left: 0, top: 0, bottom: 0,
+                  width: `${progress * 100}%`, background: ringColor, opacity: 0.55,
+                  transition: "width 1s linear, background 0.6s" }} />
+                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center",
+                  justifyContent: "center", fontFamily: "Menlo,Consolas,monospace",
+                  fontSize: 8, color: "#cdd8ec", letterSpacing: "0.05em", zIndex: 1,
+                  textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>{timeStr}</div>
+              </div>
+              {/* Count */}
+              <div style={{ height: 22, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ fontFamily: "Menlo,Consolas,monospace",
+                  fontSize: countVal ? (countVal.length > 5 ? 7 : countVal.length > 3 ? 9 : 11) : 7,
+                  fontWeight: 700,
+                  color: countVal ? (active && fresh ? meta.color : meta.color + "99") : "#1e3050",
+                  letterSpacing: "0.03em", lineHeight: 1,
+                  textShadow: countVal && active && fresh ? `0 0 8px ${meta.color}55` : "none",
+                  transition: "color 0.6s, text-shadow 0.6s" }}>
+                  {countVal ?? meta.short}
                 </span>
-              )}
-              {timeStr && (
-                <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 5, lineHeight: 1,
-                  color: stale ? "#ef444466" : "#22344466" }}>
-                  {timeStr}
-                </span>
-              )}
+              </div>
             </div>
           );
         })}
@@ -3190,33 +3220,29 @@ export default function StamfordMap() {
           const acFullName = acTypeCode ? (ICAO_NAMES[acTypeCode] ?? acTypeCode) : "";
           const acSlug = acTypeCode ? WS_SLUGS[acTypeCode] : undefined;
           const acShape = acTypeCode ? AC_SHAPES[acTypeCode] : undefined;
+          const detailParts = ssTrackMsg.detail ? ssTrackMsg.detail.split(" · ") : [];
+          const altVal = detailParts.find(p => p.includes("ft") || p === "gnd") ?? "";
+          const spdVal = detailParts.find(p => p.includes("kt")) ?? "";
           const rows: Array<{ label: string; value: string }> = [];
-          if (acTypeCode) rows.push({ label: "TYPE", value: acTypeCode });
-          if (meta?.reg)  rows.push({ label: "REG",  value: meta.reg });
-          if (meta?.op)   rows.push({ label: "OPR",  value: meta.op });
-          if (!acTypeCode && ssTrackMsg.detail) rows.push({ label: "INFO", value: ssTrackMsg.detail });
-          rows.push({ label: "LOCK", value: lockDisplay });
+          if (altVal) rows.push({ label: "Altitude", value: altVal });
+          if (spdVal) rows.push({ label: "Speed",    value: spdVal });
+          if (meta?.reg) rows.push({ label: "REG",   value: meta.reg });
+          rows.push({ label: "Lock", value: lockDisplay });
           return (
             <div key={ssTrackMsg.id} className="tl-track-pane-reveal" style={{ flex: "0 0 auto", marginBottom: 8, borderLeft: "2px solid #22d3ee33", paddingLeft: 10 }}>
               {/* Header */}
-              <div style={{ fontSize: 12, color: "#22d3eecc", letterSpacing: "0.32em", marginBottom: 6, display: "flex", alignItems: "center", gap: 5, fontWeight: 700 }}>
+              <div style={{ fontSize: 11, color: "#22d3eecc", letterSpacing: "0.28em", marginBottom: 6, display: "flex", alignItems: "center", gap: 5, fontWeight: 700 }}>
                 <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#22d3ee", display: "inline-block", animation: "tl-blink 1.2s ease-in-out infinite", flexShrink: 0,
                   boxShadow: "0 0 5px #22d3ee" }} />
-                TRACKING
+                AUTOTRACKING
               </div>
-              {/* Aircraft type */}
-              <div style={{ fontSize: 16, color: "#22d3ee99", letterSpacing: "0.18em", marginBottom: 3, fontWeight: 600 }}>{typeLabel}</div>
+              {/* Type label */}
+              <div style={{ fontSize: 14, color: "#22d3ee77", letterSpacing: "0.18em", marginBottom: 3, fontWeight: 600 }}>{typeLabel}</div>
               {/* Callsign — large */}
-              <div style={{ fontSize: Math.round(38 * uiScale), color: "#e8f4ff", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, marginBottom: 5,
+              <div style={{ fontSize: Math.round(38 * uiScale), color: "#e8f4ff", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, marginBottom: 8,
                 textShadow: "0 0 20px #22d3ee55, 0 0 4px #22d3ee33" }}>
                 {ssTrackMsg.id}
               </div>
-              {/* Full aircraft name */}
-              {acFullName && (
-                <div className="tl-track-typereveal" style={{ fontSize: 14, color: "#94c8e8cc", letterSpacing: "0.04em", marginBottom: 8, lineHeight: 1.4, fontWeight: 500 }}>
-                  {acFullName}
-                </div>
-              )}
               {/* Aircraft silhouette */}
               {acSlug ? (
                 <div style={{ marginBottom: 8 }}>
@@ -3229,19 +3255,19 @@ export default function StamfordMap() {
                 <div style={{ width: 52, height: 65, marginBottom: 8, opacity: 0.85 }}
                   dangerouslySetInnerHTML={{ __html: genAcSVG(acShape) }} />
               ) : null}
-              {/* Detail string */}
-              {acTypeCode && ssTrackMsg.detail && (
-                <div style={{ fontSize: 14, color: "#7ab8cc99", letterSpacing: "0.04em", marginBottom: 8, lineHeight: 1.5 }}>
-                  {ssTrackMsg.detail}
+              {/* Full aircraft name */}
+              {acFullName && (
+                <div className="tl-track-typereveal" style={{ fontSize: 13, color: "#94c8e8bb", letterSpacing: "0.03em", marginBottom: 10, lineHeight: 1.4, fontWeight: 500 }}>
+                  {acFullName}
                 </div>
               )}
-              {/* Data rows */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                {rows.filter(r => r.label !== "INFO" || !acTypeCode).map(({ label, value }, i) => (
-                  <div key={label} className="tl-track-rowreveal" style={{ display: "flex", gap: 8, alignItems: "baseline",
+              {/* Data rows — Label: value */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {rows.map(({ label, value }, i) => (
+                  <div key={label} className="tl-track-rowreveal" style={{ fontSize: Math.round(12 * uiScale), lineHeight: 1.5,
                     animationDelay: `${0.18 + i * 0.07}s` }}>
-                    <span style={{ fontSize: 11, color: "#22d3ee55", letterSpacing: "0.22em", minWidth: 30 }}>{label}</span>
-                    <span style={{ fontSize: Math.round(14 * uiScale), color: label === "LOCK" ? "#22d3eebb" : "#b0cce0ee", letterSpacing: "0.04em", fontWeight: 500 }}>{value}</span>
+                    <span style={{ color: "#22d3ee66" }}>{label}: </span>
+                    <span style={{ color: label === "Lock" ? "#22d3eebb" : "#b0cce0dd", fontWeight: 500 }}>{value}</span>
                   </div>
                 ))}
               </div>
