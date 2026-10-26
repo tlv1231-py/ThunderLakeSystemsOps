@@ -686,10 +686,12 @@ export default function StamfordMap() {
     }
     ssLastInputRef.current = Date.now();
 
-    // Seed known set with all currently visible vehicles
-    aircraftMarkersRef.current.forEach((_, id) => ssKnownRef.current.add(id));
-    vesselMarkersRef.current.forEach((_, mmsi) => ssKnownRef.current.add(`ais-${mmsi}`));
-    trainMarkersRef.current.forEach((_, id) => ssKnownRef.current.add(`train-${id}`));
+    // Seed known set with vehicles already within 10mi (don't pre-block distant fly-ins)
+    const SS_SEED_M = 16093;
+    const { lat: tlsLat0, lng: tlsLng0 } = crosshairLatLngRef.current;
+    aircraftMarkersRef.current.forEach((m, id) => { try { if (distToStamford(m.getLatLng().lat, m.getLatLng().lng, tlsLat0, tlsLng0) <= SS_SEED_M) ssKnownRef.current.add(id); } catch {} });
+    vesselMarkersRef.current.forEach((m, mmsi) => { try { if (distToStamford(m.getLatLng().lat, m.getLatLng().lng, tlsLat0, tlsLng0) <= SS_SEED_M) ssKnownRef.current.add(`ais-${mmsi}`); } catch {} });
+    trainMarkersRef.current.forEach((m, id) => { try { if (distToStamford(m.getLatLng().lat, m.getLatLng().lng, tlsLat0, tlsLng0) <= SS_SEED_M) ssKnownRef.current.add(`train-${id}`); } catch {} });
 
     // Track user input to detect idle
     const mapEl = mapRef.current;
@@ -756,10 +758,10 @@ export default function StamfordMap() {
         }
       });
 
-      // Mark all current as known
-      aircraftMarkersRef.current.forEach((_, id) => ssKnownRef.current.add(id));
-      vesselMarkersRef.current.forEach((_, mmsi) => ssKnownRef.current.add(`ais-${mmsi}`));
-      trainMarkersRef.current.forEach((_, id) => ssKnownRef.current.add(`train-${id}`));
+      // Mark only vehicles currently within 10mi as known (preserve fly-in detection for distant ones)
+      aircraftMarkersRef.current.forEach((m, id) => { try { if (distToStamford(m.getLatLng().lat, m.getLatLng().lng, tlsLat, tlsLng) <= SS_M) ssKnownRef.current.add(id); } catch {} });
+      vesselMarkersRef.current.forEach((m, mmsi) => { try { if (distToStamford(m.getLatLng().lat, m.getLatLng().lng, tlsLat, tlsLng) <= SS_M) ssKnownRef.current.add(`ais-${mmsi}`); } catch {} });
+      trainMarkersRef.current.forEach((m, id) => { try { if (distToStamford(m.getLatLng().lat, m.getLatLng().lng, tlsLat, tlsLng) <= SS_M) ssKnownRef.current.add(`train-${id}`); } catch {} });
 
       if (newMarker) {
         ssTrackMarkerRef.current = newMarker;
@@ -2017,6 +2019,12 @@ export default function StamfordMap() {
           const inner = m._icon?.querySelector?.(".tl-train-icon") as HTMLElement | null;
           if (inner) inner.style.transform = `scale(${trainScaleRef.current}) rotate(${(brg - 90 + 360) % 360}deg)`;
         });
+        // Apply scale to stationary trains not being interpolated above
+        trainMarkersRef.current.forEach((m, id) => {
+          if (trainStateRef.current.has(id)) return;
+          const inner = m._icon?.querySelector?.(".tl-train-icon") as HTMLElement | null;
+          if (inner && !inner.style.transform.includes("rotate")) inner.style.transform = `scale(${trainScaleRef.current})`;
+        });
         // Reticle follows moving source marker
         if (reticleSrcRef.current && reticleMarkerRef.current) {
           try { reticleMarkerRef.current.setLatLng(reticleSrcRef.current.getLatLng()); } catch {}
@@ -2424,7 +2432,7 @@ export default function StamfordMap() {
         )}
 
         {/* Clock — cycles Zulu / UTC / local every 2.5s */}
-        <span className="shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(13 * uiScale), color: "#39d97a", letterSpacing: "0.12em", fontWeight: 700, borderLeft: "1px solid #1e2d4430", paddingLeft: 10 }}>
+        <span key={Math.floor(nowMs / 2500) % 3} className="tl-clock-flip shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(13 * uiScale), color: "#39d97a", letterSpacing: "0.12em", fontWeight: 700, borderLeft: "1px solid #1e2d4430", paddingLeft: 10 }}>
           {clockDisplay}
         </span>
       </div>
@@ -2462,27 +2470,36 @@ export default function StamfordMap() {
             <div key={key} className="tl-orb-wrap" style={{
               position: "relative", width: 44, height: 72,
               flexShrink: 0, pointerEvents: "auto", cursor: "default",
-              opacity: active ? 1 : 0.18,
-              background: `linear-gradient(180deg, ${meta.color}0f 0%, #050710 100%)`,
-              border: `1px solid ${active && fresh ? meta.color + "55" : "#0d1a2b"}`,
-              borderRadius: 2,
-              boxShadow: active && fresh ? `0 0 10px ${meta.color}25, inset 0 0 10px ${meta.color}09` : "none",
-              transition: "border-color 0.6s, box-shadow 0.6s",
+              opacity: active ? (ssMode ? 0.22 : 1) : 0.14,
+              background: active && fresh && !ssMode
+                ? `linear-gradient(180deg, ${meta.color}14 0%, #030508 100%)`
+                : "linear-gradient(180deg, #080c14 0%, #030508 100%)",
+              border: `1px solid ${active && fresh && !ssMode ? meta.color + "44" : "#0c1520"}`,
+              borderRadius: 1,
+              boxShadow: active && fresh && !ssMode ? `0 0 8px ${meta.color}18, inset 0 0 8px ${meta.color}07` : "none",
+              transition: "border-color 0.8s, box-shadow 0.8s, opacity 1.4s, background 0.8s",
             }}>
               {/* Corner brackets */}
               {([
-                { top: 2, left: 2, borderTop: `1px solid ${active && fresh ? meta.color + "bb" : meta.color + "3a"}`, borderLeft: `1px solid ${active && fresh ? meta.color + "bb" : meta.color + "3a"}` } as React.CSSProperties,
-                { top: 2, right: 2, borderTop: `1px solid ${active && fresh ? meta.color + "bb" : meta.color + "3a"}`, borderRight: `1px solid ${active && fresh ? meta.color + "bb" : meta.color + "3a"}` } as React.CSSProperties,
-                { bottom: 2, left: 2, borderBottom: `1px solid ${active && fresh ? meta.color + "bb" : meta.color + "3a"}`, borderLeft: `1px solid ${active && fresh ? meta.color + "bb" : meta.color + "3a"}` } as React.CSSProperties,
-                { bottom: 2, right: 2, borderBottom: `1px solid ${active && fresh ? meta.color + "bb" : meta.color + "3a"}`, borderRight: `1px solid ${active && fresh ? meta.color + "bb" : meta.color + "3a"}` } as React.CSSProperties,
+                { top: 2, left: 2, borderTop: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}`, borderLeft: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}` } as React.CSSProperties,
+                { top: 2, right: 2, borderTop: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}`, borderRight: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}` } as React.CSSProperties,
+                { bottom: 2, left: 2, borderBottom: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}`, borderLeft: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}` } as React.CSSProperties,
+                { bottom: 2, right: 2, borderBottom: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}`, borderRight: `1px solid ${active && fresh && !ssMode ? meta.color + "aa" : meta.color + "28"}` } as React.CSSProperties,
               ]).map((s, i) => (
                 <div key={i} style={{ position: "absolute", width: 5, height: 5, ...s }} />
               ))}
-              {/* Icon zone */}
+              {/* Callsign zone — monospace signal code, no emoji */}
               <div style={{ height: 30, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <span style={{ fontSize: 14, lineHeight: 1, userSelect: "none",
-                  filter: active && fresh ? `drop-shadow(0 0 4px ${meta.color}99)` : "none",
-                  transition: "filter 0.6s" }}>{meta.icon}</span>
+                <span style={{
+                  fontFamily: "Menlo,Consolas,monospace",
+                  fontSize: meta.short.length > 3 ? 6 : 7,
+                  letterSpacing: "0.10em",
+                  color: active && fresh && !ssMode ? meta.color : meta.color + "44",
+                  border: `1px solid ${active && fresh && !ssMode ? meta.color + "55" : meta.color + "18"}`,
+                  padding: "2px 3px", lineHeight: 1.2, userSelect: "none",
+                  textShadow: active && fresh && !ssMode ? `0 0 6px ${meta.color}88` : "none",
+                  transition: "all 0.8s",
+                }}>{meta.short}</span>
               </div>
               {/* Progress bar */}
               <div style={{ height: 18, position: "relative", background: "rgba(255,255,255,0.035)",
@@ -2696,7 +2713,7 @@ export default function StamfordMap() {
       {/* ── Left column — terminal feed ────────────────────────────────────── */}
       <div className="absolute" style={{
         left: panelOpen ? panelW + 10 : 10,
-        top: 170, bottom: tickerItems.length > 0 ? 28 : 0,
+        top: 92, bottom: tickerItems.length > 0 ? 28 : 0,
         zIndex: 15, width: 320, pointerEvents: "none",
         fontFamily: "Menlo,Consolas,monospace",
         display: "flex", flexDirection: "column",
@@ -2791,7 +2808,7 @@ export default function StamfordMap() {
 
       {/* ── Right column — gear controls + news ────────────────────────── */}
       <div className="absolute" style={{
-        right: 10, top: 170, bottom: tickerItems.length > 0 ? 28 : 0,
+        right: 10, top: 92, bottom: tickerItems.length > 0 ? 28 : 0,
         zIndex: 15, width: 228, pointerEvents: "none",
         fontFamily: "Menlo,Consolas,monospace",
         display: "flex", flexDirection: "column",
@@ -2816,7 +2833,6 @@ export default function StamfordMap() {
           <div style={{ display: "flex", flexDirection: "column", gap: 3, pointerEvents: "auto", flexShrink: 0, marginBottom: 8 }}>
             {([
               { label: "RADAR", val: Math.round(radarOpacity * 100), min: 0,  max: 100, fn: (v: number) => applyRadarOpacity(v / 100),    color: "#22d3ee" },
-              { label: "TRACK", val: Math.round(trackOpacity * 100), min: 0,  max: 100, fn: (v: number) => applyTrackOpacity(v / 100),     color: "#4488ff" },
               { label: "SCALE", val: Math.round(uiScale * 100),      min: 50, max: 250, fn: (v: number) => applyScale(v / 100),            color: "#22d3ee" },
               { label: "MARKS", val: Math.round(markerScale * 100),  min: 50, max: 300, fn: (v: number) => applyMarkerScale(v / 100),      color: "#f59e0b" },
               { label: "TRAIN", val: Math.round(trainIconScale * 100), min: 50, max: 300, fn: (v: number) => applyTrainIconScale(v / 100), color: "#4488ff" },
@@ -2835,19 +2851,19 @@ export default function StamfordMap() {
           </div>
         )}
 
-        {/* News terminal — fills remaining height */}
+        {/* News terminal */}
         {newsItems.length > 0 && (
-          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <div style={{ flex: "0 1 auto", minHeight: 0, display: "flex", flexDirection: "column", marginBottom: 6 }}>
             <div style={{ fontSize: Math.round(6.5 * uiScale), color: "#22d3ee33", letterSpacing: "0.16em", marginBottom: 3, flexShrink: 0, display: "flex", alignItems: "center", gap: 4 }}>
               <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#22d3ee", display: "inline-block", animation: "tl-blink 2.2s ease-in-out infinite" }} />
               NEWS FEED
             </div>
             <div style={{
-              flex: 1, minHeight: 0, overflowY: "auto", scrollbarWidth: "none",
-              maskImage: "linear-gradient(to bottom, black 60%, transparent 100%)",
-              WebkitMaskImage: "linear-gradient(to bottom, black 60%, transparent 100%)",
+              flex: "0 1 auto", overflowY: "auto", scrollbarWidth: "none",
+              maskImage: "linear-gradient(to bottom, black 70%, transparent 100%)",
+              WebkitMaskImage: "linear-gradient(to bottom, black 70%, transparent 100%)",
             }}>
-              {newsItems.slice(0, 25).map((item, i) => {
+              {newsItems.slice(0, 20).map((item, i) => {
                 const nd = new Date(item.ts);
                 const hm = `${String(nd.getHours()).padStart(2,"0")}:${String(nd.getMinutes()).padStart(2,"0")}`;
                 const pubShort = item.pub === "Stamford Advocate" ? "SA" : item.pub === "CT Mirror" ? "CTM" : item.pub.slice(0, 4).toUpperCase();
@@ -2862,6 +2878,61 @@ export default function StamfordMap() {
             </div>
           </div>
         )}
+
+        {/* Nearest vehicles — inline below news feed */}
+        {(() => {
+          if (!mapInst.current) return null;
+          const tlsNLat = crosshairLatLngRef.current.lat;
+          const tlsNLng = crosshairLatLngRef.current.lng;
+          const NMI20 = 32186;
+          const nearby2: Array<{ distM: number; brg: string; sig: string; name: string }> = [];
+          aircraftMarkersRef.current.forEach((m) => {
+            try {
+              const ll = m.getLatLng();
+              const d = distToStamford(ll.lat, ll.lng, tlsNLat, tlsNLng);
+              if (d > NMI20) return;
+              const meta2 = (m as any)._tlMeta;
+              nearby2.push({ distM: d, brg: bearingStr(tlsNLat, tlsNLng, ll.lat, ll.lng), sig: "AIR", name: meta2?.id ?? "?" });
+            } catch {}
+          });
+          trainMarkersRef.current.forEach((m) => {
+            try {
+              const ll = m.getLatLng();
+              const d = distToStamford(ll.lat, ll.lng, tlsNLat, tlsNLng);
+              if (d > NMI20) return;
+              const meta2 = (m as any)._tlMeta;
+              nearby2.push({ distM: d, brg: bearingStr(tlsNLat, tlsNLng, ll.lat, ll.lng), sig: "RWY", name: meta2?.id ?? "?" });
+            } catch {}
+          });
+          vesselMarkersRef.current.forEach((m) => {
+            try {
+              const ll = m.getLatLng();
+              const d = distToStamford(ll.lat, ll.lng, tlsNLat, tlsNLng);
+              if (d > NMI20) return;
+              const meta2 = (m as any)._tlMeta;
+              nearby2.push({ distM: d, brg: bearingStr(tlsNLat, tlsNLng, ll.lat, ll.lng), sig: "AIS", name: meta2?.id ?? "?" });
+            } catch {}
+          });
+          nearby2.sort((a, b) => a.distM - b.distM);
+          if (nearby2.length === 0) return null;
+          const sz = Math.round(7 * uiScale);
+          const sz2 = Math.round(6 * uiScale);
+          return (
+            <div style={{ flexShrink: 0 }}>
+              <div style={{ fontSize: sz2, color: "#22d3ee33", letterSpacing: "0.16em", marginBottom: 3, display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#22d3ee55", display: "inline-block" }} />
+                NEAREST
+              </div>
+              {nearby2.slice(0, 10).map((v, i) => (
+                <div key={i} style={{ display: "flex", gap: 5, fontSize: sz, lineHeight: 1.5, marginBottom: 1 }}>
+                  <span style={{ color: "#22d3ee66", flexShrink: 0, minWidth: 46, fontVariantNumeric: "tabular-nums", fontSize: sz2 }}>{fmtMi(v.distM)} {v.brg}</span>
+                  <span style={{ color: "#4488ff55", flexShrink: 0, fontSize: sz2, letterSpacing: "0.06em" }}>{v.sig}</span>
+                  <span style={{ color: "#e2ecff77", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.name}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       {/* ── Screensaver tracking overlay ─────────────────────────────────────── */}
@@ -2888,60 +2959,6 @@ export default function StamfordMap() {
           </div>
         </div>
       )}
-
-      {/* ── Nearest vehicles list ────────────────────────────────────────────── */}
-      {mapInst.current && (() => {
-        const tlsLat = crosshairLatLngRef.current.lat;
-        const tlsLng = crosshairLatLngRef.current.lng;
-        const MI20 = 32186;
-        const nearby: Array<{ distM: number; bearing: string; emoji: string; name: string }> = [];
-        aircraftMarkersRef.current.forEach((m) => {
-          try {
-            const ll = m.getLatLng();
-            const d = distToStamford(ll.lat, ll.lng, tlsLat, tlsLng);
-            if (d > MI20) return;
-            const meta = (m as any)._tlMeta;
-            nearby.push({ distM: d, bearing: bearingStr(tlsLat, tlsLng, ll.lat, ll.lng), emoji: "✈", name: meta?.id ?? "?" });
-          } catch {}
-        });
-        trainMarkersRef.current.forEach((m) => {
-          try {
-            const ll = m.getLatLng();
-            const d = distToStamford(ll.lat, ll.lng, tlsLat, tlsLng);
-            if (d > MI20) return;
-            const meta = (m as any)._tlMeta;
-            nearby.push({ distM: d, bearing: bearingStr(tlsLat, tlsLng, ll.lat, ll.lng), emoji: "🚆", name: meta?.id ?? "?" });
-          } catch {}
-        });
-        vesselMarkersRef.current.forEach((m) => {
-          try {
-            const ll = m.getLatLng();
-            const d = distToStamford(ll.lat, ll.lng, tlsLat, tlsLng);
-            if (d > MI20) return;
-            const meta = (m as any)._tlMeta;
-            nearby.push({ distM: d, bearing: bearingStr(tlsLat, tlsLng, ll.lat, ll.lng), emoji: "⛵", name: meta?.id ?? "?" });
-          } catch {}
-        });
-        nearby.sort((a, b) => a.distM - b.distM);
-        if (nearby.length === 0) return null;
-        const saverBottom = tickerItems.length > 0 ? 78 : 50;
-        return (
-          <div className="absolute" style={{ right: 10, bottom: saverBottom + 36, zIndex: 20, fontFamily: "Menlo,Consolas,monospace",
-            background: "rgba(7,9,15,0.82)", border: "1px solid #0d1a2666", borderRadius: 4,
-            padding: "6px 8px", minWidth: 130, maxHeight: 160, overflowY: "auto",
-            scrollbarWidth: "none",
-          }}>
-            <div style={{ fontSize: 6, color: "#22d3ee44", letterSpacing: "0.14em", marginBottom: 4 }}>NEAREST</div>
-            {nearby.slice(0, 10).map((v, i) => (
-              <div key={i} style={{ display: "flex", gap: 5, fontSize: 8, lineHeight: 1.5, color: "#5a7090" }}>
-                <span style={{ color: "#22d3ee66", flexShrink: 0, minWidth: 44, fontVariantNumeric: "tabular-nums" }}>{fmtMi(v.distM)} {v.bearing}</span>
-                <span style={{ flexShrink: 0 }}>{v.emoji}</span>
-                <span style={{ color: "#e2ecff88", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 80 }}>{v.name}</span>
-              </div>
-            ))}
-          </div>
-        );
-      })()}
 
       {/* ── Screensaver toggle ───────────────────────────────────────────────── */}
       <div className="absolute" style={{ right: 10, bottom: tickerItems.length > 0 ? 78 : 50, zIndex: 20, fontFamily: "Menlo,Consolas,monospace" }}>
@@ -3125,6 +3142,14 @@ export default function StamfordMap() {
         .tl-reticle-unlock .tl-rc-tr { animation-delay:15ms; }
         .tl-reticle-unlock .tl-rc-bl { animation-delay:30ms; }
         .tl-reticle-unlock .tl-rc-br { animation-delay:45ms; }
+
+        /* Clock mode flip */
+        @keyframes tl-clock-flip {
+          0%   { opacity: 0; transform: translateY(-4px) skewX(-5deg); filter: brightness(2); }
+          55%  { opacity: 1; transform: translateY(0) skewX(0); filter: brightness(1.4); }
+          100% { opacity: 1; transform: translateY(0) skewX(0); filter: brightness(1); }
+        }
+        .tl-clock-flip { animation: tl-clock-flip 0.26s ease-out both; }
 
         /* Tracking overlay slide-up */
         @keyframes tl-track-msg-in {
