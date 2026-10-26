@@ -17,6 +17,162 @@ interface HourlyFc   { hour: number; temp: number; code: number; precip: number;
 interface DailyFc    { date: string; max: number; min: number; code: number; precip: number; }
 interface SsTrackInfo { type: string; id: string; detail: string; enteredMs: number; }
 
+// ── ICAO type code → display name ─────────────────────────────────────────────
+const ICAO_NAMES: Record<string, string> = {
+  // Airbus narrow-body
+  A19N:"Airbus A319neo", A20N:"Airbus A320neo", A21N:"Airbus A321neo",
+  A318:"Airbus A318", A319:"Airbus A319", A320:"Airbus A320", A321:"Airbus A321",
+  // Airbus A220 (formerly Bombardier C-Series)
+  BCS1:"Airbus A220-100", BCS3:"Airbus A220-300",
+  // Boeing narrow-body
+  B731:"Boeing 737-100", B732:"Boeing 737-200", B733:"Boeing 737-300",
+  B734:"Boeing 737-400", B735:"Boeing 737-500", B736:"Boeing 737-600",
+  B737:"Boeing 737-700", B738:"Boeing 737-800", B739:"Boeing 737-900",
+  B37M:"Boeing 737 MAX 7", B38M:"Boeing 737 MAX 8", B39M:"Boeing 737 MAX 9",
+  B3XM:"Boeing 737 MAX 10",
+  // Boeing 757 / 767
+  B752:"Boeing 757-200", B753:"Boeing 757-300",
+  B762:"Boeing 767-200", B763:"Boeing 767-300", B764:"Boeing 767-400",
+  // Boeing 777
+  B772:"Boeing 777-200", B77L:"Boeing 777-200LR", B773:"Boeing 777-300",
+  B77W:"Boeing 777-300ER", B779:"Boeing 777X",
+  // Boeing 787
+  B788:"Boeing 787-8", B789:"Boeing 787-9", B78X:"Boeing 787-10",
+  // Airbus wide-body
+  A332:"Airbus A330-200", A333:"Airbus A330-300", A338:"Airbus A330-800neo", A339:"Airbus A330-900neo",
+  A342:"Airbus A340-200", A343:"Airbus A340-300",
+  A359:"Airbus A350-900", A35K:"Airbus A350-1000",
+  A388:"Airbus A380-800",
+  // Embraer regional
+  E170:"Embraer E170", E175:"Embraer E175", E75L:"Embraer E175-E2",
+  E75S:"Embraer E175", E190:"Embraer E190", E195:"Embraer E195",
+  E290:"Embraer E190-E2", E295:"Embraer E195-E2",
+  E135:"Embraer ERJ-135", E145:"Embraer ERJ-145",
+  // Bombardier CRJ
+  CRJ2:"Bombardier CRJ-200", CRJ7:"Bombardier CRJ-700", CRJ9:"Bombardier CRJ-900", CRJX:"Bombardier CRJ-1000",
+  // Turboprops
+  DH8D:"Bombardier Q400", AT72:"ATR 72", AT75:"ATR 75", AT76:"ATR 76",
+  // Cessna / Piper GA
+  C172:"Cessna 172 Skyhawk", C182:"Cessna 182 Skylane", C150:"Cessna 150",
+  C152:"Cessna 152", C206:"Cessna 206",
+  PA28:"Piper PA-28 Cherokee", PA32:"Piper PA-32", PA46:"Piper PA-46 Malibu",
+  SR22:"Cirrus SR22", SR20:"Cirrus SR20",
+  // Pilatus
+  PC12:"Pilatus PC-12",
+  // Business jets
+  C25A:"Cessna Citation CJ2", C25B:"Cessna Citation CJ3", C25C:"Cessna Citation CJ4",
+  C510:"Cessna Citation Mustang", C525:"Cessna CitationJet",
+  C55B:"Cessna Citation Bravo", C560:"Cessna Citation V",
+  C56X:"Cessna Citation XLS", C680:"Cessna Citation Sovereign",
+  C750:"Cessna Citation X",
+  E50P:"Embraer Phenom 100", E55P:"Embraer Phenom 300",
+  LJ45:"Learjet 45", LJ60:"Learjet 60", LJ75:"Learjet 75",
+  CL30:"Bombardier Challenger 300", CL35:"Bombardier Challenger 350",
+  CL60:"Bombardier Challenger 600", CL65:"Bombardier Challenger 650",
+  GL5T:"Gulfstream G550", GLEX:"Gulfstream G650", G150:"Gulfstream G150",
+  G280:"Gulfstream G280", G450:"Gulfstream G450",
+  F2TH:"Dassault Falcon 2000", F900:"Dassault Falcon 900",
+  SF50:"Cirrus SF50 Vision Jet", PC24:"Pilatus PC-24",
+  // Misc
+  MD11:"McDonnell Douglas MD-11", MD82:"McDonnell Douglas MD-82",
+  MD83:"McDonnell Douglas MD-83",
+};
+
+// ── Aircraft silhouette schematics (top-down, 80×100 viewbox, nose at top) ───
+interface AcShape {
+  fl: number; fw: number;               // fuselage half-length, half-width
+  ws: number; wr: number; wt: number;   // wing: semi-span, root chord, tip chord
+  wy: number; wswp: number;             // wing: LE Y offset from center, sweep
+  hs: number; hr: number; ht: number;   // h-stab: semi-span, root chord, tip chord
+  hy: number; hswp: number;             // h-stab: Y offset from center, sweep
+  en: number; ex: number; ey: number; el: number; ew: number; // engines
+  se?: boolean;                         // single nose prop
+}
+
+function genAcSVG(p: AcShape): string {
+  const cx = 40, cy = 50;
+  const s = `stroke="#22d3ee" stroke-opacity="0.8" stroke-width="0.9" stroke-linejoin="round" fill="#0a1020" fill-opacity="0.95"`;
+  const se = `stroke="#22d3ee" stroke-opacity="0.7" stroke-width="0.8" fill="#0a1020" fill-opacity="0.95"`;
+  // Fuselage: bezier tube, pointed nose, tapered tail
+  const ny = cy - p.fl, ty = cy + p.fl, fw = p.fw;
+  const fus = `M ${cx} ${ny} C ${cx+fw*0.4} ${ny+p.fl*0.12},${cx+fw} ${ny+p.fl*0.25},${cx+fw} ${cy} L ${cx+fw*0.8} ${ty-p.fl*0.12} C ${cx+fw*0.4} ${ty+p.fl*0.04},${cx-fw*0.4} ${ty+p.fl*0.04},${cx-fw*0.8} ${ty-p.fl*0.12} L ${cx-fw} ${cy} C ${cx-fw} ${ny+p.fl*0.25},${cx-fw*0.4} ${ny+p.fl*0.12},${cx} ${ny} Z`;
+  // Wings
+  const wRL = cy+p.wy, wRT = cy+p.wy+p.wr, wTL = cy+p.wy+p.wswp, wTT = cy+p.wy+p.wswp+p.wt;
+  const wLx = cx-fw-p.ws, wRx = cx+fw+p.ws;
+  const lW = `M ${cx-fw} ${wRL} L ${wLx} ${wTL} L ${wLx} ${wTT} L ${cx-fw} ${wRT} Z`;
+  const rW = `M ${cx+fw} ${wRL} L ${wRx} ${wTL} L ${wRx} ${wTT} L ${cx+fw} ${wRT} Z`;
+  // H-stab
+  const hRL = cy+p.hy, hRT = cy+p.hy+p.hr, hTL = cy+p.hy+p.hswp, hTT = cy+p.hy+p.hswp+p.ht;
+  const hfw = fw*0.65;
+  const lH = `M ${cx-hfw} ${hRL} L ${cx-hfw-p.hs} ${hTL} L ${cx-hfw-p.hs} ${hTT} L ${cx-hfw} ${hRT} Z`;
+  const rH = `M ${cx+hfw} ${hRL} L ${cx+hfw+p.hs} ${hTL} L ${cx+hfw+p.hs} ${hTT} L ${cx+hfw} ${hRT} Z`;
+  // Engines
+  let engs = "";
+  if (p.se) {
+    engs = `<circle cx="${cx}" cy="${ny-2}" r="2.5" ${se}/>`;
+  } else if (p.en >= 2) {
+    const ey = cy+p.ey;
+    engs += `<ellipse cx="${cx-p.ex}" cy="${ey}" rx="${p.ew}" ry="${p.el}" ${se}/>`;
+    engs += `<ellipse cx="${cx+p.ex}" cy="${ey}" rx="${p.ew}" ry="${p.el}" ${se}/>`;
+    if (p.en === 4) {
+      engs += `<ellipse cx="${cx-p.ex*1.65}" cy="${ey+2}" rx="${p.ew*0.9}" ry="${p.el*0.9}" ${se}/>`;
+      engs += `<ellipse cx="${cx+p.ex*1.65}" cy="${ey+2}" rx="${p.ew*0.9}" ry="${p.el*0.9}" ${se}/>`;
+    }
+  }
+  return `<svg viewBox="0 0 80 100" xmlns="http://www.w3.org/2000/svg"><path d="${lW}" ${s}/><path d="${rW}" ${s}/><path d="${lH}" ${s}/><path d="${rH}" ${s}/>${engs}<path d="${fus}" ${s}/></svg>`;
+}
+
+const AC_SHAPES: Record<string, AcShape> = {
+  // Narrow-body Airbus
+  A319:{ fl:40, fw:3.2, ws:25, wr:13, wt:4.5, wy:-7, wswp:11, hs:9,  hr:6,  ht:2.5, hy:31, hswp:4,   en:2, ex:15, ey:-8, el:5.5, ew:2.5 },
+  A20N:{ fl:42, fw:3.2, ws:27, wr:13, wt:5,   wy:-7, wswp:11, hs:10, hr:6,  ht:2.5, hy:32, hswp:4,   en:2, ex:16, ey:-8, el:6,   ew:2.5 },
+  A320:{ fl:42, fw:3.2, ws:27, wr:13, wt:5,   wy:-7, wswp:11, hs:10, hr:6,  ht:2.5, hy:32, hswp:4,   en:2, ex:16, ey:-8, el:6,   ew:2.5 },
+  A21N:{ fl:45, fw:3.2, ws:27, wr:13, wt:5,   wy:-7, wswp:11, hs:10, hr:6,  ht:2.5, hy:35, hswp:4,   en:2, ex:16, ey:-8, el:6,   ew:2.5 },
+  A321:{ fl:45, fw:3.2, ws:27, wr:13, wt:5,   wy:-7, wswp:11, hs:10, hr:6,  ht:2.5, hy:35, hswp:4,   en:2, ex:16, ey:-8, el:6,   ew:2.5 },
+  // Narrow-body Boeing
+  B737:{ fl:41, fw:3,   ws:26, wr:13, wt:4.5, wy:-7, wswp:9,  hs:9,  hr:6,  ht:2.5, hy:31, hswp:3.5, en:2, ex:15, ey:-8, el:5.5, ew:2.5 },
+  B738:{ fl:43, fw:3,   ws:27, wr:13, wt:5,   wy:-7, wswp:9,  hs:9,  hr:6,  ht:2.5, hy:33, hswp:3.5, en:2, ex:16, ey:-8, el:6,   ew:2.5 },
+  B38M:{ fl:43, fw:3,   ws:28, wr:13, wt:5,   wy:-7, wswp:10, hs:9,  hr:6,  ht:2.5, hy:33, hswp:3.5, en:2, ex:16, ey:-8, el:6,   ew:2.5 },
+  B739:{ fl:44, fw:3,   ws:27, wr:13, wt:5,   wy:-7, wswp:9,  hs:9,  hr:6,  ht:2.5, hy:34, hswp:3.5, en:2, ex:16, ey:-8, el:6,   ew:2.5 },
+  B39M:{ fl:44, fw:3,   ws:28, wr:13, wt:5,   wy:-7, wswp:10, hs:9,  hr:6,  ht:2.5, hy:34, hswp:3.5, en:2, ex:16, ey:-8, el:6,   ew:2.5 },
+  // A220
+  BCS1:{ fl:38, fw:3,   ws:25, wr:12, wt:4.5, wy:-7, wswp:10, hs:9,  hr:6,  ht:2.5, hy:29, hswp:4,   en:2, ex:14, ey:-7, el:5.5, ew:2.5 },
+  BCS3:{ fl:40, fw:3,   ws:26, wr:12, wt:5,   wy:-7, wswp:10, hs:9,  hr:6,  ht:2.5, hy:31, hswp:4,   en:2, ex:14, ey:-7, el:5.5, ew:2.5 },
+  // Regional jets
+  E75S:{ fl:38, fw:2.8, ws:23, wr:11, wt:4,   wy:-6, wswp:9,  hs:9,  hr:5.5, ht:2, hy:29, hswp:3.5, en:2, ex:13, ey:-6, el:5,   ew:2   },
+  E145:{ fl:37, fw:2.5, ws:21, wr:10, wt:3.5, wy:-5, wswp:8,  hs:9,  hr:5.5, ht:2, hy:26, hswp:4,   en:2, ex:4.5, ey:24, el:4.5, ew:2  },
+  // 757 / 767
+  B752:{ fl:45, fw:3.5, ws:27, wr:13, wt:5,   wy:-7, wswp:10, hs:10, hr:7,  ht:2.5, hy:35, hswp:4,   en:2, ex:17, ey:-8, el:6.5, ew:3   },
+  B763:{ fl:44, fw:4.5, ws:28, wr:14, wt:5.5, wy:-7, wswp:11, hs:11, hr:7,  ht:3,   hy:34, hswp:4.5, en:2, ex:19, ey:-8, el:7,   ew:3.5 },
+  // 787
+  B788:{ fl:42, fw:4,   ws:30, wr:14, wt:6,   wy:-8, wswp:13, hs:11, hr:7,  ht:3,   hy:32, hswp:5,   en:2, ex:18, ey:-9, el:7,   ew:3.5 },
+  B789:{ fl:44, fw:4,   ws:30, wr:14, wt:6,   wy:-8, wswp:13, hs:11, hr:7,  ht:3,   hy:34, hswp:5,   en:2, ex:18, ey:-9, el:7,   ew:3.5 },
+  B78X:{ fl:45, fw:4,   ws:30, wr:14, wt:6,   wy:-8, wswp:13, hs:11, hr:7,  ht:3,   hy:35, hswp:5,   en:2, ex:18, ey:-9, el:7,   ew:3.5 },
+  // A330
+  A332:{ fl:43, fw:4.5, ws:30, wr:15, wt:6,   wy:-8, wswp:12, hs:11, hr:7,  ht:3,   hy:33, hswp:5,   en:2, ex:20, ey:-9, el:7,   ew:3.5 },
+  A333:{ fl:45, fw:4.5, ws:30, wr:15, wt:6,   wy:-8, wswp:12, hs:11, hr:7,  ht:3,   hy:35, hswp:5,   en:2, ex:20, ey:-9, el:7,   ew:3.5 },
+  // A350
+  A359:{ fl:44, fw:4.2, ws:31, wr:15, wt:6.5, wy:-9, wswp:14, hs:11, hr:7,  ht:3,   hy:34, hswp:5,   en:2, ex:19, ey:-10, el:7,  ew:3.5 },
+  A35K:{ fl:45, fw:4.2, ws:31, wr:15, wt:6.5, wy:-9, wswp:14, hs:11, hr:7,  ht:3,   hy:35, hswp:5,   en:2, ex:19, ey:-10, el:7,  ew:3.5 },
+  // A380
+  A388:{ fl:44, fw:5.5, ws:30, wr:17, wt:7,   wy:-8, wswp:11, hs:12, hr:8,  ht:3.5, hy:34, hswp:5,   en:4, ex:16, ey:-7, el:7.5, ew:3.5 },
+  // GA single-engine piston
+  C172:{ fl:26, fw:2.5, ws:22, wr:8,  wt:7,   wy:-3, wswp:0,  hs:7,  hr:4,  ht:3.5, hy:19, hswp:0.5, en:0, ex:0,  ey:0,  el:0,   ew:0, se:true },
+  C182:{ fl:27, fw:2.5, ws:23, wr:8,  wt:7,   wy:-3, wswp:0,  hs:7,  hr:4,  ht:3.5, hy:20, hswp:0.5, en:0, ex:0,  ey:0,  el:0,   ew:0, se:true },
+  PA28:{ fl:25, fw:2.3, ws:20, wr:7.5, wt:6.5, wy:-3, wswp:0.5, hs:6.5, hr:4, ht:3.5, hy:18, hswp:0.5, en:0, ex:0, ey:0, el:0, ew:0, se:true },
+  SR22:{ fl:27, fw:2.3, ws:21, wr:7,  wt:6.5, wy:-3, wswp:1,  hs:6.5, hr:4, ht:3.5, hy:20, hswp:0.5, en:0, ex:0,  ey:0,  el:0,   ew:0, se:true },
+  // Turboprop
+  PC12:{ fl:28, fw:2.2, ws:20, wr:7.5, wt:5.5, wy:-3, wswp:1,  hs:6.5, hr:4, ht:3.5, hy:21, hswp:0.5, en:0, ex:0, ey:0, el:0, ew:0, se:true },
+  // Business jets (rear engines)
+  E55P:{ fl:32, fw:2.4, ws:21, wr:10, wt:3.5, wy:-6, wswp:9,  hs:8,  hr:5,  ht:2,   hy:23, hswp:4,   en:2, ex:5,  ey:20, el:4.5, ew:1.8 },
+  C56X:{ fl:34, fw:2.5, ws:22, wr:11, wt:4,   wy:-6, wswp:10, hs:8,  hr:5.5, ht:2,  hy:25, hswp:4,   en:2, ex:5.5, ey:21, el:5,  ew:2   },
+  CL35:{ fl:35, fw:2.6, ws:23, wr:11, wt:4,   wy:-7, wswp:11, hs:8,  hr:5.5, ht:2,  hy:26, hswp:5,   en:2, ex:6,  ey:21, el:5,   ew:2   },
+  // Business jets (wing engines)
+  GL5T:{ fl:37, fw:2.7, ws:27, wr:12, wt:4.5, wy:-8, wswp:12, hs:9,  hr:5.5, ht:2,  hy:28, hswp:5,   en:2, ex:16, ey:-7, el:5.5, ew:2.3 },
+  GLEX:{ fl:38, fw:2.7, ws:27, wr:12, wt:4.5, wy:-8, wswp:12, hs:9,  hr:5.5, ht:2,  hy:29, hswp:5,   en:2, ex:16, ey:-7, el:5.5, ew:2.3 },
+  CL30:{ fl:33, fw:2.5, ws:23, wr:11, wt:4,   wy:-6, wswp:10, hs:8,  hr:5.5, ht:2,  hy:24, hswp:4.5, en:2, ex:5.5, ey:20, el:4.5, ew:2  },
+};
+
 interface WeatherNow {
   temp: number; wind_speed: number; wind_dir: number;
   humidity: number; cloud_cover: number; precipitation: number; code: number;
@@ -585,6 +741,7 @@ export default function StamfordMap() {
   const [termLog,       setTermLog]       = useState<TermEntry[]>([]);
   const [audioOpen,     setAudioOpen]     = useState(false);
   const [centerPx,      setCenterPx]      = useState<{ x: number; y: number } | null>(null);
+  const [ring10Px,      setRing10Px]      = useState<number>(0);
   const [uiScale, setUiScale] = useState(() => {
     if (typeof window === "undefined") return 1.0;
     const s = parseFloat(localStorage.getItem("tl-ui-scale") ?? "1");
@@ -1378,9 +1535,10 @@ export default function StamfordMap() {
       });
       const isTen = mi === 10;
       L.polyline(pts, {
-        color: "#22d3ee", weight: isTen ? 1 : 0.5,
-        opacity: isTen ? 0.28 : 0.15,
-        dashArray: isTen ? "6 9" : "2 14",
+        color: isTen ? "#22d3ee" : "#22d3ee",
+        weight: isTen ? 2 : 0.5,
+        opacity: isTen ? 0.55 : 0.13,
+        dashArray: isTen ? "8 6" : "2 14",
         interactive: false,
       }).addTo(g);
       // mi label just north of each ring
@@ -1980,6 +2138,9 @@ export default function StamfordMap() {
         const pos = crosshairLatLngRef.current;
         const pt = map.latLngToContainerPoint([pos.lat, pos.lng]);
         setCenterPx({ x: pt.x, y: pt.y });
+        const [r10Lat, r10Lon] = destPoint(pos.lat, pos.lng, 0, 10 * 1609.344);
+        const pt10 = map.latLngToContainerPoint([r10Lat, r10Lon]);
+        setRing10Px(Math.abs(pt.y - pt10.y));
       };
       map.on("move zoom resize", updateCenterPx);
       updateCenterPx();
@@ -2410,11 +2571,22 @@ export default function StamfordMap() {
       )}
 
       {/* ── Screensaver map fade-to-black overlay ───────────────────────────── */}
-      {ssMode && centerPx && (
+      {ssMode && centerPx && ring10Px > 0 && (
         <div className="absolute inset-0 pointer-events-none" style={{
           zIndex: 9,
-          background: `radial-gradient(circle at ${centerPx.x}px ${centerPx.y}px, transparent 0%, transparent 14%, rgba(7,9,15,0.25) 34%, rgba(7,9,15,0.72) 58%, rgba(7,9,15,0.93) 84%)`,
+          background: `radial-gradient(circle at ${centerPx.x}px ${centerPx.y}px, transparent 0px, transparent ${ring10Px * 0.82}px, rgba(7,9,15,0.18) ${ring10Px * 0.95}px, rgba(7,9,15,0.68) ${ring10Px * 1.05}px, rgba(7,9,15,0.88) ${ring10Px * 1.25}px, rgba(7,9,15,0.96) ${ring10Px * 1.6}px)`,
         }} />
+      )}
+      {/* Glowing 10mi ring — visible only in saver mode */}
+      {ssMode && centerPx && ring10Px > 0 && (
+        <svg className="absolute inset-0 pointer-events-none" style={{ zIndex: 10, width: "100%", height: "100%", overflow: "visible" }}>
+          <circle
+            cx={centerPx.x} cy={centerPx.y} r={ring10Px}
+            fill="none" stroke="#22d3ee" strokeWidth="1.5" strokeOpacity="0.45"
+            strokeDasharray="10 8"
+            style={{ filter: "drop-shadow(0 0 4px #22d3ee88)" }}
+          />
+        </svg>
       )}
 
       {/* ── Top bar ────────────────────────────────────────────────────────── */}
@@ -2859,6 +3031,60 @@ export default function StamfordMap() {
             );
           })()}
         </div>
+        {/* ── NEAREST — bottom of left column ────────────────────────────── */}
+        {(() => {
+          if (!mapInst.current) return null;
+          const tlsNLat = crosshairLatLngRef.current.lat;
+          const tlsNLng = crosshairLatLngRef.current.lng;
+          const NMI20 = 32186;
+          const nearby2: Array<{ distM: number; brg: string; sig: string; name: string }> = [];
+          aircraftMarkersRef.current.forEach((m) => {
+            try {
+              const ll = m.getLatLng();
+              const d = distToStamford(ll.lat, ll.lng, tlsNLat, tlsNLng);
+              if (d > NMI20) return;
+              const meta2 = (m as any)._tlMeta;
+              nearby2.push({ distM: d, brg: bearingStr(tlsNLat, tlsNLng, ll.lat, ll.lng), sig: "AIR", name: meta2?.id ?? "?" });
+            } catch {}
+          });
+          trainMarkersRef.current.forEach((m) => {
+            try {
+              const ll = m.getLatLng();
+              const d = distToStamford(ll.lat, ll.lng, tlsNLat, tlsNLng);
+              if (d > NMI20) return;
+              const meta2 = (m as any)._tlMeta;
+              nearby2.push({ distM: d, brg: bearingStr(tlsNLat, tlsNLng, ll.lat, ll.lng), sig: "RWY", name: meta2?.id ?? "?" });
+            } catch {}
+          });
+          vesselMarkersRef.current.forEach((m) => {
+            try {
+              const ll = m.getLatLng();
+              const d = distToStamford(ll.lat, ll.lng, tlsNLat, tlsNLng);
+              if (d > NMI20) return;
+              const meta2 = (m as any)._tlMeta;
+              nearby2.push({ distM: d, brg: bearingStr(tlsNLat, tlsNLng, ll.lat, ll.lng), sig: "AIS", name: meta2?.id ?? "?" });
+            } catch {}
+          });
+          nearby2.sort((a, b) => a.distM - b.distM);
+          if (nearby2.length === 0) return null;
+          const sz = Math.round(7 * uiScale);
+          const sz2 = Math.round(6 * uiScale);
+          return (
+            <div style={{ flexShrink: 0, paddingTop: 8, borderTop: "1px solid #22d3ee11" }}>
+              <div style={{ fontSize: sz2, color: "#22d3ee44", letterSpacing: "0.16em", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#22d3ee44", display: "inline-block" }} />
+                NEAREST
+              </div>
+              {nearby2.slice(0, 10).map((v, i) => (
+                <div key={i} style={{ display: "flex", gap: 5, fontSize: sz, lineHeight: 1.55, marginBottom: 1 }}>
+                  <span style={{ color: "#22d3ee77", flexShrink: 0, minWidth: 50, fontVariantNumeric: "tabular-nums", fontSize: sz2 }}>{fmtMi(v.distM)} {v.brg}</span>
+                  <span style={{ color: "#4488ff66", flexShrink: 0, fontSize: sz2, letterSpacing: "0.06em" }}>{v.sig}</span>
+                  <span style={{ color: "#e2ecff88", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.name}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       {/* ── Right column — gear controls + news ────────────────────────── */}
@@ -2913,33 +3139,54 @@ export default function StamfordMap() {
           const lockMin = Math.floor(lockSec / 60);
           const lockDisplay = lockMin > 0 ? `${lockMin}m ${lockSec % 60}s` : `${lockSec}s`;
           const typeLabel = ssTrackMsg.type;
+          const acTypeCode = meta?.acType ?? "";
+          const acFullName = acTypeCode ? (ICAO_NAMES[acTypeCode] ?? acTypeCode) : "";
+          const acShape = acTypeCode ? AC_SHAPES[acTypeCode] : undefined;
           const rows: Array<{ label: string; value: string }> = [];
-          if (meta?.acType) rows.push({ label: "TYPE", value: meta.acType });
-          if (meta?.reg)    rows.push({ label: "REG",  value: meta.reg });
-          if (meta?.op)     rows.push({ label: "OPR",  value: meta.op });
-          // Parse detail string for individual fields
-          if (!meta?.acType && ssTrackMsg.detail) rows.push({ label: "INFO", value: ssTrackMsg.detail });
+          if (acTypeCode) rows.push({ label: "TYPE", value: acTypeCode });
+          if (meta?.reg)  rows.push({ label: "REG",  value: meta.reg });
+          if (meta?.op)   rows.push({ label: "OPR",  value: meta.op });
+          if (!acTypeCode && ssTrackMsg.detail) rows.push({ label: "INFO", value: ssTrackMsg.detail });
           rows.push({ label: "LOCK", value: lockDisplay });
           return (
-            <div style={{ flex: "0 0 auto", marginBottom: 8, borderLeft: "1px solid #22d3ee22", paddingLeft: 10 }}>
-              <div style={{ fontSize: 6, color: "#22d3ee44", letterSpacing: "0.32em", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
-                <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#22d3ee", display: "inline-block", animation: "tl-blink 1.2s ease-in-out infinite" }} />
+            <div key={ssTrackMsg.id} className="tl-track-pane-reveal" style={{ flex: "0 0 auto", marginBottom: 8, borderLeft: "2px solid #22d3ee33", paddingLeft: 10 }}>
+              {/* Header */}
+              <div style={{ fontSize: 7, color: "#22d3eecc", letterSpacing: "0.32em", marginBottom: 6, display: "flex", alignItems: "center", gap: 5, fontWeight: 700 }}>
+                <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#22d3ee", display: "inline-block", animation: "tl-blink 1.2s ease-in-out infinite", flexShrink: 0,
+                  boxShadow: "0 0 5px #22d3ee" }} />
                 TRACKING
               </div>
-              <div style={{ fontSize: 8, color: "#22d3ee55", letterSpacing: "0.22em", marginBottom: 4 }}>{typeLabel}</div>
-              <div style={{ fontSize: Math.round(22 * uiScale), color: "#e2ecffcc", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, marginBottom: 6, textShadow: "0 0 16px #22d3ee33" }}>
+              {/* Aircraft type */}
+              <div style={{ fontSize: 9, color: "#22d3ee99", letterSpacing: "0.18em", marginBottom: 3, fontWeight: 600 }}>{typeLabel}</div>
+              {/* Callsign — large */}
+              <div style={{ fontSize: Math.round(26 * uiScale), color: "#e8f4ff", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, marginBottom: 5,
+                textShadow: "0 0 20px #22d3ee55, 0 0 4px #22d3ee33" }}>
                 {ssTrackMsg.id}
               </div>
-              {meta?.acType && ssTrackMsg.detail && (
-                <div style={{ fontSize: 8, color: "#22d3ee55", letterSpacing: "0.04em", marginBottom: 10, lineHeight: 1.5 }}>
+              {/* Full aircraft name */}
+              {acFullName && (
+                <div className="tl-track-typereveal" style={{ fontSize: 9, color: "#94c8e8cc", letterSpacing: "0.04em", marginBottom: 8, lineHeight: 1.4, fontWeight: 500 }}>
+                  {acFullName}
+                </div>
+              )}
+              {/* Top-down SVG schematic */}
+              {acShape && (
+                <div style={{ width: 52, height: 65, marginBottom: 8, opacity: 0.85 }}
+                  dangerouslySetInnerHTML={{ __html: genAcSVG(acShape) }} />
+              )}
+              {/* Detail string */}
+              {acTypeCode && ssTrackMsg.detail && (
+                <div style={{ fontSize: 8.5, color: "#7ab8cc99", letterSpacing: "0.04em", marginBottom: 8, lineHeight: 1.5 }}>
                   {ssTrackMsg.detail}
                 </div>
               )}
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                {rows.filter(r => r.label !== "INFO" || !meta?.acType).map(({ label, value }) => (
-                  <div key={label} style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-                    <span style={{ fontSize: 6, color: "#22d3ee33", letterSpacing: "0.22em", minWidth: 28 }}>{label}</span>
-                    <span style={{ fontSize: Math.round(8 * uiScale), color: label === "LOCK" ? "#22d3ee88" : "#94a3b8cc", letterSpacing: "0.04em" }}>{value}</span>
+              {/* Data rows */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                {rows.filter(r => r.label !== "INFO" || !acTypeCode).map(({ label, value }, i) => (
+                  <div key={label} className="tl-track-rowreveal" style={{ display: "flex", gap: 8, alignItems: "baseline",
+                    animationDelay: `${0.18 + i * 0.07}s` }}>
+                    <span style={{ fontSize: 7, color: "#22d3ee55", letterSpacing: "0.22em", minWidth: 30 }}>{label}</span>
+                    <span style={{ fontSize: Math.round(9.5 * uiScale), color: label === "LOCK" ? "#22d3eebb" : "#b0cce0ee", letterSpacing: "0.04em", fontWeight: 500 }}>{value}</span>
                   </div>
                 ))}
               </div>
@@ -2947,60 +3194,6 @@ export default function StamfordMap() {
           );
         })()}
 
-        {/* Nearest vehicles — inline below news feed */}
-        {(() => {
-          if (!mapInst.current) return null;
-          const tlsNLat = crosshairLatLngRef.current.lat;
-          const tlsNLng = crosshairLatLngRef.current.lng;
-          const NMI20 = 32186;
-          const nearby2: Array<{ distM: number; brg: string; sig: string; name: string }> = [];
-          aircraftMarkersRef.current.forEach((m) => {
-            try {
-              const ll = m.getLatLng();
-              const d = distToStamford(ll.lat, ll.lng, tlsNLat, tlsNLng);
-              if (d > NMI20) return;
-              const meta2 = (m as any)._tlMeta;
-              nearby2.push({ distM: d, brg: bearingStr(tlsNLat, tlsNLng, ll.lat, ll.lng), sig: "AIR", name: meta2?.id ?? "?" });
-            } catch {}
-          });
-          trainMarkersRef.current.forEach((m) => {
-            try {
-              const ll = m.getLatLng();
-              const d = distToStamford(ll.lat, ll.lng, tlsNLat, tlsNLng);
-              if (d > NMI20) return;
-              const meta2 = (m as any)._tlMeta;
-              nearby2.push({ distM: d, brg: bearingStr(tlsNLat, tlsNLng, ll.lat, ll.lng), sig: "RWY", name: meta2?.id ?? "?" });
-            } catch {}
-          });
-          vesselMarkersRef.current.forEach((m) => {
-            try {
-              const ll = m.getLatLng();
-              const d = distToStamford(ll.lat, ll.lng, tlsNLat, tlsNLng);
-              if (d > NMI20) return;
-              const meta2 = (m as any)._tlMeta;
-              nearby2.push({ distM: d, brg: bearingStr(tlsNLat, tlsNLng, ll.lat, ll.lng), sig: "AIS", name: meta2?.id ?? "?" });
-            } catch {}
-          });
-          nearby2.sort((a, b) => a.distM - b.distM);
-          if (nearby2.length === 0) return null;
-          const sz = Math.round(7 * uiScale);
-          const sz2 = Math.round(6 * uiScale);
-          return (
-            <div style={{ flexShrink: 0 }}>
-              <div style={{ fontSize: sz2, color: "#22d3ee33", letterSpacing: "0.16em", marginBottom: 3, display: "flex", alignItems: "center", gap: 4 }}>
-                <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#22d3ee55", display: "inline-block" }} />
-                NEAREST
-              </div>
-              {nearby2.slice(0, 10).map((v, i) => (
-                <div key={i} style={{ display: "flex", gap: 5, fontSize: sz, lineHeight: 1.5, marginBottom: 1 }}>
-                  <span style={{ color: "#22d3ee66", flexShrink: 0, minWidth: 46, fontVariantNumeric: "tabular-nums", fontSize: sz2 }}>{fmtMi(v.distM)} {v.brg}</span>
-                  <span style={{ color: "#4488ff55", flexShrink: 0, fontSize: sz2, letterSpacing: "0.06em" }}>{v.sig}</span>
-                  <span style={{ color: "#e2ecff77", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.name}</span>
-                </div>
-              ))}
-            </div>
-          );
-        })()}
       </div>
 
       {/* ── LOCK-ON tactical overlay ─────────────────────────────────────────── */}
@@ -3314,6 +3507,33 @@ export default function StamfordMap() {
         }
         .tl-ss-popup .leaflet-popup-content-wrapper {
           animation: tl-ss-lock 0.52s cubic-bezier(0.4, 0, 0.2, 1) both;
+        }
+
+        /* ── TRACKING detail pane — tactical reveal ── */
+        @keyframes tl-track-pane-in {
+          0%   { opacity: 0; transform: translateX(12px); clip-path: inset(0 0 100% 0); }
+          30%  { opacity: 1; clip-path: inset(0 0 55% 0); transform: translateX(3px); }
+          65%  { clip-path: inset(0 0 15% 0); transform: translateX(0); }
+          85%  { clip-path: inset(0); transform: translateX(-1px); }
+          100% { clip-path: inset(0); opacity: 1; transform: translateX(0); }
+        }
+        .tl-track-pane-reveal {
+          animation: tl-track-pane-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @keyframes tl-track-row-in {
+          0%   { opacity: 0; transform: translateX(8px); }
+          100% { opacity: 1; transform: translateX(0); }
+        }
+        .tl-track-rowreveal {
+          animation: tl-track-row-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @keyframes tl-track-type-in {
+          0%   { opacity: 0; letter-spacing: 0.4em; }
+          60%  { opacity: 1; letter-spacing: 0.05em; }
+          100% { opacity: 1; letter-spacing: 0.04em; }
+        }
+        .tl-track-typereveal {
+          animation: tl-track-type-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both;
         }
       `}</style>
     </div>
