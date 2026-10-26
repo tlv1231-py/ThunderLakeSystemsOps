@@ -69,23 +69,23 @@ const SECTIONS: { key: "overhead" | "atmospheric" | "city"; label: string }[] = 
 
 type FeedKey = "weather" | "aircraft" | "iss" | "alerts" | "lightning" | "transit" | "rail" | "services" | "traffic" | "dispatch" | "marine" | "vessels" | "metar" | "storm" | "outages" | "radar";
 
-const FEED_META: Record<FeedKey, { icon: string; short: string; color: string; maxAge: number }> = {
-  weather:   { icon: "⛅", short: "WX",    color: "#60a5fa", maxAge: 900   },
-  aircraft:  { icon: "✈",  short: "AIR",   color: "#a855f7", maxAge: 90    },
-  iss:       { icon: "🛸", short: "ISS",   color: "#a78bfa", maxAge: 90    },
-  alerts:    { icon: "⚠",  short: "ALRT",  color: "#f59e0b", maxAge: 600   },
-  lightning: { icon: "⚡", short: "LTNG",  color: "#ffe066", maxAge: 600   },
-  transit:   { icon: "🚌", short: "BUS",   color: "#60a5fa", maxAge: 90    },
-  rail:      { icon: "🚆", short: "RAIL",  color: "#4488ff", maxAge: 90    },
-  services:  { icon: "📍", short: "SVC",   color: "#4ade80", maxAge: 86400 },
-  traffic:   { icon: "🚦", short: "TFC",   color: "#f59e0b", maxAge: 600   },
-  dispatch:  { icon: "📻", short: "DISP",  color: "#ff4466", maxAge: 180   },
-  marine:    { icon: "🌊", short: "MRNE",  color: "#06b6d4", maxAge: 900   },
-  vessels:   { icon: "⛵", short: "AIS",   color: "#0ea5e9", maxAge: 90    },
-  metar:     { icon: "🛫", short: "METAR", color: "#22c55e", maxAge: 900   },
-  storm:     { icon: "🌩", short: "STRM",  color: "#38bdf8", maxAge: 900   },
-  outages:   { icon: "💡", short: "PWR",   color: "#facc15", maxAge: 900   },
-  radar:     { icon: "🌧", short: "RADAR", color: "#38bdf8", maxAge: 600   },
+const FEED_META: Record<FeedKey, { icon: string; short: string; label: string; color: string; maxAge: number }> = {
+  weather:   { icon: "⛅", short: "WX",    label: "Weather",           color: "#60a5fa", maxAge: 900   },
+  aircraft:  { icon: "✈",  short: "AIR",   label: "Aircraft · ADS-B",  color: "#a855f7", maxAge: 90    },
+  iss:       { icon: "🛸", short: "ISS",   label: "ISS Position",      color: "#a78bfa", maxAge: 90    },
+  alerts:    { icon: "⚠",  short: "ALRT",  label: "NWS Alerts",        color: "#f59e0b", maxAge: 600   },
+  lightning: { icon: "⚡", short: "LTNG",  label: "Lightning",         color: "#ffe066", maxAge: 600   },
+  transit:   { icon: "🚌", short: "BUS",   label: "Bus · CT Transit",  color: "#60a5fa", maxAge: 90    },
+  rail:      { icon: "🚆", short: "RAIL",  label: "Metro-North Rail",  color: "#4488ff", maxAge: 90    },
+  services:  { icon: "📍", short: "SVC",   label: "City Services",     color: "#4ade80", maxAge: 86400 },
+  traffic:   { icon: "🚦", short: "TFC",   label: "Traffic Flow",      color: "#f59e0b", maxAge: 600   },
+  dispatch:  { icon: "📻", short: "DISP",  label: "Dispatch Radio",    color: "#ff4466", maxAge: 180   },
+  marine:    { icon: "🌊", short: "MRNE",  label: "Marine · NDBC",     color: "#06b6d4", maxAge: 900   },
+  vessels:   { icon: "⛵", short: "AIS",   label: "Vessels · AIS",     color: "#0ea5e9", maxAge: 90    },
+  metar:     { icon: "🛫", short: "METAR", label: "Aviation WX",       color: "#22c55e", maxAge: 900   },
+  storm:     { icon: "🌩", short: "STRM",  label: "Storm Reports",     color: "#38bdf8", maxAge: 900   },
+  outages:   { icon: "💡", short: "PWR",   label: "Power Outages",     color: "#facc15", maxAge: 900   },
+  radar:     { icon: "🌧", short: "RADAR", label: "NEXRAD Radar",      color: "#38bdf8", maxAge: 600   },
 };
 
 const FEED_LAYER: Partial<Record<FeedKey, LayerKey>> = {
@@ -325,12 +325,14 @@ function popupWrap(inner: string) {
     border:1px solid #1e2d44;border-radius:8px;padding:10px 14px;min-width:180px;line-height:1.9;
     backdrop-filter:blur(8px)">${inner}</div>`;
 }
-function trainMarkerSVG(dir: "outbound" | "inbound"): string {
-  const flip = dir === "inbound" ? "transform:scaleX(-1);" : "";
-  return `<div style="width:24px;height:7px;overflow:visible;${flip}">
-    <svg viewBox="0 0 24 7" width="24" height="7" xmlns="http://www.w3.org/2000/svg">
-      <line x1="1" y1="3.5" x2="17" y2="3.5" stroke="#4488ff" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
-      <polygon points="15,1 24,3.5 15,6" fill="#4488ff" opacity="0.9"/>
+function trainMarkerSVG(): string {
+  return `<div class="tl-train-icon" style="width:28px;height:10px;transform-origin:50% 50%">
+    <svg viewBox="0 0 28 10" width="28" height="10" xmlns="http://www.w3.org/2000/svg">
+      <rect x="1" y="2" width="24" height="6" rx="1.5" fill="#4488ff" opacity="0.92"/>
+      <rect x="22" y="2.5" width="3.5" height="5" rx="1" fill="#88aaff" opacity="0.95"/>
+      <rect x="3.5" y="3.5" width="3" height="3" rx="0.5" fill="#07090f" opacity="0.55"/>
+      <rect x="8"   y="3.5" width="3" height="3" rx="0.5" fill="#07090f" opacity="0.55"/>
+      <rect x="13"  y="3.5" width="3" height="3" rx="0.5" fill="#07090f" opacity="0.55"/>
     </svg>
   </div>`;
 }
@@ -401,6 +403,54 @@ const MNR_WATERBURY: [number, number][] = [
   [41.178677,-73.187076],[41.319718,-73.083548],[41.344156,-73.079892],
   [41.395139,-73.072499],[41.494204,-73.052655],[41.552728,-73.046126],
 ];
+// Combined track per route (main line up to branch junction, then branch)
+const TRACK_ROUTE: Record<string, [number,number][]> = {
+  "3": MNR_MAIN,
+  "4": [...MNR_MAIN.slice(0, 15), ...MNR_NEWCANAAN.slice(1)] as [number,number][],
+  "5": [...MNR_MAIN.slice(0, 19), ...MNR_DANBURY.slice(1)] as [number,number][],
+  "6": [...MNR_MAIN.slice(0, 26), ...MNR_WATERBURY.slice(1)] as [number,number][],
+};
+
+function bearingDeg(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const dLon = (lon2 - lon1) * Math.cos((lat1 + lat2) * Math.PI / 360);
+  const dLat = lat2 - lat1;
+  return (Math.atan2(dLon, dLat) * 180 / Math.PI + 360) % 360;
+}
+function distSqLL(a: [number,number], b: [number,number]): number {
+  return (a[0]-b[0])**2 + (a[1]-b[1])**2;
+}
+function closestTrackIdx(track: [number,number][], pt: [number,number]): number {
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < track.length; i++) {
+    const d = distSqLL(track[i], pt);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+function interpolateOnTrack(
+  track: [number,number][], prevPt: [number,number], nextPt: [number,number], t: number
+): [number, number, number] {
+  const i0 = closestTrackIdx(track, prevPt);
+  const i1 = closestTrackIdx(track, nextPt);
+  const seg: [number,number][] = [prevPt];
+  if (i1 >= i0) { for (let i = i0+1; i <= i1; i++) seg.push(track[i]); }
+  else           { for (let i = i0-1; i >= i1; i--) seg.push(track[i]); }
+  seg.push(nextPt);
+  let total = 0;
+  const acc = [0];
+  for (let i = 1; i < seg.length; i++) {
+    total += Math.sqrt(distSqLL(seg[i], seg[i-1]));
+    acc.push(total);
+  }
+  if (total === 0) return [prevPt[0], prevPt[1], bearingDeg(prevPt[0], prevPt[1], nextPt[0], nextPt[1])];
+  const tgt = t * total;
+  let si = 0;
+  for (let i = 1; i < acc.length; i++) { if (acc[i] >= tgt) { si = i-1; break; } si = i-1; }
+  const sLen = acc[si+1] - acc[si];
+  const f = sLen > 0 ? Math.min(1, (tgt - acc[si]) / sLen) : 0;
+  const a = seg[si], b = seg[Math.min(si+1, seg.length-1)];
+  return [a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f, bearingDeg(a[0], a[1], b[0], b[1])];
+}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -482,7 +532,7 @@ export default function StamfordMap() {
 
   const trackGroupRef      = useRef<any>(null);
   const trainMarkersRef    = useRef<Map<string, any>>(new Map());
-  const trainStateRef      = useRef<Map<string, { prevLat: number; prevLon: number; prevDepMs: number; nextLat: number; nextLon: number; nextArrMs: number }>>(new Map());
+  const trainStateRef      = useRef<Map<string, { prevLat: number; prevLon: number; prevDepMs: number; nextLat: number; nextLon: number; nextArrMs: number; track: [number,number][] }>>(new Map());
   const aircraftMarkersRef = useRef<Map<string, any>>(new Map());
   const aircraftStateRef   = useRef<Map<string, { lat: number; lon: number; heading: number; speedMs: number; lastMs: number }>>(new Map());
   const metarMarkersRef    = useRef<Map<string, any>>(new Map());
@@ -898,6 +948,7 @@ export default function StamfordMap() {
           trainStateRef.current.set(id, {
             prevLat: t.prevLat, prevLon: t.prevLon, prevDepMs: t.prevDepMs,
             nextLat: t.nextLat, nextLon: t.nextLon, nextArrMs: t.nextArrMs,
+            track: TRACK_ROUTE[t.routeId] ?? MNR_MAIN,
           });
         } else {
           trainStateRef.current.delete(id);
@@ -910,8 +961,8 @@ export default function StamfordMap() {
           m.getPopup()?.setContent(popupContent);
         } else {
           const icon = L.divIcon({
-            html: `<div class="tl-anim">${trainMarkerSVG(t.dir)}</div>`,
-            className: "", iconSize: [28, 16], iconAnchor: [14, 8],
+            html: `<div class="tl-anim">${trainMarkerSVG()}</div>`,
+            className: "", iconSize: [28, 10], iconAnchor: [14, 5],
           });
           const marker = L.marker([t.lat, t.lon], { icon })
             .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupContent))
@@ -1578,8 +1629,13 @@ export default function StamfordMap() {
           if (!m) return;
           const span = s.nextArrMs - s.prevDepMs;
           if (span <= 0) return;
-          const t = Math.min(1, Math.max(0, (now - s.prevDepMs) / span));
-          m.setLatLng([s.prevLat + (s.nextLat - s.prevLat) * t, s.prevLon + (s.nextLon - s.prevLon) * t]);
+          const frac = Math.min(1, Math.max(0, (now - s.prevDepMs) / span));
+          const [lat, lon, brg] = interpolateOnTrack(
+            s.track, [s.prevLat, s.prevLon], [s.nextLat, s.nextLon], frac
+          );
+          m.setLatLng([lat, lon]);
+          const inner = m._icon?.querySelector?.(".tl-train-icon") as HTMLElement | null;
+          if (inner) inner.style.transform = `rotate(${(brg - 90 + 360) % 360}deg)`;
         });
       }, 100));
 
@@ -1873,18 +1929,22 @@ export default function StamfordMap() {
             : ageSec < 3600 ? `${Math.floor(ageSec / 60)}m`
             : `${Math.floor(ageSec / 3600)}h`;
           const R = 16, C = 2 * Math.PI * R;
+          const ageStr = ageSec === null ? "No data yet"
+            : ageSec < 5    ? "Just now"
+            : ageSec < 60   ? `${ageSec}s ago`
+            : ageSec < 3600 ? `${Math.floor(ageSec / 60)}m ${ageSec % 60}s ago`
+            : `${Math.floor(ageSec / 3600)}h ago`;
+          const statusStr = ageSec === null ? "Waiting" : stale ? "Stale" : aging ? "Aging" : "Fresh";
+          const maxAgeStr = meta.maxAge >= 3600 ? `${meta.maxAge/3600}h` : meta.maxAge >= 60 ? `${meta.maxAge/60}m` : `${meta.maxAge}s`;
           return (
-            <div key={key} title={`${meta.short} · ${timeStr}`} style={{
+            <div key={key} className="tl-orb-wrap" style={{
               position: "relative", width: 42, height: 42, flexShrink: 0, pointerEvents: "auto", cursor: "default",
               opacity: active ? 1 : 0.18,
             }}>
               <svg width="42" height="42" viewBox="0 0 42 42"
                 style={{ position: "absolute", inset: 0, filter: fresh && active ? `drop-shadow(0 0 5px ${ringColor}90)` : "none", transition: "filter 0.6s" }}>
-                {/* tinted fill */}
                 <circle cx="21" cy="21" r={R} fill={`${meta.color}18`} />
-                {/* track */}
                 <circle cx="21" cy="21" r={R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="2" />
-                {/* depleting arc */}
                 <circle cx="21" cy="21" r={R} fill="none"
                   stroke={ringColor} strokeWidth="2.5" strokeLinecap="round"
                   strokeDasharray={C} strokeDashoffset={C * (1 - progress)}
@@ -1893,7 +1953,14 @@ export default function StamfordMap() {
               </svg>
               <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
                 <span style={{ fontSize: 13, lineHeight: 1, userSelect: "none" }}>{meta.icon}</span>
-                <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 6.5, letterSpacing: "0.04em", color: ringColor, lineHeight: 1 }}>{timeStr}</span>
+                <span style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: 9, letterSpacing: "0.04em", color: ringColor, lineHeight: 1 }}>{timeStr}</span>
+              </div>
+              <div className="tl-orb-tip">
+                <div style={{ color: meta.color, fontWeight: 700, marginBottom: 4 }}>{meta.label}</div>
+                <div><span style={{ color: "#475569" }}>Updated: </span><span style={{ color: "#e2ecff" }}>{ageStr}</span></div>
+                <div><span style={{ color: "#475569" }}>Status: </span><span style={{ color: ringColor }}>{statusStr}</span></div>
+                {layerKey && <div><span style={{ color: "#475569" }}>Layer: </span><span style={{ color: active ? "#4ade80" : "#475569" }}>{active ? "On" : "Off"}</span></div>}
+                <div style={{ color: "#2a3a4a", marginTop: 3 }}>Refresh window: {maxAgeStr}</div>
               </div>
             </div>
           );
@@ -2074,60 +2141,17 @@ export default function StamfordMap() {
         </div>
       )}
 
-      {/* ── Left column — ACTIVE panel + terminal ─────────────────────────── */}
+      {/* ── Left column — terminal feed ────────────────────────────────────── */}
       <div className="absolute" style={{
         left: panelOpen ? panelW + 10 : 10,
         top: 48, bottom: tickerItems.length > 0 ? 28 : 0,
-        zIndex: 15, width: 270, pointerEvents: "none",
+        zIndex: 15, width: 320, pointerEvents: "none",
         fontFamily: "Menlo,Consolas,monospace",
         display: "flex", flexDirection: "column",
         transition: "left 0.3s",
       }}>
-        {/* ◈ ACTIVE — merged situational awareness: ongoing events + recent log */}
-        {(ongoingItems.length > 0 || log.length > 0) && (
-          <div style={{ fontSize: Math.round(7 * uiScale), color: "#22d3ee44", letterSpacing: "0.14em", marginBottom: 4, flexShrink: 0 }}>
-            ◈ ACTIVE
-          </div>
-        )}
-        {ongoingItems.map(item => {
-          const elapsedMs = item.serverNow != null && item.fetchTime != null
-            ? (item.serverNow - item.startMs) + (nowMs - item.fetchTime)
-            : (nowMs - item.startMs);
-          return (
-            <div key={item.id} style={{
-              display: "flex", alignItems: "center", gap: 5,
-              fontSize: Math.round(8 * uiScale),
-              borderLeft: `2px solid ${item.color}55`,
-              paddingLeft: 7, paddingTop: 2, paddingBottom: 2, marginBottom: 2,
-              animation: "tl-slide-in 0.3s ease", letterSpacing: "0.04em", flexShrink: 0,
-            }}>
-              <span style={{ color: item.color + "88", fontVariantNumeric: "tabular-nums", fontSize: Math.round(7 * uiScale), minWidth: 48, flexShrink: 0, letterSpacing: "0.06em" }}>
-                {fmtElapsed(Math.max(0, elapsedMs))}
-              </span>
-              <span style={{ color: item.color }}>
-                {item.evtType}: {item.detail}
-              </span>
-            </div>
-          );
-        })}
-        {log.slice(0, Math.max(2, 5 - ongoingItems.length)).map((entry, i) => (
-          <div key={i} style={{
-            display: "flex", alignItems: "center", gap: 6,
-            fontSize: Math.round(8 * uiScale),
-            borderLeft: `2px solid ${entry.color}22`,
-            paddingLeft: 7, paddingTop: 2, paddingBottom: 2, marginBottom: 2,
-            animation: i === 0 && ongoingItems.length === 0 ? "tl-slide-in 0.3s ease" : "none",
-            letterSpacing: "0.04em", flexShrink: 0,
-          }}>
-            <span style={{ flexShrink: 0 }}>{entry.icon}</span>
-            <span style={{ color: entry.color + "55", fontVariantNumeric: "tabular-nums", fontSize: Math.round(7 * uiScale), minWidth: 44, flexShrink: 0, letterSpacing: "0.06em" }}>
-              {fmtElapsed(Math.max(0, nowMs - entry.loggedAt))}
-            </span>
-            <span style={{ color: entry.color + "88" }}>{entry.text}</span>
-          </div>
-        ))}
         {/* Terminal feed — transparent, full-height, bottom-fade */}
-        <div style={{ flex: 1, minHeight: 0, marginTop: 10, display: "flex", flexDirection: "column" }}>
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
           <div style={{ fontSize: Math.round(7 * uiScale), color: "#e2ecff", letterSpacing: "0.14em", marginBottom: 3, flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>
             {(() => { const n = new Date(nowMs); return `${String(n.getHours()).padStart(2,"0")}:${String(n.getMinutes()).padStart(2,"0")}:${String(n.getSeconds()).padStart(2,"0")}`; })()}
           </div>
@@ -2246,6 +2270,17 @@ export default function StamfordMap() {
 
         /* Soften blocky NEXRAD tiles with bilinear blur */
         .tl-radar-tile { image-rendering: auto; }
+        .tl-orb-tip {
+          display: none; position: absolute; top: calc(100% + 8px); left: 50%;
+          transform: translateX(-50%);
+          background: rgba(7,9,15,0.96); border: 1px solid #1a2d44;
+          border-radius: 8px; padding: 8px 12px; white-space: nowrap;
+          pointer-events: none; z-index: 9999;
+          font-size: 11px; font-family: Menlo,Consolas,monospace;
+          color: #cbd5e1; line-height: 1.75; min-width: 160px;
+          box-shadow: 0 4px 24px rgba(0,0,0,0.7);
+        }
+        .tl-orb-wrap:hover .tl-orb-tip { display: block; }
 
         /* Ticker: 28px content area + safe-area inset for Android/iOS nav bars */
         .tl-ticker-wrap {
