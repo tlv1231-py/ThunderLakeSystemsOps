@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "rail" | "services" | "traffic" | "dispatch" | "buildings" | "marine" | "vessels" | "metar" | "storm" | "outages";
+type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "rail" | "services" | "traffic" | "dispatch" | "buildings" | "marine" | "vessels" | "metar" | "storm" | "outages" | "sector";
 type BaseKey  = "satellite" | "hybrid" | "dark";
 interface LogEntry { icon: string; text: string; color: string; loggedAt: number; }
 interface OngoingItem {
@@ -59,6 +59,7 @@ const LAYER_META: Record<LayerKey, LayerMeta> = {
   metar:     { label: "METAR",       color: "#22c55e", section: "atmospheric" },
   storm:     { label: "Storm Obs",   color: "#38bdf8", section: "atmospheric" },
   outages:   { label: "Power Outages", color: "#facc15", section: "city" },
+  sector:    { label: "Sectors",      color: "#22d3ee", section: "overhead" },
 };
 
 const SECTIONS: { key: "overhead" | "atmospheric" | "city"; label: string }[] = [
@@ -477,6 +478,7 @@ export default function StamfordMap() {
     aircraft: true, radar: true, iss: true, alerts: true,
     lightning: true, transit: true, rail: true, services: true,
     traffic: true, dispatch: true, buildings: true, marine: true, vessels: true, metar: true, storm: true, outages: true,
+    sector: true,
   });
   const [weather,       setWeather]       = useState<WeatherNow | null>(null);
   const [iss,           setIss]           = useState<ISSPos | null>(null);
@@ -681,7 +683,7 @@ export default function StamfordMap() {
         g.clearLayers();
         g.addLayer(L.tileLayer(
           `https://tilecache.rainviewer.com/v2/radar/${ts}/256/{z}/{x}/{y}/6/1_1.png`,
-          { opacity: radarOpacityRef.current, maxZoom: 19, maxNativeZoom: 8, tileSize: 256, className: "tl-radar-tile" }
+          { opacity: radarOpacityRef.current, maxZoom: 19, maxNativeZoom: 6, tileSize: 256, className: "tl-radar-tile" }
         ));
         touchFeed("radar");
       })
@@ -691,7 +693,7 @@ export default function StamfordMap() {
         g.clearLayers();
         g.addLayer(L.tileLayer(
           `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png?_=${v}`,
-          { opacity: radarOpacityRef.current, maxZoom: 19, className: "tl-radar-tile" }
+          { opacity: radarOpacityRef.current, maxZoom: 19, maxNativeZoom: 10, className: "tl-radar-tile" }
         ));
       });
   }, [touchFeed]);
@@ -1044,31 +1046,102 @@ export default function StamfordMap() {
           if (!ev.lat || !ev.lon) return;
           const typeLabel = ev.type.replace(/_/g, " ");
           const evStartMs: number | null = ev.startMs ?? null;
-          const markerHtml = evStartMs
-            ? `<div class="tl-anim" style="position:relative;width:18px;height:18px;overflow:visible">
-                ${trafficSVG(ev.color)}
-                <span data-tl-mkr-onset="${evStartMs}" style="position:absolute;top:20px;left:50%;transform:translateX(-50%);
-                  font-family:Menlo,Consolas,monospace;font-size:calc(10px * var(--tl-mk-scale,1));color:${ev.color}cc;
-                  font-variant-numeric:tabular-nums;letter-spacing:0.06em;white-space:nowrap">${fmtElapsed(Date.now() - evStartMs)}</span>
-              </div>`
-            : `<div class="tl-anim">${trafficSVG(ev.color)}</div>`;
-          const icon = L.divIcon({
-            html: markerHtml, className: "",
-            iconSize:   [18, 18],
-            iconAnchor: [9, 9],
-          });
-          L.marker([ev.lat, ev.lon], { icon })
-            .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(
-              popupWrap(`<div style="font-size:12px;font-weight:700;color:${ev.color};margin-bottom:4px">🚧 ${ev.subtype || typeLabel}</div>
-              ${ev.road      ? `<div style="color:#7a9ab0">${ev.road}${ev.direction ? " · " + ev.direction : ""}</div>` : ""}
-              ${ev.severity  ? `<div style="color:#5a7090;font-size:10px">Severity: ${ev.severity}</div>` : ""}
-              ${ev.closure   ? `<div style="color:#ff2244;font-size:10px">⛔ Full closure</div>` : ""}
-              ${ev.description ? `<div style="color:#5a7090;font-size:10px;margin-top:3px">${ev.description}</div>` : ""}`)))
-            .addTo(g);
+          const popupContent = popupWrap(
+            `<div style="font-size:12px;font-weight:700;color:${ev.color};margin-bottom:4px">🚧 ${ev.subtype || typeLabel}</div>
+            ${ev.road      ? `<div style="color:#7a9ab0">${ev.road}${ev.direction ? " · " + ev.direction : ""}</div>` : ""}
+            ${ev.severity  ? `<div style="color:#5a7090;font-size:10px">Severity: ${ev.severity}</div>` : ""}
+            ${ev.closure   ? `<div style="color:#ff2244;font-size:10px">⛔ Full closure</div>` : ""}
+            ${ev.description ? `<div style="color:#5a7090;font-size:10px;margin-top:3px">${ev.description}</div>` : ""}`
+          );
+          const onsetLabel = evStartMs
+            ? `<span data-tl-mkr-onset="${evStartMs}" style="position:absolute;top:20px;left:50%;transform:translateX(-50%);
+                font-family:Menlo,Consolas,monospace;font-size:calc(10px * var(--tl-mk-scale,1));color:${ev.color}cc;
+                font-variant-numeric:tabular-nums;letter-spacing:0.06em;white-space:nowrap">${fmtElapsed(Date.now() - evStartMs)}</span>`
+            : "";
+          if (ev.roadCoords?.length >= 2) {
+            // Draw highlighted road segment
+            L.polyline(ev.roadCoords, {
+              color: ev.color, weight: ev.closure ? 6 : 4,
+              opacity: 0.72, dashArray: ev.closure ? undefined : "10 6",
+              className: "tl-anim",
+            }).bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupContent)).addTo(g);
+            // Marker at midpoint
+            const mid = ev.roadCoords[Math.floor(ev.roadCoords.length / 2)];
+            const midHtml = `<div class="tl-anim" style="position:relative;width:18px;height:18px;overflow:visible">${trafficSVG(ev.color)}${onsetLabel}</div>`;
+            L.marker(mid, {
+              icon: L.divIcon({ html: midHtml, className: "", iconSize: [18, 18], iconAnchor: [9, 9] }),
+            }).bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupContent)).addTo(g);
+          } else {
+            // Fallback: floating diamond marker
+            const markerHtml = `<div class="tl-anim" style="position:relative;width:18px;height:18px;overflow:visible">${trafficSVG(ev.color)}${onsetLabel}</div>`;
+            L.marker([ev.lat, ev.lon], {
+              icon: L.divIcon({ html: markerHtml, className: "", iconSize: [18, 18], iconAnchor: [9, 9] }),
+            }).bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupContent)).addTo(g);
+          }
         });
       });
     }).catch(() => {});
   }, [addLog]);
+
+  const drawSectors = useCallback((L: any) => {
+    const g = groupRefs.current.sector;
+    if (!g) return;
+    g.clearLayers();
+    const cx = STAMFORD.lat, cy = STAMFORD.lng;
+    const RINGS_NM = [1, 2, 5, 10, 20];
+    const OUTER_M  = RINGS_NM[RINGS_NM.length - 1] * 1852;
+
+    // Concentric range rings
+    RINGS_NM.forEach(nm => {
+      const rm = nm * 1852;
+      const pts: [number, number][] = Array.from({ length: 73 }, (_, i) => {
+        const [la, lo] = destPoint(cx, cy, i * 5, rm);
+        return [la, lo] as [number, number];
+      });
+      const isFive = nm === 5;
+      L.polyline(pts, {
+        color: "#22d3ee", weight: isFive ? 1 : 0.5,
+        opacity: isFive ? 0.28 : 0.15,
+        dashArray: isFive ? "6 9" : "2 14",
+        interactive: false,
+      }).addTo(g);
+      // nm label just north of each ring
+      const [lLat, lLon] = destPoint(cx, cy, 358, rm);
+      L.marker([lLat, lLon], {
+        icon: L.divIcon({
+          html: `<span style="font-size:7.5px;color:#22d3ee90;font-family:Menlo,Consolas,monospace;font-weight:700;text-shadow:0 0 3px #000c">${nm}nm</span>`,
+          className: "", iconSize: [28, 12], iconAnchor: [14, 12],
+        }),
+        interactive: false, keyboard: false,
+      }).addTo(g);
+    });
+
+    // Bearing radials every 30°
+    const LABEL: Record<number, string> = {
+      0: "N", 30: "030", 60: "060", 90: "E",
+      120: "120", 150: "150", 180: "S", 210: "210",
+      240: "240", 270: "W", 300: "300", 330: "330",
+    };
+    for (let brg = 0; brg < 360; brg += 30) {
+      const isMajor = brg % 90 === 0;
+      const [rLat, rLon] = destPoint(cx, cy, brg, OUTER_M);
+      L.polyline([[cx, cy], [rLat, rLon]], {
+        color: "#22d3ee", weight: isMajor ? 0.8 : 0.4,
+        opacity: isMajor ? 0.22 : 0.12,
+        dashArray: "3 14",
+        interactive: false,
+      }).addTo(g);
+      // Compass label beyond outer ring
+      const [lbLat, lbLon] = destPoint(cx, cy, brg, OUTER_M * 1.14);
+      L.marker([lbLat, lbLon], {
+        icon: L.divIcon({
+          html: `<span style="font-size:7px;color:#22d3ee80;font-family:Menlo,Consolas,monospace;text-shadow:0 0 3px #000c">${LABEL[brg]}</span>`,
+          className: "", iconSize: [18, 12], iconAnchor: [9, 6],
+        }),
+        interactive: false, keyboard: false,
+      }).addTo(g);
+    }
+  }, []);
 
   const fetchDispatch = useCallback((L: any) => {
     fetch("/api/map/dispatch").then(r => r.json()).then(data => {
@@ -1533,6 +1606,7 @@ export default function StamfordMap() {
         metar:     L.layerGroup().addTo(map),
         storm:     L.layerGroup().addTo(map),
         outages:   L.layerGroup().addTo(map),
+        sector:    L.layerGroup().addTo(map),
       };
 
       mapInst.current = map;
@@ -1598,6 +1672,7 @@ export default function StamfordMap() {
       fetchAircraft(L); fetchRadar(L); fetchISS(L); fetchAlerts(L);
       fetchRailTrack(L);
       fetchTransit(L); fetchRail(L); fetchServices(L); fetchTraffic(L); fetchDispatch(L);
+      drawSectors(L);
       fetchMarine(L); fetchBuildings(L); fetchMetar(L); fetchStorm(L); fetchOutages(L); // buildings: one-time load, 24h server cache
 
       // Polling

@@ -92,6 +92,82 @@ async function fetchCT511(debug = false): Promise<
   }
 }
 
+// ── Road geometry lookup ─────────────────────────────────────────────────────
+
+interface RoadGeom { name: string; ref: string; coords: [number, number][] }
+
+async function fetchRoadGeometries(): Promise<RoadGeom[]> {
+  const BBOX = "40.99,-73.66,41.13,-73.43";
+  const query = `[out:json][timeout:25];
+way["highway"~"^(motorway|motorway_link|trunk|primary|secondary|tertiary)$"](${BBOX});
+out geom tags;`;
+  try {
+    const res = await fetch("https://overpass-api.de/api/interpreter", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `data=${encodeURIComponent(query)}`,
+      next: { revalidate: 3600 },
+      signal: AbortSignal.timeout(22000),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.elements ?? [])
+      .filter((el: any) => el.type === "way" && el.geometry?.length >= 2)
+      .map((el: any) => ({
+        name: (el.tags?.name ?? "").toLowerCase(),
+        ref:  (el.tags?.ref  ?? "").toLowerCase(),
+        coords: el.geometry.map((p: any) => [p.lat, p.lon] as [number, number]),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function _roadNum(s: string): string | null {
+  const m = s.match(/\d+/);
+  return m ? m[0] : null;
+}
+
+function _dsq(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const dl = lat1 - lat2, dlo = lon1 - lon2;
+  return dl * dl + dlo * dlo;
+}
+
+function _nearSegment(
+  coords: [number, number][], lat: number, lon: number, radDeg: number
+): [number, number][] | null {
+  let start = -1, end = -1;
+  for (let i = 0; i < coords.length; i++) {
+    if (Math.sqrt(_dsq(coords[i][0], coords[i][1], lat, lon)) <= radDeg) {
+      if (start < 0) start = i;
+      end = i;
+    }
+  }
+  if (start < 0 || end <= start) return null;
+  return coords.slice(Math.max(0, start - 2), Math.min(coords.length - 1, end + 2) + 1);
+}
+
+function findRoadGeom(
+  roads: RoadGeom[], evRoad: string, lat: number, lon: number
+): [number, number][] | null {
+  const evNum = _roadNum(evRoad.toLowerCase());
+  let candidates = evNum
+    ? roads.filter(r => _roadNum(r.name) === evNum || _roadNum(r.ref) === evNum)
+    : roads.filter(r => r.name.length > 3 && evRoad.toLowerCase().includes(r.name.slice(0, 6)));
+  if (!candidates.length) candidates = roads;
+
+  let bestCoords: [number, number][] | null = null;
+  let bestDist = Infinity;
+  for (const road of candidates) {
+    for (const c of road.coords) {
+      const d = _dsq(c[0], c[1], lat, lon);
+      if (d < bestDist) { bestDist = d; bestCoords = road.coords; }
+    }
+  }
+  if (!bestCoords || Math.sqrt(bestDist) > 0.009) return null;
+  return _nearSegment(bestCoords, lat, lon, 0.005);
+}
+
 async function fetchOverpass(): Promise<any[]> {
   const BBOX = "40.99,-73.66,41.13,-73.43";
   const query = `[out:json][timeout:20];
@@ -140,9 +216,14 @@ out center tags;`;
 
 export async function GET(req: Request) {
   const debug = new URL(req.url).searchParams.has("debug");
-  const ct511 = await fetchCT511(debug);
+  const [ct511, roads] = await Promise.all([fetchCT511(debug), fetchRoadGeometries()]);
   if (ct511.ok) {
-    return NextResponse.json({ source: "ct511", events: ct511.events, ...(debug ? { _raw: ct511.raw } : {}) });
+    const events = ct511.events.map(ev => {
+      if (!ev.road || !ev.lat || !ev.lon) return ev;
+      const roadCoords = findRoadGeom(roads, ev.road, ev.lat, ev.lon);
+      return roadCoords ? { ...ev, roadCoords } : ev;
+    });
+    return NextResponse.json({ source: "ct511", events, ...(debug ? { _raw: ct511.raw } : {}) });
   }
   const events = await fetchOverpass();
   return NextResponse.json({ source: "overpass", events, ...(debug ? { _ct511_raw: ct511 } : {}) });
