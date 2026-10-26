@@ -334,9 +334,15 @@ function popupWrap(inner: string, src?: string) {
     backdrop-filter:blur(8px)">${inner}${srcBadge}${ageLine}</div>`;
 }
 
-function reticleHTML(scanning: boolean): string {
-  const cls = scanning ? "tl-reticle-scan" : "tl-reticle-lock";
-  return `<div class="tl-reticle ${cls}"><span class="tl-rc tl-rc-tl"></span><span class="tl-rc tl-rc-tr"></span><span class="tl-rc tl-rc-bl"></span><span class="tl-rc tl-rc-br"></span></div>`;
+function reticleHTML(phase: "enter" | "lock" | "scan"): string {
+  return `<div class="tl-reticle tl-reticle-${phase}">
+    <div class="tl-rc-ring-outer"></div>
+    <div class="tl-rc-ring-inner"></div>
+    <span class="tl-rc tl-rc-tl"></span><span class="tl-rc tl-rc-tr"></span>
+    <span class="tl-rc tl-rc-bl"></span><span class="tl-rc tl-rc-br"></span>
+    <div class="tl-rc-cross-h"></div><div class="tl-rc-cross-v"></div>
+    <div class="tl-rc-center"></div>
+  </div>`;
 }
 function trainMarkerSVG(): string {
   return `<div class="tl-train-icon" style="width:28px;height:10px;transform-origin:50% 50%">
@@ -530,6 +536,7 @@ export default function StamfordMap() {
   const reticleSrcRef       = useRef<any>(null);
   const lRef                = useRef<any>(null);
   const ssTrackMarkerRef    = useRef<any>(null);
+  const ssTrackMsgRef       = useRef<SsTrackInfo | null>(null);
   const ssLastInputRef      = useRef<number>(Date.now());
   const ssIdleTimerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
   const ssTrackMsgTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -572,6 +579,7 @@ export default function StamfordMap() {
   const [dailyForecast,  setDailyForecast]  = useState<DailyFc[]>([]);
   const [showControls,   setShowControls]   = useState(false);
   const [ssTrackMsg,     setSsTrackMsg]     = useState<SsTrackInfo | null>(null);
+  const [lockExiting,    setLockExiting]    = useState(false);
   const [isFullscreen,  setIsFullscreen]  = useState(false);
   const [milClock,      setMilClock]      = useState("");
   const [nowMs,         setNowMs]         = useState(Date.now());
@@ -669,7 +677,9 @@ export default function StamfordMap() {
       if (ssTrackMsgTimerRef.current) { clearTimeout(ssTrackMsgTimerRef.current); ssTrackMsgTimerRef.current = null; }
       ssKnownRef.current.clear();
       ssTrackMarkerRef.current = null;
+      ssTrackMsgRef.current = null;
       setSsTrackMsg(null);
+      setLockExiting(false);
       reticleSrcRef.current = null;
       // Restore full opacity on all moving markers
       aircraftMarkersRef.current.forEach(m => { try { m.setOpacity(1); } catch {} });
@@ -700,21 +710,28 @@ export default function StamfordMap() {
     if (initM) {
       ssTrackMarkerRef.current = initM;
       reticleSrcRef.current = initM;
-      setSsTrackMsg({ type: initType2, id: initId2, detail: initDetail2, enteredMs: Date.now() });
+      const initMsg = { type: initType2, id: initId2, detail: initDetail2, enteredMs: Date.now() };
+      ssTrackMsgRef.current = initMsg;
+      setSsTrackMsg(initMsg);
       import("leaflet").then(mod => {
         const Lx = mod.default;
         if (reticleMarkerRef.current) { try { map.removeLayer(reticleMarkerRef.current); } catch {} }
         reticleMarkerRef.current = Lx.marker([initM.getLatLng().lat, initM.getLatLng().lng], {
-          icon: Lx.divIcon({ html: reticleHTML(false), className: "", iconSize: [44, 44], iconAnchor: [22, 22] }),
+          icon: Lx.divIcon({ html: reticleHTML("enter"), className: "", iconSize: [80, 80], iconAnchor: [40, 40] }),
           interactive: false, keyboard: false, zIndexOffset: -1000,
         }).addTo(map);
+        setTimeout(() => {
+          const rEl = reticleMarkerRef.current?.getElement?.();
+          const inner = rEl?.querySelector(".tl-reticle") as HTMLElement | null;
+          if (inner) { inner.classList.remove("tl-reticle-enter"); inner.classList.add("tl-reticle-lock"); }
+        }, 700);
       });
     }
 
     // Track user input to detect idle
     const mapEl = mapRef.current;
     const resetIdle = () => { ssLastInputRef.current = Date.now(); };
-    const cancelTrack = () => { ssTrackMarkerRef.current = null; setSsTrackMsg(null); };
+    const cancelTrack = () => { ssTrackMarkerRef.current = null; ssTrackMsgRef.current = null; setSsTrackMsg(null); setLockExiting(false); };
     if (mapEl) {
       mapEl.addEventListener("wheel", resetIdle, { passive: true });
       mapEl.addEventListener("touchstart", resetIdle, { passive: true });
@@ -782,27 +799,43 @@ export default function StamfordMap() {
       trainMarkersRef.current.forEach((m, id) => { try { if (distToStamford(m.getLatLng().lat, m.getLatLng().lng, tlsLat, tlsLng) <= SS_M) ssKnownRef.current.add(`train-${id}`); } catch {} });
 
       if (newMarker) {
-        ssTrackMarkerRef.current = newMarker;
-        reticleSrcRef.current = newMarker;
-        setSsTrackMsg({ type: newType, id: newId, detail: newDetail, enteredMs: Date.now() });
         if (ssTrackMsgTimerRef.current) clearTimeout(ssTrackMsgTimerRef.current);
 
-        import("leaflet").then(mod => {
-          const Lx = mod.default;
-          if (reticleMarkerRef.current) { try { mapNow.removeLayer(reticleMarkerRef.current); } catch {} }
-          reticleMarkerRef.current = Lx.marker([newLat, newLon], {
-            icon: Lx.divIcon({ html: reticleHTML(true), className: "", iconSize: [44, 44], iconAnchor: [22, 22] }),
-            interactive: false, keyboard: false, zIndexOffset: -1000,
-          }).addTo(mapNow);
-          // Lock reticle after scan animation, don't open full popup
-          setTimeout(() => {
-            const rEl = reticleMarkerRef.current?.getElement?.();
-            const inner = rEl?.querySelector(".tl-reticle") as HTMLElement | null;
-            if (inner) { inner.classList.remove("tl-reticle-scan"); inner.classList.add("tl-reticle-lock"); }
-          }, 650);
-        });
+        const doAcquire = () => {
+          if (!ssModeRef.current) return;
+          ssTrackMarkerRef.current = newMarker;
+          reticleSrcRef.current = newMarker;
+          const msg = { type: newType, id: newId, detail: newDetail, enteredMs: Date.now() };
+          ssTrackMsgRef.current = msg;
+          setSsTrackMsg(msg);
+          setLockExiting(false);
+          import("leaflet").then(mod => {
+            const Lx = mod.default;
+            if (reticleMarkerRef.current) { try { mapNow.removeLayer(reticleMarkerRef.current); } catch {} }
+            reticleMarkerRef.current = Lx.marker([newLat, newLon], {
+              icon: Lx.divIcon({ html: reticleHTML("enter"), className: "", iconSize: [80, 80], iconAnchor: [40, 40] }),
+              interactive: false, keyboard: false, zIndexOffset: -1000,
+            }).addTo(mapNow);
+            setTimeout(() => {
+              const rEl = reticleMarkerRef.current?.getElement?.();
+              const inner = rEl?.querySelector(".tl-reticle") as HTMLElement | null;
+              if (inner) { inner.classList.remove("tl-reticle-enter"); inner.classList.add("tl-reticle-lock"); }
+            }, 700);
+          });
+        };
+
+        if (ssTrackMsgRef.current) {
+          // Switching targets: exit old overlay + reticle, then acquire
+          setLockExiting(true);
+          const oldREl = reticleMarkerRef.current?.getElement?.();
+          const oldInner = oldREl?.querySelector(".tl-reticle") as HTMLElement | null;
+          if (oldInner) { oldInner.classList.remove("tl-reticle-lock", "tl-reticle-enter"); oldInner.classList.add("tl-reticle-exiting"); }
+          ssTrackMsgTimerRef.current = setTimeout(doAcquire, 230);
+        } else {
+          doAcquire();
+        }
       }
-    }, 6000);
+    }, 1000);
     return () => {
       if (ssScanTimerRef.current)  { clearInterval(ssScanTimerRef.current);  ssScanTimerRef.current  = null; }
       if (ssIdleTimerRef.current)  { clearInterval(ssIdleTimerRef.current);  ssIdleTimerRef.current  = null; }
@@ -811,7 +844,7 @@ export default function StamfordMap() {
         mapEl.removeEventListener("touchstart", resetIdle);
       }
       map.off("dragstart", cancelTrack);
-      map.off("zoomstart", cancelTrack);
+      // zoomstart listener was removed; no off needed
     };
   }, [ssMode]);
 
@@ -1886,7 +1919,7 @@ export default function StamfordMap() {
           const ll = src.getLatLng();
           if (reticleMarkerRef.current) map.removeLayer(reticleMarkerRef.current);
           reticleMarkerRef.current = L.marker(ll, {
-            icon: L.divIcon({ html: reticleHTML(false), className: "", iconSize: [44, 44], iconAnchor: [22, 22] }),
+            icon: L.divIcon({ html: reticleHTML("scan"), className: "", iconSize: [80, 80], iconAnchor: [40, 40] }),
             interactive: false, keyboard: false, zIndexOffset: -1000,
           }).addTo(map);
           reticleSrcRef.current = src; // track source for position following
@@ -2990,7 +3023,7 @@ export default function StamfordMap() {
           [`${M+S},${H-M} ${M},${H-M} ${M},${H-M-S}`, `${W-M-S},${H-M} ${W-M},${H-M} ${W-M},${H-M-S}`],
         ];
         return (
-          <div key={ssTrackMsg.id} className="absolute inset-0 tl-lockon-overlay pointer-events-none" style={{ zIndex: 22 }}>
+          <div key={ssTrackMsg.id} className={`absolute inset-0 pointer-events-none ${lockExiting ? "tl-lockon-exit" : "tl-lockon-overlay"}`} style={{ zIndex: 22 }}>
             {/* SVG: corner brackets + leader line */}
             <svg style={{ position: "absolute", top: 0, left: 0, width: W, height: H, overflow: "visible" }}>
               {brackets.flat().map((pts, i) => (
@@ -3171,30 +3204,86 @@ export default function StamfordMap() {
         [data-zoom="7"] .leaflet-marker-icon, [data-zoom="6"] .leaflet-marker-icon,
         [data-zoom="5"] .leaflet-marker-icon { transform-origin: center; filter: opacity(0.4); }
 
-        /* Targeting reticle corner brackets */
-        .tl-reticle { position:relative; width:44px; height:44px; }
-        .tl-rc { position:absolute; width:9px; height:9px; border-color:#22d3ee; border-style:solid; }
-        .tl-rc-tl { top:0; left:0; border-width:1.5px 0 0 1.5px; }
-        .tl-rc-tr { top:0; right:0; border-width:1.5px 1.5px 0 0; }
-        .tl-rc-bl { bottom:0; left:0; border-width:0 0 1.5px 1.5px; }
-        .tl-rc-br { bottom:0; right:0; border-width:0 1.5px 1.5px 0; }
-        @keyframes tl-rc-lock { from { opacity:0; transform:scale(1.4); } to { opacity:0.9; transform:scale(1); } }
-        .tl-reticle-lock .tl-rc { animation:tl-rc-lock 0.18s ease both; }
-        .tl-reticle-lock .tl-rc-tl { animation-delay:0ms; }
-        .tl-reticle-lock .tl-rc-tr { animation-delay:25ms; }
-        .tl-reticle-lock .tl-rc-bl { animation-delay:50ms; }
-        .tl-reticle-lock .tl-rc-br { animation-delay:75ms; }
+        /* ── Targeting reticle ── */
+        .tl-reticle { position:relative; width:80px; height:80px; color:#22d3ee; }
+
+        /* Corner brackets */
+        .tl-rc { position:absolute; width:14px; height:14px; border-color:currentColor; border-style:solid; opacity:0.9; }
+        .tl-rc-tl { top:0; left:0; border-width:2px 0 0 2px; }
+        .tl-rc-tr { top:0; right:0; border-width:2px 2px 0 0; }
+        .tl-rc-bl { bottom:0; left:0; border-width:0 0 2px 2px; }
+        .tl-rc-br { bottom:0; right:0; border-width:0 2px 2px 0; }
+
+        /* Outer dashed ring */
+        .tl-rc-ring-outer {
+          position:absolute; inset:4px; border-radius:50%;
+          border:1px dashed currentColor; opacity:0.35;
+        }
+        /* Inner static ring */
+        .tl-rc-ring-inner {
+          position:absolute; inset:22px; border-radius:50%;
+          border:1px solid currentColor; opacity:0.5;
+        }
+        /* Crosshair lines */
+        .tl-rc-cross-h { position:absolute; top:50%; left:6px; right:6px; height:1px; background:currentColor; opacity:0.25; transform:translateY(-50%); }
+        .tl-rc-cross-v { position:absolute; left:50%; top:6px; bottom:6px; width:1px; background:currentColor; opacity:0.25; transform:translateX(-50%); }
+        /* Center dot */
+        .tl-rc-center {
+          position:absolute; top:50%; left:50%; width:5px; height:5px;
+          border-radius:50%; background:currentColor;
+          transform:translate(-50%,-50%);
+          box-shadow:0 0 8px 2px currentColor;
+          opacity:0.9;
+        }
+
+        /* Color cycling — hue drifts + brightness strobes for tactical flash */
+        @keyframes tl-rc-hue-cycle {
+          0%   { color:#22d3ee; filter:brightness(1.0); }
+          12%  { color:#00fff7; filter:brightness(2.4); }
+          28%  { color:#22d3ee; filter:brightness(1.3); }
+          50%  { color:#a5f3fc; filter:brightness(1.8); }
+          68%  { color:#22d3ee; filter:brightness(1.1); }
+          82%  { color:#7dd3fc; filter:brightness(2.6); }
+          100% { color:#22d3ee; filter:brightness(1.0); }
+        }
+        /* Outer ring rotation */
+        @keyframes tl-rc-rotate { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+
+        /* LOCK state — color cycle + spinning ring */
+        .tl-reticle-lock { animation:tl-rc-hue-cycle 1.8s ease-in-out infinite; }
+        .tl-reticle-lock .tl-rc-ring-outer { animation:tl-rc-rotate 4s linear infinite; }
+
+        /* ENTER animation — whole reticle blasts in from large */
+        @keyframes tl-rc-enter {
+          0%   { opacity:0; transform:scale(2.4); filter:brightness(4); }
+          35%  { opacity:1; transform:scale(1.08); filter:brightness(2.2); }
+          70%  { transform:scale(0.96); filter:brightness(1.4); }
+          100% { opacity:1; transform:scale(1); filter:brightness(1); }
+        }
+        .tl-reticle-enter { animation:tl-rc-enter 0.65s cubic-bezier(0.22,1,0.36,1) both; }
+
+        /* SCAN animation (popup) — staggered corner bracket expand */
         @keyframes tl-rc-scan {
-          0%   { opacity:0; transform:scale(2.2); }
-          45%  { opacity:1; transform:scale(1.05); }
-          75%  { transform:scale(0.94); }
-          100% { opacity:0.9; transform:scale(1); }
+          0%   { opacity:0; transform:scale(2.2); filter:brightness(3); }
+          45%  { opacity:1; transform:scale(1.05); filter:brightness(1.6); }
+          75%  { transform:scale(0.96); }
+          100% { opacity:0.9; transform:scale(1); filter:brightness(1); }
         }
         .tl-reticle-scan .tl-rc { animation:tl-rc-scan 0.55s cubic-bezier(0.34,1.56,0.64,1) both; }
         .tl-reticle-scan .tl-rc-tl { animation-delay:0ms; }
         .tl-reticle-scan .tl-rc-tr { animation-delay:55ms; }
         .tl-reticle-scan .tl-rc-bl { animation-delay:110ms; }
         .tl-reticle-scan .tl-rc-br { animation-delay:165ms; }
+
+        /* EXIT animation — collapse and flash out */
+        @keyframes tl-rc-exit {
+          0%   { opacity:0.9; transform:scale(1); filter:brightness(1); }
+          30%  { opacity:1; transform:scale(1.15); filter:brightness(3); }
+          100% { opacity:0; transform:scale(0.1); filter:brightness(0.5); }
+        }
+        .tl-reticle-exiting { animation:tl-rc-exit 0.22s ease-in both; }
+
+        /* UNLOCK animation (popup close) */
         @keyframes tl-rc-unlock { from { opacity:0.9; transform:scale(1); } to { opacity:0; transform:scale(1.6) translateY(-2px); } }
         .tl-reticle-unlock .tl-rc { animation:tl-rc-unlock 0.22s ease-out both; }
         .tl-reticle-unlock .tl-rc-tl { animation-delay:0ms; }
@@ -3218,6 +3307,8 @@ export default function StamfordMap() {
           100% { opacity: 1; clip-path: inset(0%); transform: scale(1); }
         }
         .tl-lockon-overlay { animation: tl-lockon-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
+        @keyframes tl-lockon-out { 0% { opacity:1; } 100% { opacity:0; clip-path: inset(3% 3% 3% 3%); } }
+        .tl-lockon-exit { animation: tl-lockon-out 0.22s ease-in both; }
 
         /* Screensaver popup tactical lock-on animation */
         @keyframes tl-ss-lock {
