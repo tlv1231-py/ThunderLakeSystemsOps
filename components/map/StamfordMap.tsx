@@ -2168,7 +2168,7 @@ export default function StamfordMap() {
         const t = now / b.T;
         const x = (b.cx + b.rx * Math.cos(t * Math.PI * 2 + b.ph)) * W;
         const y = (b.cy + b.ry * Math.sin(t * Math.PI * 2 + b.ph * 0.73)) * H;
-        const r = (b.rad + 0.08 * Math.sin(now / b.pT + b.pPh)) * Math.min(W, H);
+        const r = b.rad * Math.min(W, H);
         const g2 = ctx.createRadialGradient(x, y, 0, x, y, r);
         g2.addColorStop(0,    `rgba(${b.r},${b.g},${b.b},${b.a})`);
         g2.addColorStop(0.45, `rgba(${b.r},${b.g},${b.b},${b.a * 0.45})`);
@@ -2400,17 +2400,16 @@ export default function StamfordMap() {
           </span>
         )}
 
-        {/* Hourly + daily forecast — between conditions and clock */}
-        <div style={{ flex: 1 }} />
+        {/* Hourly + daily forecast — immediately after RH, flush left */}
         {hourlyForecast.length > 0 && (
           <div className="tl-mob-hide" style={{ display: "flex", gap: 6, alignItems: "center", borderLeft: "1px solid #1e2d4430", paddingLeft: 10 }}>
             {hourlyForecast.slice(0, 7).map((h, i) => {
               const ampm = h.hour === 0 ? "12a" : h.hour < 12 ? `${h.hour}a` : h.hour === 12 ? "12p" : `${h.hour - 12}p`;
               return (
                 <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
-                  <span style={{ fontSize: 6, color: "#1e3050", fontFamily: "Menlo,Consolas,monospace" }}>{ampm}</span>
-                  <span style={{ fontSize: 9, lineHeight: 1 }}>{wmoIcon(h.code)}</span>
-                  <span style={{ fontSize: 6, color: "#5a7090", fontFamily: "Menlo,Consolas,monospace", fontVariantNumeric: "tabular-nums" }}>{h.temp}°</span>
+                  <span style={{ fontSize: 8, color: "#2a4060", fontFamily: "Menlo,Consolas,monospace" }}>{ampm}</span>
+                  <span style={{ fontSize: 11, lineHeight: 1 }}>{wmoIcon(h.code)}</span>
+                  <span style={{ fontSize: 8, color: "#7090b0", fontFamily: "Menlo,Consolas,monospace", fontVariantNumeric: "tabular-nums" }}>{h.temp}°</span>
                 </div>
               );
             })}
@@ -2422,17 +2421,17 @@ export default function StamfordMap() {
               const dayName = i === 0 ? "TOD" : new Date(d.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short" }).toUpperCase().slice(0, 3);
               return (
                 <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
-                  <span style={{ fontSize: 6, color: "#1e3050", fontFamily: "Menlo,Consolas,monospace" }}>{dayName}</span>
-                  <span style={{ fontSize: 9, lineHeight: 1 }}>{wmoIcon(d.code)}</span>
-                  <span style={{ fontSize: 6, color: "#5a7090", fontFamily: "Menlo,Consolas,monospace", fontVariantNumeric: "tabular-nums" }}>{d.max}°/{d.min}°</span>
+                  <span style={{ fontSize: 8, color: "#2a4060", fontFamily: "Menlo,Consolas,monospace" }}>{dayName}</span>
+                  <span style={{ fontSize: 11, lineHeight: 1 }}>{wmoIcon(d.code)}</span>
+                  <span style={{ fontSize: 8, color: "#7090b0", fontFamily: "Menlo,Consolas,monospace", fontVariantNumeric: "tabular-nums" }}>{d.max}°/{d.min}°</span>
                 </div>
               );
             })}
           </div>
         )}
 
-        {/* Clock — cycles Zulu / UTC / local every 2.5s */}
-        <span key={Math.floor(nowMs / 2500) % 3} className="tl-clock-flip shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(13 * uiScale), color: "#39d97a", letterSpacing: "0.12em", fontWeight: 700, borderLeft: "1px solid #1e2d4430", paddingLeft: 10 }}>
+        {/* Clock — pushed to far right, cycles Zulu / UTC / local every 2.5s */}
+        <span key={Math.floor(nowMs / 2500) % 3} className="tl-clock-flip shrink-0" style={{ fontFamily: "Menlo,Consolas,monospace", fontSize: Math.round(13 * uiScale), color: "#39d97a", letterSpacing: "0.12em", fontWeight: 700, borderLeft: "1px solid #1e2d4430", paddingLeft: 10, marginLeft: "auto" }}>
           {clockDisplay}
         </span>
       </div>
@@ -2774,32 +2773,46 @@ export default function StamfordMap() {
                 {S10.length > 0 ? (() => {
                   const trainCount10 = S10.filter(e => e.type === "TRAIN").length;
                   const nonTrain10   = S10.filter(e => e.type !== "TRAIN");
+                  const typeIcon = (t: string) => t === "AIR" ? "✈" : t === "AIS" ? "≈" : "·";
                   return (<>
-                    {nonTrain10.map((e, i) => (
-                      <div key={i} style={{ display: "flex", gap: 4, fontSize: sz, marginBottom: 2, lineHeight: 1.3 }}>
-                        <span style={{ color: e.color + "70", flexShrink: 0, minWidth: 30, fontSize: sz2, letterSpacing: "0.06em" }}>{e.type}</span>
-                        <span style={{ color: "#e2ecff70", flexShrink: 0, maxWidth: 62, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
-                        <span style={{ color: "#5a709055", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: sz2 }}>{e.info}</span>
-                        <span style={{ color: "#1e305088", flexShrink: 0, fontSize: sz2, fontVariantNumeric: "tabular-nums" }}>[{e.age}s]</span>
+                    {nonTrain10.map((e) => (
+                      <div key={e.name} style={{ display: "flex", alignItems: "baseline", gap: 3, fontSize: sz, marginBottom: 2, lineHeight: 1.35 }}>
+                        <span style={{ color: e.color + "cc", flexShrink: 0, fontSize: sz + 1 }}>{typeIcon(e.type)}</span>
+                        <span style={{ color: "#e2ecff88", flexShrink: 0, maxWidth: 58, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
+                        {e.info && <span style={{ color: "#5a709044", fontSize: sz2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}> · {e.info}</span>}
+                        <span style={{ color: "#22d3ee33", flexShrink: 0, fontSize: sz2, fontVariantNumeric: "tabular-nums" }}> · {e.age}s</span>
                       </div>
                     ))}
                     {trainCount10 > 0 && (
-                      <div style={{ display: "flex", gap: 4, fontSize: sz, marginBottom: 2, lineHeight: 1.3 }}>
-                        <span style={{ color: "#4488ff70", flexShrink: 0, minWidth: 30, fontSize: sz2, letterSpacing: "0.06em" }}>TRAIN</span>
-                        <span style={{ color: "#e2ecff55" }}>× {trainCount10}</span>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 3, fontSize: sz, marginBottom: 2, lineHeight: 1.35 }}>
+                        <span style={{ color: "#4488ffcc", flexShrink: 0, fontSize: sz + 1 }}>▬</span>
+                        <span style={{ color: "#e2ecff55" }}>TRAIN × {trainCount10}</span>
                       </div>
                     )}
                   </>);
                 })() : <div style={{ fontSize: sz2, color: "#1e3050", marginBottom: 2 }}>NO CONTACTS</div>}
                 <div style={{ fontSize: sz2, color: "#22d3ee30", letterSpacing: "0.12em", marginTop: 7, marginBottom: 3 }}>─ 20mi</div>
-                {S20.length > 0 ? S20.map((e, i) => (
-                  <div key={i} style={{ display: "flex", gap: 4, fontSize: sz, marginBottom: 2, lineHeight: 1.3 }}>
-                    <span style={{ color: e.color + "70", flexShrink: 0, minWidth: 30, fontSize: sz2, letterSpacing: "0.06em" }}>{e.type}</span>
-                    <span style={{ color: "#e2ecff70", flexShrink: 0, maxWidth: 62, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
-                    <span style={{ color: "#5a709055", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: sz2 }}>{e.info}</span>
-                    <span style={{ color: "#1e305088", flexShrink: 0, fontSize: sz2, fontVariantNumeric: "tabular-nums" }}>[{e.age}s]</span>
-                  </div>
-                )) : <div style={{ fontSize: sz2, color: "#1e3050", marginBottom: 2 }}>NO CONTACTS</div>}
+                {S20.length > 0 ? (() => {
+                  const trainCount20 = S20.filter(e => e.type === "TRAIN").length;
+                  const nonTrain20   = S20.filter(e => e.type !== "TRAIN");
+                  const typeIcon20 = (t: string) => t === "AIR" ? "✈" : t === "AIS" ? "≈" : "·";
+                  return (<>
+                    {nonTrain20.map((e) => (
+                      <div key={e.name} style={{ display: "flex", alignItems: "baseline", gap: 3, fontSize: sz, marginBottom: 2, lineHeight: 1.35 }}>
+                        <span style={{ color: e.color + "99", flexShrink: 0, fontSize: sz + 1 }}>{typeIcon20(e.type)}</span>
+                        <span style={{ color: "#e2ecff66", flexShrink: 0, maxWidth: 58, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
+                        {e.info && <span style={{ color: "#5a709033", fontSize: sz2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}> · {e.info}</span>}
+                        <span style={{ color: "#22d3ee22", flexShrink: 0, fontSize: sz2, fontVariantNumeric: "tabular-nums" }}> · {e.age}s</span>
+                      </div>
+                    ))}
+                    {trainCount20 > 0 && (
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 3, fontSize: sz, marginBottom: 2, lineHeight: 1.35 }}>
+                        <span style={{ color: "#4488ff88", flexShrink: 0, fontSize: sz + 1 }}>▬</span>
+                        <span style={{ color: "#e2ecff44" }}>TRAIN × {trainCount20}</span>
+                      </div>
+                    )}
+                  </>);
+                })() : <div style={{ fontSize: sz2, color: "#1e3050", marginBottom: 2 }}>NO CONTACTS</div>}
               </>
             );
           })()}
