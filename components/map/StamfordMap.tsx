@@ -749,6 +749,7 @@ export default function StamfordMap() {
   const ssIdleTimerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
   const ssTrackMsgTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ssZoomLastMs        = useRef<number>(0);
+  const feedPrevRef         = useRef<Map<string, { altFt: number | null; spdKt: number | null }>>(new Map());
   const trainScaleRef       = useRef<number>(1.0);
 
   const [baseKey,       setBaseKey]       = useState<BaseKey>("dark");
@@ -3107,15 +3108,29 @@ export default function StamfordMap() {
                         {acFull}
                       </div>
                     )}
-                    {e.info && (() => {
-                      // Strip the leading ICAO type token (e.g. "B712 · ") — already shown as acFull above
-                      const infoDisplay = e.info.split(" · ").filter(p => !p.match(/^[A-Z0-9]{2,6}$/) || p.includes("ft") || p.includes("kt") || p === "gnd").join(" · ");
-                      return infoDisplay ? (
-                        <div style={{ fontSize: sz2, color: infoColor, lineHeight: 1.3, marginBottom: 2,
-                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {infoDisplay}
-                        </div>
-                      ) : null;
+                    {(() => {
+                      const altFt = parseDetailAltFt(e.info);
+                      const spdKt = parseDetailSpdKt(e.info);
+                      const prev  = feedPrevRef.current.get(e.name);
+                      const altDir = (prev?.altFt != null && altFt != null) ? (altFt > prev.altFt ? "up" : altFt < prev.altFt ? "dn" : null) : null;
+                      const spdDir = (prev?.spdKt != null && spdKt != null) ? (spdKt > prev.spdKt ? "up" : spdKt < prev.spdKt ? "dn" : null) : null;
+                      feedPrevRef.current.set(e.name, { altFt, spdKt });
+                      const altStr = altFt !== null ? `${altFt.toLocaleString()} ft` : (e.info.includes("gnd") ? "gnd" : null);
+                      const spdStr = spdKt !== null ? `${spdKt} kt` : null;
+                      return (<>
+                        {altStr && (
+                          <div style={{ fontSize: sz2, lineHeight: 1.3, marginBottom: 1, display: "flex", alignItems: "center", gap: 3 }}>
+                            <span key={altStr} className="tl-dist-tick" style={{ color: infoColor, fontVariantNumeric: "tabular-nums" }}>{altStr}</span>
+                            {altDir && <span style={{ fontSize: sz2 - 1, color: altDir === "up" ? "#22c55e99" : "#f59e0b99", lineHeight: 1 }}>{altDir === "up" ? "▲" : "▼"}</span>}
+                          </div>
+                        )}
+                        {spdStr && (
+                          <div style={{ fontSize: sz2, lineHeight: 1.3, marginBottom: 2, display: "flex", alignItems: "center", gap: 3 }}>
+                            <span key={spdStr} className="tl-dist-tick" style={{ color: infoColor, fontVariantNumeric: "tabular-nums" }}>{spdStr}</span>
+                            {spdDir && <span style={{ fontSize: sz2 - 1, color: spdDir === "up" ? "#22c55e99" : "#f59e0b99", lineHeight: 1 }}>{spdDir === "up" ? "▲" : "▼"}</span>}
+                          </div>
+                        )}
+                      </>);
                     })()}
                     <div style={{ fontSize: sz2, fontVariantNumeric: "tabular-nums", letterSpacing: "0.08em", display: "flex", gap: 6, alignItems: "baseline" }}>
                       <span key={fmtMi(e.distM)} className="tl-dist-tick"
@@ -3131,12 +3146,6 @@ export default function StamfordMap() {
             };
             return (
               <>
-                <div style={{ fontSize: szH, color: "#22d3eecc", letterSpacing: "0.28em", marginBottom: 8, fontWeight: 700,
-                  textShadow: "0 0 10px #22d3ee44", borderBottom: "1px solid #22d3ee22", paddingBottom: 5,
-                  display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ color: "#22d3ee66", fontSize: szH - 1 }}>◈</span>
-                  10mi
-                </div>
                 {S10.length > 0 ? (() => {
                   const trainCount10 = S10.filter(e => e.type === "TRAIN").length;
                   const nonTrain10   = S10.filter(e => e.type !== "TRAIN");
@@ -3155,12 +3164,6 @@ export default function StamfordMap() {
                     )}
                   </>);
                 })() : <div style={{ fontSize: sz2, color: "#1e3050", marginBottom: 4 }}>NO CONTACTS</div>}
-                <div style={{ fontSize: szH, color: "#22d3ee88", letterSpacing: "0.28em", marginTop: 14, marginBottom: 8, fontWeight: 700,
-                  textShadow: "0 0 8px #22d3ee22", borderBottom: "1px solid #22d3ee14", paddingBottom: 5,
-                  display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ color: "#22d3ee44", fontSize: szH - 1 }}>◈</span>
-                  20mi
-                </div>
                 {S20.length > 0 ? (() => {
                   const trainCount20 = S20.filter(e => e.type === "TRAIN").length;
                   const nonTrain20   = S20.filter(e => e.type !== "TRAIN");
@@ -3246,12 +3249,15 @@ export default function StamfordMap() {
           const spdVal = detailParts.find(p => p.includes("kt")) ?? "";
           const trackLl = ssTrackMarkerRef.current?.getLatLng();
           const trackDistM = trackLl ? distToStamford(trackLl.lat, trackLl.lng) : null;
-          const rows: Array<{ label: string; value: string; distM?: number }> = [];
-          if (altVal) rows.push({ label: "Altitude", value: altVal });
-          if (spdVal) rows.push({ label: "Speed",    value: spdVal });
-          if (meta?.reg) rows.push({ label: "REG",   value: meta.reg });
-          if (trackDistM !== null) rows.push({ label: "Dist", value: fmtMi(trackDistM), distM: trackDistM });
-          rows.push({ label: "Lock", value: lockDisplay });
+          const altDisplay = altVal.replace(/(\d)ft$/, "$1 ft").replace("gnd", "gnd");
+          const spdDisplay = spdVal.replace(/(\d)kt$/, "$1 kt");
+          const trackPrevKey = ssTrackMsg.id;
+          const trackPrev = feedPrevRef.current.get("__track__" + trackPrevKey);
+          const curAltFt = parseDetailAltFt(ssTrackMsg.detail);
+          const curSpdKt = parseDetailSpdKt(ssTrackMsg.detail);
+          const tAltDir = (trackPrev?.altFt != null && curAltFt != null) ? (curAltFt > trackPrev.altFt ? "up" : curAltFt < trackPrev.altFt ? "dn" : null) : null;
+          const tSpdDir = (trackPrev?.spdKt != null && curSpdKt != null) ? (curSpdKt > trackPrev.spdKt ? "up" : curSpdKt < trackPrev.spdKt ? "dn" : null) : null;
+          feedPrevRef.current.set("__track__" + trackPrevKey, { altFt: curAltFt, spdKt: curSpdKt });
           return (
             <div key={ssTrackMsg.id} className={ssReacquire ? "tl-track-pane-reveal-slow" : "tl-track-pane-reveal"} style={{ flex: "0 0 auto", marginBottom: 8, borderLeft: "2px solid #22d3ee33", paddingLeft: 12 }}>
               {/* Header */}
@@ -3268,6 +3274,18 @@ export default function StamfordMap() {
                 textShadow: "0 0 24px #22d3ee55, 0 0 6px #22d3ee33" }}>
                 {ssTrackMsg.id}
               </div>
+              {/* Full aircraft name */}
+              {acFullName && (
+                <div className={ssReacquire ? "tl-track-typereveal-slow" : "tl-track-typereveal"} style={{ fontSize: Math.round(16 * uiScale), color: "#94c8e8cc", letterSpacing: "0.03em", marginBottom: 4, lineHeight: 1.4, fontWeight: 500 }}>
+                  {acFullName}
+                </div>
+              )}
+              {/* REG — under name, above silhouette */}
+              {meta?.reg && (
+                <div className={ssReacquire ? "tl-track-rowreveal-slow" : "tl-track-rowreveal"} style={{ fontSize: Math.round(12 * uiScale), color: "#22d3ee55", letterSpacing: "0.14em", marginBottom: 10, fontWeight: 500, animationDelay: "0.12s" }}>
+                  {meta.reg}
+                </div>
+              )}
               {/* Aircraft silhouette */}
               {acSlug ? (
                 <div style={{ marginBottom: 10 }}>
@@ -3281,29 +3299,41 @@ export default function StamfordMap() {
                   filter: "brightness(0) invert(1) sepia(1) saturate(600%) hue-rotate(234deg) brightness(0.95)" }}
                   dangerouslySetInnerHTML={{ __html: genAcSVG(acShape) }} />
               ) : null}
-              {/* Full aircraft name */}
-              {acFullName && (
-                <div className={ssReacquire ? "tl-track-typereveal-slow" : "tl-track-typereveal"} style={{ fontSize: Math.round(16 * uiScale), color: "#94c8e8cc", letterSpacing: "0.03em", marginBottom: 12, lineHeight: 1.4, fontWeight: 500 }}>
-                  {acFullName}
+              {/* Altitude — large, no label */}
+              {altDisplay && (
+                <div className={ssReacquire ? "tl-track-rowreveal-slow" : "tl-track-rowreveal"} style={{ display: "flex", alignItems: "baseline", gap: 5, marginBottom: 3, animationDelay: "0.18s" }}>
+                  <span key={altDisplay} className="tl-dist-tick"
+                    style={{ fontSize: Math.round(22 * uiScale), color: "#b0cce0dd", fontWeight: 700, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+                    {altDisplay}
+                  </span>
+                  {tAltDir && <span style={{ fontSize: Math.round(12 * uiScale), color: tAltDir === "up" ? "#22c55e99" : "#f59e0b99" }}>{tAltDir === "up" ? "▲" : "▼"}</span>}
                 </div>
               )}
-              {/* Data rows — Label: value */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                {rows.map(({ label, value, distM }, i) => (
-                  <div key={label} className={ssReacquire ? "tl-track-rowreveal-slow" : "tl-track-rowreveal"} style={{ fontSize: Math.round(14 * uiScale), lineHeight: 1.5,
-                    animationDelay: `${0.18 + i * 0.07}s` }}>
-                    <span style={{ color: "#22d3ee66" }}>{label}: </span>
-                    {distM !== undefined ? (
-                      <span key={value} className="tl-dist-tick"
-                        style={{ color: distColor(distM), fontWeight: 600,
-                          textShadow: `0 0 8px ${distColor(distM)}66` }}>
-                        {value}
-                      </span>
-                    ) : (
-                      <span style={{ color: label === "Lock" ? "#22d3eebb" : "#b0cce0dd", fontWeight: 500 }}>{value}</span>
-                    )}
-                  </div>
-                ))}
+              {/* Speed — large, no label */}
+              {spdDisplay && (
+                <div className={ssReacquire ? "tl-track-rowreveal-slow" : "tl-track-rowreveal"} style={{ display: "flex", alignItems: "baseline", gap: 5, marginBottom: 8, animationDelay: "0.25s" }}>
+                  <span key={spdDisplay} className="tl-dist-tick"
+                    style={{ fontSize: Math.round(22 * uiScale), color: "#b0cce0dd", fontWeight: 700, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+                    {spdDisplay}
+                  </span>
+                  {tSpdDir && <span style={{ fontSize: Math.round(12 * uiScale), color: tSpdDir === "up" ? "#22c55e99" : "#f59e0b99" }}>{tSpdDir === "up" ? "▲" : "▼"}</span>}
+                </div>
+              )}
+              {/* Distance away */}
+              {trackDistM !== null && (
+                <div className={ssReacquire ? "tl-track-rowreveal-slow" : "tl-track-rowreveal"} style={{ marginBottom: 4, animationDelay: "0.32s" }}>
+                  <span key={fmtMi(trackDistM)} className="tl-dist-tick"
+                    style={{ fontSize: Math.round(14 * uiScale), color: distColor(trackDistM), fontWeight: 600,
+                      textShadow: `0 0 8px ${distColor(trackDistM)}66`, fontVariantNumeric: "tabular-nums" }}>
+                    {fmtMi(trackDistM).replace("mi", " mi")} away
+                  </span>
+                </div>
+              )}
+              {/* Lock time */}
+              <div className={ssReacquire ? "tl-track-rowreveal-slow" : "tl-track-rowreveal"} style={{ fontSize: Math.round(12 * uiScale), color: "#22d3ee66",
+                fontVariantNumeric: "tabular-nums", letterSpacing: "0.08em", animationDelay: "0.39s" }}>
+                <span style={{ color: "#22d3ee44" }}>Lock </span>
+                <span style={{ color: "#22d3eebb" }}>{lockDisplay}</span>
               </div>
             </div>
           );
