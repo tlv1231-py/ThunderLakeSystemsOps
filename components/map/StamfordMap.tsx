@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "rail" | "services" | "traffic" | "dispatch" | "buildings" | "marine" | "vessels" | "metar" | "storm" | "outages" | "sector";
+type LayerKey = "aircraft" | "radar" | "iss" | "alerts" | "lightning" | "transit" | "rail" | "services" | "traffic" | "dispatch" | "buildings" | "marine" | "vessels" | "metar" | "storm" | "outages" | "sector" | "alpr";
 type BaseKey  = "satellite" | "hybrid" | "dark";
 interface LogEntry { icon: string; text: string; color: string; loggedAt: number; }
 interface OngoingItem {
@@ -239,6 +239,7 @@ const LAYER_META: Record<LayerKey, LayerMeta> = {
   storm:     { label: "Storm Obs",   color: "#38bdf8", section: "atmospheric" },
   outages:   { label: "Power Outages", color: "#facc15", section: "city" },
   sector:    { label: "Sectors",      color: "#22d3ee", section: "overhead" },
+  alpr:      { label: "ALPR Cameras", color: "#f97316", section: "city"     },
 };
 
 const SECTIONS: { key: "overhead" | "atmospheric" | "city"; label: string }[] = [
@@ -247,7 +248,7 @@ const SECTIONS: { key: "overhead" | "atmospheric" | "city"; label: string }[] = 
   { key: "city",        label: "City Intel"  },
 ];
 
-type FeedKey = "weather" | "aircraft" | "iss" | "alerts" | "lightning" | "transit" | "rail" | "services" | "traffic" | "dispatch" | "marine" | "vessels" | "metar" | "storm" | "outages" | "radar";
+type FeedKey = "weather" | "aircraft" | "iss" | "alerts" | "lightning" | "transit" | "rail" | "services" | "traffic" | "dispatch" | "marine" | "vessels" | "metar" | "storm" | "outages" | "radar" | "alpr";
 
 const FEED_META: Record<FeedKey, { icon: string; short: string; label: string; color: string; maxAge: number }> = {
   weather:   { icon: "⛅", short: "WX",    label: "Weather",           color: "#60a5fa", maxAge: 900   },
@@ -266,16 +267,17 @@ const FEED_META: Record<FeedKey, { icon: string; short: string; label: string; c
   storm:     { icon: "🌩", short: "STRM",  label: "Storm Reports",     color: "#38bdf8", maxAge: 900   },
   outages:   { icon: "💡", short: "PWR",   label: "Power Outages",     color: "#facc15", maxAge: 900   },
   radar:     { icon: "🌧", short: "RADAR", label: "NEXRAD Radar",      color: "#38bdf8", maxAge: 600   },
+  alpr:      { icon: "📷", short: "ALPR",  label: "ALPR Cameras",      color: "#f97316", maxAge: 86400 },
 };
 
 const FEED_LAYER: Partial<Record<FeedKey, LayerKey>> = {
   aircraft: "aircraft", iss: "iss", alerts: "alerts", lightning: "lightning",
   transit: "transit", rail: "rail", services: "services", traffic: "traffic",
   dispatch: "dispatch", marine: "marine", vessels: "vessels",
-  metar: "metar", storm: "storm", outages: "outages", radar: "radar",
+  metar: "metar", storm: "storm", outages: "outages", radar: "radar", alpr: "alpr",
 };
 
-const FEED_ORDER: FeedKey[] = ["aircraft", "iss", "alerts", "lightning", "radar", "metar", "storm", "weather", "transit", "rail", "traffic", "dispatch", "marine", "vessels", "outages", "services"];
+const FEED_ORDER: FeedKey[] = ["aircraft", "iss", "alerts", "lightning", "radar", "metar", "storm", "weather", "transit", "rail", "traffic", "dispatch", "marine", "vessels", "outages", "services", "alpr"];
 
 // CT town centroids for Eversource service territory (hardcoded — doesn't change)
 const CT_TOWNS: Record<string, [number, number]> = {
@@ -354,6 +356,16 @@ function fmtAltShort(altFt: number): string {
 }
 const fmtHMS = (d: Date) => d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 
+function alprSVG() {
+  return `<div style="width:20px;height:14px;filter:drop-shadow(0 0 4px #f9731688)">
+    <svg viewBox="0 0 20 14" xmlns="http://www.w3.org/2000/svg">
+      <rect x="1" y="3.5" width="9" height="7" rx="1.5" fill="#f97316" opacity="0.88"/>
+      <polygon points="10,4 16,7 10,10" fill="#f97316" opacity="0.88"/>
+      <circle cx="4.5" cy="7" r="1.9" fill="#120a04" opacity="0.75"/>
+      <circle cx="4.5" cy="7" r="0.9" fill="#f97316" opacity="0.55"/>
+    </svg>
+  </div>`;
+}
 function aircraftSVG(heading: number, altLabel?: string) {
   return `<div style="display:flex;flex-direction:column;align-items:center;gap:1px">
     <div style="transform:rotate(${heading}deg);width:22px;height:22px;filter:drop-shadow(0 0 5px #a855f7aa)">
@@ -741,6 +753,7 @@ export default function StamfordMap() {
   const baseTileRef  = useRef<any>(null);
   const labelRef     = useRef<any>(null);
   const groupRefs    = useRef<Record<LayerKey, any>>({} as any);
+  const alprMarkersRef = useRef<Map<number, any>>(new Map());
   const intervals    = useRef<ReturnType<typeof setInterval>[]>([]);
   const lightningMarkersRef = useRef<{ marker: any; born: number }[]>([]);
   const lightningWsRef      = useRef<WebSocket | null>(null);
@@ -776,7 +789,7 @@ export default function StamfordMap() {
     aircraft: true, radar: true, iss: true, alerts: true,
     lightning: true, transit: true, rail: true, services: true,
     traffic: true, dispatch: true, buildings: true, marine: true, vessels: true, metar: true, storm: true, outages: true,
-    sector: true,
+    sector: true, alpr: true,
   });
   const [weather,       setWeather]       = useState<WeatherNow | null>(null);
   const [iss,           setIss]           = useState<ISSPos | null>(null);
@@ -1578,6 +1591,56 @@ export default function StamfordMap() {
     }).catch(() => {});
   }, [addLog]);
 
+  const fetchALPR = useCallback((L: any) => {
+    const g = groupRefs.current.alpr;
+    if (!g) return;
+    // Query Overpass for ALPR-tagged surveillance nodes in the Stamford CT area (~15mi radius)
+    const q = `[out:json][timeout:15];node["man_made"="surveillance"]["surveillance:type"="ALPR"](40.84,-73.83,41.27,-73.25);out body;`;
+    fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`)
+      .then(r => r.json())
+      .then((data: any) => {
+        touchFeed("alpr");
+        const elements: any[] = data.elements ?? [];
+        if (elements.length) addLog("📷", `${elements.length} ALPR cameras (DeFlock/OSM)`, "#f97316");
+        const seenIds = new Set<number>();
+        elements.forEach(el => {
+          if (el.type !== "node" || !el.lat || !el.lon) return;
+          const id = el.id as number;
+          seenIds.add(id);
+          const tags = el.tags ?? {};
+          const brand    = tags.brand ?? tags["surveillance:brand"] ?? tags["camera:type"] ?? "";
+          const operator = tags.operator ?? "";
+          const dir      = tags.direction ?? tags["camera:direction"] ?? "";
+          const zone     = tags["surveillance:zone"] ?? "";
+          const name     = tags.name ?? (brand || "ALPR Camera");
+          const popupHtml = popupWrap(
+            `<div style="font-size:13px;font-weight:700;color:#f97316;margin-bottom:4px">${name}</div>
+            ${brand ? `<div style="color:#f97316bb;font-size:10px;margin-bottom:2px">${brand}</div>` : ""}
+            ${operator ? `<div style="color:#7a9ab0;font-size:10px">Operator: ${operator}</div>` : ""}
+            ${dir ? `<div style="color:#7a9ab0;font-size:10px">Facing: ${dir}</div>` : ""}
+            ${zone ? `<div style="color:#7a9ab0;font-size:10px">Zone: ${zone}</div>` : ""}
+            <div style="color:#2a4060;font-size:9px;margin-top:4px">OSM ID: ${id}</div>`,
+            "DeFlock / OpenStreetMap"
+          );
+          if (alprMarkersRef.current.has(id)) {
+            alprMarkersRef.current.get(id).getPopup()?.setContent(popupHtml);
+          } else {
+            const icon = L.divIcon({ html: alprSVG(), className: "", iconSize: [20, 14], iconAnchor: [10, 7] });
+            const m = L.marker([el.lat, el.lon], { icon })
+              .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupHtml))
+              .addTo(g);
+            m._tlMeta = { type: "ALPR", id: String(id), brand, operator };
+            alprMarkersRef.current.set(id, m);
+          }
+        });
+        // Remove cameras no longer in data
+        alprMarkersRef.current.forEach((m, id) => {
+          if (!seenIds.has(id)) { g.removeLayer(m); alprMarkersRef.current.delete(id); }
+        });
+      })
+      .catch(() => {});
+  }, [addLog]);
+
   const fetchTraffic = useCallback((L: any) => {
     fetch("/api/map/traffic").then(r => r.json()).then(data => {
       const events: any[] = data.events ?? [];
@@ -2241,6 +2304,7 @@ export default function StamfordMap() {
         storm:     L.layerGroup().addTo(map),
         outages:   L.layerGroup().addTo(map),
         sector:    L.layerGroup().addTo(map),
+        alpr:      L.layerGroup().addTo(map),
       };
 
       mapInst.current = map;
@@ -2312,7 +2376,7 @@ export default function StamfordMap() {
       // Initial fetches
       fetchAircraft(L); fetchRadar(L); fetchISS(L); fetchAlerts(L);
       fetchRailTrack(L);
-      fetchTransit(L); fetchRail(L); fetchServices(L); fetchTraffic(L); fetchDispatch(L);
+      fetchTransit(L); fetchRail(L); fetchServices(L); fetchTraffic(L); fetchDispatch(L); fetchALPR(L);
       drawSectors(L);
       fetchMarine(L); fetchBuildings(L); fetchMetar(L); fetchStorm(L); fetchOutages(L); // buildings: one-time load, 24h server cache
 
@@ -2330,6 +2394,7 @@ export default function StamfordMap() {
       intervals.current.push(setInterval(() => fetchMetar(L), 60_000));
       intervals.current.push(setInterval(() => fetchStorm(L), 15 * 60_000));
       intervals.current.push(setInterval(() => fetchOutages(L), 15 * 60_000));
+      intervals.current.push(setInterval(() => fetchALPR(L), 30 * 60_000));
 
       // Animation: dead-reckon aircraft + interpolate trains between API polls
       intervals.current.push(setInterval(() => {
