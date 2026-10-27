@@ -913,15 +913,17 @@ export default function StamfordMap() {
       ssZoomLastMs.current = Date.now();
       // Acquire pulse on initial lock
       const initLl = initM.getLatLng();
-      map.flyTo([initLl.lat, initLl.lng], 15, { animate: true, duration: 0.45 });
+      const az0init = optimalTrackZoom(parseDetailAltFt(initDetail2), parseDetailSpdKt(initDetail2));
+      const pulseZ0 = Math.min(az0init + 2, 15);
+      map.flyTo([initLl.lat, initLl.lng], pulseZ0, { animate: true, duration: 0.32 });
       setTimeout(() => {
         const m2 = mapInst.current; const trk = ssTrackMarkerRef.current;
         if (!ssModeRef.current || !m2 || !trk) return;
         const ll2 = trk.getLatLng();
         const az = optimalTrackZoom(parseDetailAltFt(initDetail2), parseDetailSpdKt(initDetail2));
-        m2.flyTo([ll2.lat, ll2.lng], az, { animate: true, duration: 1.4 });
+        m2.flyTo([ll2.lat, ll2.lng], az, { animate: true, duration: 1.8 });
         ssZoomLastMs.current = Date.now();
-      }, 900);
+      }, 720);
       import("leaflet").then(mod => {
         const Lx = mod.default;
         if (reticleMarkerRef.current) { try { map.removeLayer(reticleMarkerRef.current); } catch {} }
@@ -1021,15 +1023,17 @@ export default function StamfordMap() {
           ssZoomLastMs.current = Date.now();
           // Acquire pulse: hard zoom-in, then settle to altitude+speed optimal zoom
           if (mapNow) {
-            mapNow.flyTo([newLat, newLon], 15, { animate: true, duration: 0.45 });
+            const az0new = optimalTrackZoom(parseDetailAltFt(newDetail), parseDetailSpdKt(newDetail));
+            const pulseZNew = Math.min(az0new + 2, 15);
+            mapNow.flyTo([newLat, newLon], pulseZNew, { animate: true, duration: 0.32 });
             setTimeout(() => {
               const m2 = mapInst.current; const trk = ssTrackMarkerRef.current;
               if (!ssModeRef.current || !m2 || !trk) return;
               const ll2 = trk.getLatLng();
               const az = optimalTrackZoom(parseDetailAltFt(newDetail), parseDetailSpdKt(newDetail));
-              m2.flyTo([ll2.lat, ll2.lng], az, { animate: true, duration: 1.4 });
+              m2.flyTo([ll2.lat, ll2.lng], az, { animate: true, duration: 1.8 });
               ssZoomLastMs.current = Date.now();
-            }, 900);
+            }, 720);
           }
           import("leaflet").then(mod => {
             const Lx = mod.default;
@@ -2304,7 +2308,7 @@ export default function StamfordMap() {
         if (ssModeRef.current && ssTrackMarkerRef.current) {
           try {
             const map2 = mapInst.current;
-            if (map2) map2.panTo(ssTrackMarkerRef.current.getLatLng(), { animate: true, duration: 0.12, easeLinearity: 1.0, noMoveStart: true });
+            if (map2) map2.panTo(ssTrackMarkerRef.current.getLatLng(), { animate: true, duration: 0.22, easeLinearity: 0.2, noMoveStart: true });
           } catch {}
           // Periodic zoom re-evaluation based on altitude + speed (every 15s, after 3s settle)
           const nowZ = Date.now();
@@ -3002,8 +3006,8 @@ export default function StamfordMap() {
       }}>
         {/* Sector intel — live contacts by distance ring */}
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", scrollbarWidth: "none", padding: "2px 0",
-          maskImage: "linear-gradient(to bottom, black 70%, transparent 100%)",
-          WebkitMaskImage: "linear-gradient(to bottom, black 70%, transparent 100%)" }}>
+          maskImage: "linear-gradient(to bottom, black 84%, transparent 98%)",
+          WebkitMaskImage: "linear-gradient(to bottom, black 84%, transparent 98%)" }}>
           {(() => {
             const S10: Array<{ type: string; name: string; info: string; age: number; color: string; acType?: string; distM: number }> = [];
             const S20: typeof S10 = [];
@@ -3050,16 +3054,16 @@ export default function StamfordMap() {
             const sz = Math.round(14 * uiScale);
             const sz2 = Math.round(11 * uiScale);
             const szH = Math.round(13 * uiScale);
-            const renderFeedCard = (e: typeof S10[0], dimLevel: "near" | "far") => {
+            const renderFeedCard = (e: typeof S10[0], _dimLevel: "near" | "far") => {
               const acCode = e.acType ?? "";
               const acFull = acCode ? (ICAO_NAMES[acCode] ?? acCode) : "";
               const acSh = acCode ? AC_SHAPES[acCode] : undefined;
-              const callColor = dimLevel === "near" ? "#e8f4ff55" : "#e8f4ff33";
-              const subColor  = dimLevel === "near" ? "#88aabb55" : "#88aabb33";
-              const infoColor = dimLevel === "near" ? "#5a709044" : "#5a709028";
-              const ageColor  = dimLevel === "near" ? "#22d3ee44" : "#22d3ee28";
-              const iconOp    = dimLevel === "near" ? 0.6 : 0.4;
-              const borderC   = dimLevel === "near" ? "#22d3ee08" : "#22d3ee05";
+              const callColor = "#e8f4ff";
+              const subColor  = "#88aabb";
+              const infoColor = "#5a7090";
+              const ageColor  = "#22d3ee";
+              const iconOp    = 0.75;
+              const borderC   = "#22d3ee0a";
               const iconFilter = e.type === "AIR"
                 ? "brightness(0) invert(1) sepia(1) saturate(600%) hue-rotate(234deg) brightness(0.95)"
                 : undefined;
@@ -3105,7 +3109,7 @@ export default function StamfordMap() {
                   textShadow: "0 0 10px #22d3ee44", borderBottom: "1px solid #22d3ee22", paddingBottom: 5,
                   display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ color: "#22d3ee66", fontSize: szH - 1 }}>◈</span>
-                  10MI
+                  10mi
                 </div>
                 {S10.length > 0 ? (() => {
                   const trainCount10 = S10.filter(e => e.type === "TRAIN").length;
@@ -3129,7 +3133,7 @@ export default function StamfordMap() {
                   textShadow: "0 0 8px #22d3ee22", borderBottom: "1px solid #22d3ee14", paddingBottom: 5,
                   display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ color: "#22d3ee44", fontSize: szH - 1 }}>◈</span>
-                  20MI
+                  20mi
                 </div>
                 {S20.length > 0 ? (() => {
                   const trainCount20 = S20.filter(e => e.type === "TRAIN").length;
@@ -3158,7 +3162,7 @@ export default function StamfordMap() {
       {/* ── Right column — gear controls + news ────────────────────────── */}
       <div className="absolute" style={{
         right: 10, top: 92, bottom: tickerItems.length > 0 ? 28 : 0,
-        zIndex: 15, width: 272, pointerEvents: "none",
+        zIndex: 15, width: 316, pointerEvents: "none",
         fontFamily: "Menlo,Consolas,monospace",
         display: "flex", flexDirection: "column",
       }}>
