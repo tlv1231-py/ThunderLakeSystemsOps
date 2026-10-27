@@ -3232,22 +3232,24 @@ export default function StamfordMap() {
               const acTypePart = parts.find(p => !p.includes("ft") && !p.includes("kt") && p !== "gnd" && p !== "—") ?? "";
               const altPart    = parts.find(p => p.includes("ft") || p === "gnd") ?? "";
               const spdPart    = parts.find(p => p.includes("kt")) ?? "";
-              const tooltipRows: { label: string; val: string }[] = [];
-              if (acTypePart && acTypePart !== "—") tooltipRows.push({ label: "TYPE", val: acTypePart });
-              if (altPart) tooltipRows.push({ label: "ALT", val: altPart });
-              if (spdPart) tooltipRows.push({ label: "SPD", val: spdPart });
-              tooltipRows.push({ label: "LOCK", val: `${lockSec}s` });
+              const tipMeta = (ssTrackMarkerRef.current as any)?._tlMeta;
+              const tipAcCode = tipMeta?.acType ?? acTypePart;
+              const tipFullName = tipAcCode ? (ICAO_NAMES[tipAcCode] ?? "") : "";
+              const tipLines: { val: string; highlight?: boolean }[] = [];
+              if (tipFullName) tipLines.push({ val: tipFullName });
+              else if (acTypePart && acTypePart !== "—") tipLines.push({ val: acTypePart });
+              if (altPart) tipLines.push({ val: altPart });
+              if (spdPart) tipLines.push({ val: spdPart });
+              tipLines.push({ val: `${lockSec}s`, highlight: true });
               return (
                 <div style={{ position: "absolute", top: labelY, left: labelX, fontFamily: "Menlo,Consolas,monospace", pointerEvents: "none" }}>
-                  <div style={{ fontSize: 6, color: "#22d3ee55", letterSpacing: "0.32em", marginBottom: 4 }}>TRACKING</div>
-                  <div style={{ fontSize: 18, color: "#e2ecffcc", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, textShadow: "0 0 12px #22d3ee55", marginBottom: 6 }}>
+                  <div style={{ fontSize: 18, color: "#e2ecffcc", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, textShadow: "0 0 12px #22d3ee55", marginBottom: 5 }}>
                     {ssTrackMsg.id}
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                    {tooltipRows.map(({ label, val }) => (
-                      <div key={label} style={{ display: "flex", gap: 6, alignItems: "baseline" }}>
-                        <span style={{ fontSize: 6, color: "#22d3ee44", letterSpacing: "0.22em", minWidth: 28 }}>{label}</span>
-                        <span style={{ fontSize: 10, color: label === "LOCK" ? "#22d3ee88" : "#b0cce0cc", letterSpacing: "0.06em", fontWeight: 500 }}>{val}</span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    {tipLines.map(({ val, highlight }, i) => (
+                      <div key={i} style={{ fontSize: 10, color: highlight ? "#22d3ee88" : "#b0cce0bb", letterSpacing: "0.06em", fontWeight: 500 }}>
+                        {val}
                       </div>
                     ))}
                   </div>
