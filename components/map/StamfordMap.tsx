@@ -598,6 +598,28 @@ function fmtMi(meters: number): string {
   const mi = meters / 1609.34;
   return mi < 10 ? `${mi.toFixed(1)}mi` : `${Math.round(mi)}mi`;
 }
+function parseDetailAltFt(detail: string): number | null {
+  const p = detail.split(" · ").find(s => s.includes("ft"));
+  if (!p) return null;
+  const n = parseInt(p.replace(/,/g, ""), 10);
+  return isNaN(n) ? null : n;
+}
+function parseDetailSpdKt(detail: string): number | null {
+  const p = detail.split(" · ").find(s => s.includes("kt"));
+  if (!p) return null;
+  const n = parseInt(p, 10);
+  return isNaN(n) ? null : n;
+}
+function optimalTrackZoom(altFt: number | null, spdKt: number | null): number {
+  let z = 13;
+  if (altFt !== null) {
+    if (altFt < 3000)       z = 14;
+    else if (altFt < 10000) z = 13;
+    else                    z = 12;
+  }
+  if (spdKt !== null && spdKt > 350) z = Math.max(z - 1, 11);
+  return z;
+}
 function ssDistOpacity(distM: number): number {
   const MI10 = 16093, MI25 = 40233;
   if (distM <= MI10) return 1.0;
@@ -714,6 +736,7 @@ export default function StamfordMap() {
   const ssLastInputRef      = useRef<number>(Date.now());
   const ssIdleTimerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
   const ssTrackMsgTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ssZoomLastMs        = useRef<number>(0);
   const trainScaleRef       = useRef<number>(1.0);
 
   const [baseKey,       setBaseKey]       = useState<BaseKey>("dark");
@@ -887,6 +910,18 @@ export default function StamfordMap() {
       const initMsg = { type: initType2, id: initId2, detail: initDetail2, enteredMs: Date.now() };
       ssTrackMsgRef.current = initMsg;
       setSsTrackMsg(initMsg);
+      ssZoomLastMs.current = Date.now();
+      // Acquire pulse on initial lock
+      const initLl = initM.getLatLng();
+      map.flyTo([initLl.lat, initLl.lng], 15, { animate: true, duration: 0.45 });
+      setTimeout(() => {
+        const m2 = mapInst.current; const trk = ssTrackMarkerRef.current;
+        if (!ssModeRef.current || !m2 || !trk) return;
+        const ll2 = trk.getLatLng();
+        const az = optimalTrackZoom(parseDetailAltFt(initDetail2), parseDetailSpdKt(initDetail2));
+        m2.flyTo([ll2.lat, ll2.lng], az, { animate: true, duration: 1.4 });
+        ssZoomLastMs.current = Date.now();
+      }, 900);
       import("leaflet").then(mod => {
         const Lx = mod.default;
         if (reticleMarkerRef.current) { try { map.removeLayer(reticleMarkerRef.current); } catch {} }
@@ -983,6 +1018,19 @@ export default function StamfordMap() {
           ssTrackMsgRef.current = msg;
           setSsTrackMsg(msg);
           setLockExiting(false);
+          ssZoomLastMs.current = Date.now();
+          // Acquire pulse: hard zoom-in, then settle to altitude+speed optimal zoom
+          if (mapNow) {
+            mapNow.flyTo([newLat, newLon], 15, { animate: true, duration: 0.45 });
+            setTimeout(() => {
+              const m2 = mapInst.current; const trk = ssTrackMarkerRef.current;
+              if (!ssModeRef.current || !m2 || !trk) return;
+              const ll2 = trk.getLatLng();
+              const az = optimalTrackZoom(parseDetailAltFt(newDetail), parseDetailSpdKt(newDetail));
+              m2.flyTo([ll2.lat, ll2.lng], az, { animate: true, duration: 1.4 });
+              ssZoomLastMs.current = Date.now();
+            }, 900);
+          }
           import("leaflet").then(mod => {
             const Lx = mod.default;
             if (reticleMarkerRef.current) { try { mapNow.removeLayer(reticleMarkerRef.current); } catch {} }
@@ -2258,6 +2306,21 @@ export default function StamfordMap() {
             const map2 = mapInst.current;
             if (map2) map2.panTo(ssTrackMarkerRef.current.getLatLng(), { animate: true, duration: 0.12, easeLinearity: 1.0, noMoveStart: true });
           } catch {}
+          // Periodic zoom re-evaluation based on altitude + speed (every 15s, after 3s settle)
+          const nowZ = Date.now();
+          const msg2 = ssTrackMsgRef.current;
+          if (msg2 && nowZ - msg2.enteredMs > 3000 && nowZ - ssZoomLastMs.current > 15000) {
+            try {
+              const map2 = mapInst.current; const trk = ssTrackMarkerRef.current;
+              if (map2 && trk) {
+                const az = optimalTrackZoom(parseDetailAltFt(msg2.detail), parseDetailSpdKt(msg2.detail));
+                if (Math.abs(map2.getZoom() - az) >= 1) {
+                  map2.flyTo(trk.getLatLng(), az, { animate: true, duration: 1.5 });
+                }
+                ssZoomLastMs.current = nowZ;
+              }
+            } catch {}
+          }
         }
         // Screensaver: distance-based opacity fade from TLS center
         if (ssModeRef.current) {
@@ -3095,7 +3158,7 @@ export default function StamfordMap() {
       {/* ── Right column — gear controls + news ────────────────────────── */}
       <div className="absolute" style={{
         right: 10, top: 92, bottom: tickerItems.length > 0 ? 28 : 0,
-        zIndex: 15, width: 228, pointerEvents: "none",
+        zIndex: 15, width: 272, pointerEvents: "none",
         fontFamily: "Menlo,Consolas,monospace",
         display: "flex", flexDirection: "column",
       }}>
