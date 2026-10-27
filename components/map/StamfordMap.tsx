@@ -776,6 +776,7 @@ export default function StamfordMap() {
   const [showControls,   setShowControls]   = useState(false);
   const [ssTrackMsg,     setSsTrackMsg]     = useState<SsTrackInfo | null>(null);
   const [lockExiting,    setLockExiting]    = useState(false);
+  const [ssReacquire,    setSsReacquire]    = useState(false);
   const [isFullscreen,  setIsFullscreen]  = useState(false);
   const [milClock,      setMilClock]      = useState("");
   const [nowMs,         setNowMs]         = useState(Date.now());
@@ -1012,8 +1013,10 @@ export default function StamfordMap() {
       if (newMarker) {
         if (ssTrackMsgTimerRef.current) clearTimeout(ssTrackMsgTimerRef.current);
 
+        const isTransition = !!ssTrackMsgRef.current;
         const doAcquire = () => {
           if (!ssModeRef.current) return;
+          setSsReacquire(isTransition);
           ssTrackMarkerRef.current = newMarker;
           reticleSrcRef.current = newMarker;
           const msg = { type: newType, id: newId, detail: newDetail, enteredMs: Date.now() };
@@ -1025,15 +1028,18 @@ export default function StamfordMap() {
           if (mapNow) {
             const az0new = optimalTrackZoom(parseDetailAltFt(newDetail), parseDetailSpdKt(newDetail));
             const pulseZNew = Math.min(az0new + 2, 15);
-            mapNow.flyTo([newLat, newLon], pulseZNew, { animate: true, duration: 0.32 });
+            const pulseDur   = isTransition ? 0.65 : 0.32;
+            const settleDelay = isTransition ? 1100 : 720;
+            const settleDur  = isTransition ? 2.8  : 1.8;
+            mapNow.flyTo([newLat, newLon], pulseZNew, { animate: true, duration: pulseDur });
             setTimeout(() => {
               const m2 = mapInst.current; const trk = ssTrackMarkerRef.current;
               if (!ssModeRef.current || !m2 || !trk) return;
               const ll2 = trk.getLatLng();
               const az = optimalTrackZoom(parseDetailAltFt(newDetail), parseDetailSpdKt(newDetail));
-              m2.flyTo([ll2.lat, ll2.lng], az, { animate: true, duration: 1.8 });
+              m2.flyTo([ll2.lat, ll2.lng], az, { animate: true, duration: settleDur });
               ssZoomLastMs.current = Date.now();
-            }, 720);
+            }, settleDelay);
           }
           import("leaflet").then(mod => {
             const Lx = mod.default;
@@ -1056,7 +1062,7 @@ export default function StamfordMap() {
           const oldREl = reticleMarkerRef.current?.getElement?.();
           const oldInner = oldREl?.querySelector(".tl-reticle") as HTMLElement | null;
           if (oldInner) { oldInner.classList.remove("tl-reticle-lock", "tl-reticle-enter"); oldInner.classList.add("tl-reticle-exiting"); }
-          ssTrackMsgTimerRef.current = setTimeout(doAcquire, 230);
+          ssTrackMsgTimerRef.current = setTimeout(doAcquire, 600);
         } else {
           doAcquire();
         }
@@ -3224,7 +3230,7 @@ export default function StamfordMap() {
           if (meta?.reg) rows.push({ label: "REG",   value: meta.reg });
           rows.push({ label: "Lock", value: lockDisplay });
           return (
-            <div key={ssTrackMsg.id} className="tl-track-pane-reveal" style={{ flex: "0 0 auto", marginBottom: 8, borderLeft: "2px solid #22d3ee33", paddingLeft: 12 }}>
+            <div key={ssTrackMsg.id} className={ssReacquire ? "tl-track-pane-reveal-slow" : "tl-track-pane-reveal"} style={{ flex: "0 0 auto", marginBottom: 8, borderLeft: "2px solid #22d3ee33", paddingLeft: 12 }}>
               {/* Header */}
               <div style={{ fontSize: Math.round(13 * uiScale), color: "#22d3eecc", letterSpacing: "0.28em", marginBottom: 8, display: "flex", alignItems: "center", gap: 6, fontWeight: 700,
                 textShadow: "0 0 8px #22d3ee44" }}>
@@ -3254,14 +3260,14 @@ export default function StamfordMap() {
               ) : null}
               {/* Full aircraft name */}
               {acFullName && (
-                <div className="tl-track-typereveal" style={{ fontSize: Math.round(16 * uiScale), color: "#94c8e8cc", letterSpacing: "0.03em", marginBottom: 12, lineHeight: 1.4, fontWeight: 500 }}>
+                <div className={ssReacquire ? "tl-track-typereveal-slow" : "tl-track-typereveal"} style={{ fontSize: Math.round(16 * uiScale), color: "#94c8e8cc", letterSpacing: "0.03em", marginBottom: 12, lineHeight: 1.4, fontWeight: 500 }}>
                   {acFullName}
                 </div>
               )}
               {/* Data rows — Label: value */}
               <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 {rows.map(({ label, value }, i) => (
-                  <div key={label} className="tl-track-rowreveal" style={{ fontSize: Math.round(14 * uiScale), lineHeight: 1.5,
+                  <div key={label} className={ssReacquire ? "tl-track-rowreveal-slow" : "tl-track-rowreveal"} style={{ fontSize: Math.round(14 * uiScale), lineHeight: 1.5,
                     animationDelay: `${0.18 + i * 0.07}s` }}>
                     <span style={{ color: "#22d3ee66" }}>{label}: </span>
                     <span style={{ color: label === "Lock" ? "#22d3eebb" : "#b0cce0dd", fontWeight: 500 }}>{value}</span>
@@ -3603,6 +3609,10 @@ export default function StamfordMap() {
           animation: tl-track-pane-in 0.65s cubic-bezier(0.16, 1, 0.3, 1) both,
                      tl-track-pane-borderglow 1s ease-out both;
         }
+        .tl-track-pane-reveal-slow {
+          animation: tl-track-pane-in 1.4s cubic-bezier(0.16, 1, 0.3, 1) both,
+                     tl-track-pane-borderglow 2.5s ease-out both;
+        }
         @keyframes tl-track-row-in {
           0%   { opacity: 0; transform: translateX(22px); filter: brightness(5); }
           20%  { opacity: 1; filter: brightness(2.5); }
@@ -3612,6 +3622,9 @@ export default function StamfordMap() {
         .tl-track-rowreveal {
           animation: tl-track-row-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
         }
+        .tl-track-rowreveal-slow {
+          animation: tl-track-row-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
         @keyframes tl-track-type-in {
           0%   { opacity: 0; letter-spacing: 0.6em; filter: brightness(4); }
           25%  { opacity: 1; filter: brightness(2); }
@@ -3620,6 +3633,9 @@ export default function StamfordMap() {
         }
         .tl-track-typereveal {
           animation: tl-track-type-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.07s both;
+        }
+        .tl-track-typereveal-slow {
+          animation: tl-track-type-in 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
         }
 
         /* ── Sector feed card — animate in on new contact ── */
