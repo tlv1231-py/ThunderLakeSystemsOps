@@ -3282,7 +3282,7 @@ export default function StamfordMap() {
               )}
               {/* REG — under name, above silhouette */}
               {meta?.reg && (
-                <div className={ssReacquire ? "tl-track-rowreveal-slow" : "tl-track-rowreveal"} style={{ fontSize: Math.round(12 * uiScale), color: "#22d3ee55", letterSpacing: "0.14em", marginBottom: 10, fontWeight: 500, animationDelay: "0.12s" }}>
+                <div className={ssReacquire ? "tl-track-rowreveal-slow" : "tl-track-rowreveal"} style={{ fontSize: Math.round(12 * uiScale), color: "#b0cce0dd", letterSpacing: "0.14em", marginBottom: 10, fontWeight: 500, animationDelay: "0.12s" }}>
                   {meta.reg}
                 </div>
               )}
