@@ -2325,22 +2325,30 @@ export default function StamfordMap() {
         }
         // Autotrack: map continuously pans to follow tracked marker
         if (ssModeRef.current && ssTrackMarkerRef.current) {
-          try {
-            const map2 = mapInst.current;
-            if (map2) map2.panTo(ssTrackMarkerRef.current.getLatLng(), { animate: true, duration: 0.22, easeLinearity: 0.2, noMoveStart: true });
-          } catch {}
-          // Periodic zoom re-evaluation based on altitude + speed (every 15s, after 3s settle)
           const nowZ = Date.now();
+          // Skip panTo while a zoom animation is in flight to avoid fighting flyTo
+          const zoomSettled = nowZ - ssZoomLastMs.current > 2500;
+          if (zoomSettled) {
+            try {
+              const map2 = mapInst.current;
+              if (map2) map2.panTo(ssTrackMarkerRef.current.getLatLng(), { animate: true, duration: 0.22, easeLinearity: 0.2, noMoveStart: true });
+            } catch {}
+          }
+          // Periodic zoom re-evaluation based on altitude + speed (every 20s, after 3s settle)
           const msg2 = ssTrackMsgRef.current;
-          if (msg2 && nowZ - msg2.enteredMs > 3000 && nowZ - ssZoomLastMs.current > 15000) {
+          if (msg2 && nowZ - msg2.enteredMs > 3000 && nowZ - ssZoomLastMs.current > 20000) {
             try {
               const map2 = mapInst.current; const trk = ssTrackMarkerRef.current;
               if (map2 && trk) {
-                const az = optimalTrackZoom(parseDetailAltFt(msg2.detail), parseDetailSpdKt(msg2.detail));
+                // Use live marker detail, not stale lock-time snapshot
+                const liveD = (trk as any)._tlMeta?.detail ?? msg2.detail;
+                const az = optimalTrackZoom(parseDetailAltFt(liveD), parseDetailSpdKt(liveD));
                 if (Math.abs(map2.getZoom() - az) >= 1) {
                   map2.flyTo(trk.getLatLng(), az, { animate: true, duration: 1.5 });
+                  ssZoomLastMs.current = nowZ;
+                } else {
+                  ssZoomLastMs.current = nowZ;
                 }
-                ssZoomLastMs.current = nowZ;
               }
             } catch {}
           }
@@ -3375,14 +3383,11 @@ export default function StamfordMap() {
                   <div style={{ fontSize: 28, color: "#e2ecffdd", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, textShadow: "0 0 18px #22d3ee66, 0 0 4px #22d3ee33", marginBottom: 5 }}>
                     {ssTrackMsg.id}
                   </div>
-                  {tipAlt && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                      <span key={tipAlt} className="tl-dist-tick" style={{ fontSize: 11, color: "#b0cce0bb", fontVariantNumeric: "tabular-nums", lineHeight: 1.3 }}>{tipAlt}</span>
-                    </div>
-                  )}
-                  {tipSpd && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                      <span key={tipSpd} className="tl-dist-tick" style={{ fontSize: 11, color: "#b0cce0bb", fontVariantNumeric: "tabular-nums", lineHeight: 1.3 }}>{tipSpd}</span>
+                  {(tipAlt || tipSpd) && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}>
+                      {tipAlt && <span key={tipAlt} className="tl-dist-tick" style={{ fontSize: 17, color: "#b0cce0cc", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>{tipAlt}</span>}
+                      {tipAlt && tipSpd && <span style={{ fontSize: 13, color: "#22d3ee44" }}>•</span>}
+                      {tipSpd && <span key={tipSpd} className="tl-dist-tick" style={{ fontSize: 17, color: "#b0cce0cc", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>{tipSpd}</span>}
                     </div>
                   )}
                 </div>
