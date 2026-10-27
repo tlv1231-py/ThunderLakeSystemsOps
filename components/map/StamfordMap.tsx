@@ -3244,10 +3244,13 @@ export default function StamfordMap() {
           const detailParts = ssTrackMsg.detail ? ssTrackMsg.detail.split(" · ") : [];
           const altVal = detailParts.find(p => p.includes("ft") || p === "gnd") ?? "";
           const spdVal = detailParts.find(p => p.includes("kt")) ?? "";
-          const rows: Array<{ label: string; value: string }> = [];
+          const trackLl = ssTrackMarkerRef.current?.getLatLng();
+          const trackDistM = trackLl ? distToStamford(trackLl.lat, trackLl.lng) : null;
+          const rows: Array<{ label: string; value: string; distM?: number }> = [];
           if (altVal) rows.push({ label: "Altitude", value: altVal });
           if (spdVal) rows.push({ label: "Speed",    value: spdVal });
           if (meta?.reg) rows.push({ label: "REG",   value: meta.reg });
+          if (trackDistM !== null) rows.push({ label: "Dist", value: fmtMi(trackDistM), distM: trackDistM });
           rows.push({ label: "Lock", value: lockDisplay });
           return (
             <div key={ssTrackMsg.id} className={ssReacquire ? "tl-track-pane-reveal-slow" : "tl-track-pane-reveal"} style={{ flex: "0 0 auto", marginBottom: 8, borderLeft: "2px solid #22d3ee33", paddingLeft: 12 }}>
@@ -3286,11 +3289,19 @@ export default function StamfordMap() {
               )}
               {/* Data rows — Label: value */}
               <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                {rows.map(({ label, value }, i) => (
+                {rows.map(({ label, value, distM }, i) => (
                   <div key={label} className={ssReacquire ? "tl-track-rowreveal-slow" : "tl-track-rowreveal"} style={{ fontSize: Math.round(14 * uiScale), lineHeight: 1.5,
                     animationDelay: `${0.18 + i * 0.07}s` }}>
                     <span style={{ color: "#22d3ee66" }}>{label}: </span>
-                    <span style={{ color: label === "Lock" ? "#22d3eebb" : "#b0cce0dd", fontWeight: 500 }}>{value}</span>
+                    {distM !== undefined ? (
+                      <span key={value} className="tl-dist-tick"
+                        style={{ color: distColor(distM), fontWeight: 600,
+                          textShadow: `0 0 8px ${distColor(distM)}66` }}>
+                        {value}
+                      </span>
+                    ) : (
+                      <span style={{ color: label === "Lock" ? "#22d3eebb" : "#b0cce0dd", fontWeight: 500 }}>{value}</span>
+                    )}
                   </div>
                 ))}
               </div>
