@@ -3225,13 +3225,12 @@ export default function StamfordMap() {
             </svg>
             {/* Callsign label floats near the reticle */}
             {trackPx && (() => {
-              const pad = 50;
-              const labelX = Math.min(trackPx.x + pad, W - 170);
-              const labelY = Math.max(trackPx.y - 48, 8);
+              const pad = 54;
+              const labelX = Math.min(trackPx.x + pad, W - 180);
               return (
-                <div style={{ position: "absolute", top: labelY, left: labelX, fontFamily: "Menlo,Consolas,monospace", pointerEvents: "none" }}>
-                  <div style={{ fontSize: 6, color: "#22d3ee55", letterSpacing: "0.32em", marginBottom: 4 }}>AUTOTRACKING</div>
-                  <div style={{ fontSize: 18, color: "#e2ecffcc", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, textShadow: "0 0 12px #22d3ee55" }}>
+                <div style={{ position: "absolute", top: trackPx.y, left: labelX, transform: "translateY(-50%)", fontFamily: "Menlo,Consolas,monospace", pointerEvents: "none" }}>
+                  <div style={{ fontSize: 9, color: "#22d3ee66", letterSpacing: "0.30em", marginBottom: 5, fontWeight: 700 }}>AUTOTRACKING</div>
+                  <div style={{ fontSize: 28, color: "#e2ecffdd", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, textShadow: "0 0 18px #22d3ee66, 0 0 4px #22d3ee33" }}>
                     {ssTrackMsg.id}
                   </div>
                 </div>
@@ -3512,31 +3511,44 @@ export default function StamfordMap() {
           animation: tl-ss-lock 0.52s cubic-bezier(0.4, 0, 0.2, 1) both;
         }
 
-        /* ── TRACKING detail pane — tactical reveal ── */
+        /* ── TRACKING detail pane — tactical acquire ── */
         @keyframes tl-track-pane-in {
-          0%   { opacity: 0; transform: translateX(12px); clip-path: inset(0 0 100% 0); }
-          30%  { opacity: 1; clip-path: inset(0 0 55% 0); transform: translateX(3px); }
-          65%  { clip-path: inset(0 0 15% 0); transform: translateX(0); }
-          85%  { clip-path: inset(0); transform: translateX(-1px); }
-          100% { clip-path: inset(0); opacity: 1; transform: translateX(0); }
+          0%   { opacity: 0; clip-path: inset(0 0 100% 0); transform: translateX(10px); filter: brightness(5); }
+          6%   { opacity: 1; filter: brightness(3); }
+          10%  { opacity: 0.3; filter: brightness(1); }
+          15%  { opacity: 1; clip-path: inset(0 0 88% 0); }
+          19%  { opacity: 0.6; }
+          23%  { opacity: 1; clip-path: inset(0 0 72% 0); transform: translateX(4px); }
+          55%  { clip-path: inset(0 0 16% 0); transform: translateX(1px); }
+          80%  { clip-path: inset(0 0 1% 0); }
+          100% { clip-path: inset(0); opacity: 1; transform: translateX(0); filter: brightness(1); }
+        }
+        @keyframes tl-track-pane-borderglow {
+          0%   { border-left-color: #22d3eedd; box-shadow: -5px 0 22px #22d3ee99; }
+          30%  { border-left-color: #22d3ee99; box-shadow: -3px 0 12px #22d3ee44; }
+          100% { border-left-color: #22d3ee33; box-shadow: none; }
         }
         .tl-track-pane-reveal {
-          animation: tl-track-pane-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+          animation: tl-track-pane-in 0.65s cubic-bezier(0.16, 1, 0.3, 1) both,
+                     tl-track-pane-borderglow 1s ease-out both;
         }
         @keyframes tl-track-row-in {
-          0%   { opacity: 0; transform: translateX(8px); }
-          100% { opacity: 1; transform: translateX(0); }
+          0%   { opacity: 0; transform: translateX(22px); filter: brightness(5); }
+          20%  { opacity: 1; filter: brightness(2.5); }
+          50%  { filter: brightness(1.2); }
+          100% { opacity: 1; transform: translateX(0); filter: brightness(1); }
         }
         .tl-track-rowreveal {
-          animation: tl-track-row-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+          animation: tl-track-row-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
         }
         @keyframes tl-track-type-in {
-          0%   { opacity: 0; letter-spacing: 0.4em; }
-          60%  { opacity: 1; letter-spacing: 0.05em; }
-          100% { opacity: 1; letter-spacing: 0.04em; }
+          0%   { opacity: 0; letter-spacing: 0.6em; filter: brightness(4); }
+          25%  { opacity: 1; filter: brightness(2); }
+          60%  { letter-spacing: 0.04em; filter: brightness(1.2); }
+          100% { opacity: 1; letter-spacing: 0.03em; filter: brightness(1); }
         }
         .tl-track-typereveal {
-          animation: tl-track-type-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both;
+          animation: tl-track-type-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.07s both;
         }
       `}</style>
     </div>
