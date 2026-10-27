@@ -3094,8 +3094,27 @@ export default function StamfordMap() {
               const iconFilter = e.type === "AIR"
                 ? "brightness(0) invert(1) sepia(1) saturate(600%) hue-rotate(234deg) brightness(0.95)"
                 : undefined;
-              return (
-                <div key={e.name} className="tl-feed-card-in" style={{ display: "flex", gap: 10, marginBottom: 14, paddingBottom: 12, borderBottom: `1px solid ${borderC}` }}>
+              const isLocked = ssMode && ssTrackMsg?.id === e.name;
+              const handleClick = () => {
+                const map = mapInst.current;
+                if (!map) return;
+                let found: any = null;
+                if (e.type === "AIR") {
+                  aircraftMarkersRef.current.forEach(m => { if (!found && (m as any)._tlMeta?.id === e.name) found = m; });
+                } else if (e.type === "AIS") {
+                  vesselMarkersRef.current.forEach(m => { if (!found && (m as any)._tlMeta?.id === e.name) found = m; });
+                } else if (e.type === "TRAIN") {
+                  trainMarkersRef.current.forEach(m => { if (!found && (m as any)._tlMeta?.id === e.name) found = m; });
+                }
+                if (found) {
+                  const ll = found.getLatLng();
+                  map.flyTo([ll.lat, ll.lng], 14, { animate: true, duration: 0.8 });
+                  setTimeout(() => { try { found.openPopup(); } catch {} }, 900);
+                }
+              };
+              const card = (
+                <div key={e.name} className="tl-feed-card-in" onClick={handleClick}
+                  style={{ display: "flex", gap: 10, marginBottom: 14, paddingBottom: 12, borderBottom: `1px solid ${borderC}`, cursor: "pointer", pointerEvents: "auto" }}>
                   <div style={{ width: 42, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", opacity: iconOp }}>
                     {acSh ? (
                       <div style={{ width: 34, height: 44, filter: iconFilter }} dangerouslySetInnerHTML={{ __html: genAcSVG(acSh) }} />
@@ -3149,6 +3168,18 @@ export default function StamfordMap() {
                       <span style={{ color: ageColor, opacity: 0.6 }}>[{e.age}s]</span>
                     </div>
                   </div>
+                </div>
+              );
+              if (!isLocked) return card;
+              return (
+                <div key={e.name + "_lk"} style={{ position: "relative", pointerEvents: "auto" }}>
+                  <div className="tl-pane-corners-active" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1 }}>
+                    <div className="tl-pane-rc tl-pane-rc-tl" />
+                    <div className="tl-pane-rc tl-pane-rc-tr" />
+                    <div className="tl-pane-rc tl-pane-rc-bl" />
+                    <div className="tl-pane-rc tl-pane-rc-br" />
+                  </div>
+                  {card}
                 </div>
               );
             };
@@ -3267,21 +3298,15 @@ export default function StamfordMap() {
           const tAltDir = (trackPrev?.altFt != null && curAltFt != null) ? (curAltFt > trackPrev.altFt ? "up" : curAltFt < trackPrev.altFt ? "dn" : null) : null;
           const tSpdDir = (trackPrev?.spdKt != null && curSpdKt != null) ? (curSpdKt > trackPrev.spdKt ? "up" : curSpdKt < trackPrev.spdKt ? "dn" : null) : null;
           feedPrevRef.current.set("__track__" + trackPrevKey, { altFt: curAltFt, spdKt: curSpdKt });
-          const bArm = 18; // corner bracket arm length px
           return (
             <div key={ssTrackMsg.id} className={ssReacquire ? "tl-track-pane-reveal-slow" : "tl-track-pane-reveal"} style={{ position: "relative", flex: "0 0 auto", marginBottom: 8 }}>
-              {/* Corner brackets matching reticle style */}
-              {([
-                { top: 0,       left: 0,    right: "auto", bottom: "auto", pts: `${bArm},0 0,0 0,${bArm}` },
-                { top: 0,       left: "auto", right: 0,   bottom: "auto", pts: `0,0 ${bArm},0 ${bArm},${bArm}` },
-                { top: "auto",  left: 0,    right: "auto", bottom: 0,     pts: `${bArm},${bArm} 0,${bArm} 0,0` },
-                { top: "auto",  left: "auto", right: 0,   bottom: 0,     pts: `0,${bArm} ${bArm},${bArm} ${bArm},0` },
-              ]).map(({ top, left, right, bottom, pts }, i) => (
-                <svg key={i} width={bArm} height={bArm} viewBox={`0 0 ${bArm} ${bArm}`}
-                  style={{ position: "absolute", top, left, right, bottom, pointerEvents: "none", zIndex: 1, overflow: "visible" }}>
-                  <polyline points={pts} fill="none" stroke="#22d3ee" strokeWidth="1.2" opacity={0.55} />
-                </svg>
-              ))}
+              {/* Corner brackets — hue-cycle matches reticle */}
+              <div className="tl-pane-corners-active" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1 }}>
+                <div className="tl-pane-rc tl-pane-rc-tl" />
+                <div className="tl-pane-rc tl-pane-rc-tr" />
+                <div className="tl-pane-rc tl-pane-rc-bl" />
+                <div className="tl-pane-rc tl-pane-rc-br" />
+              </div>
               <div style={{ paddingLeft: 14, paddingTop: 8, paddingBottom: 8, paddingRight: 6 }}>
               {/* Header */}
               <div style={{ fontSize: Math.round(13 * uiScale), color: "#22d3eecc", letterSpacing: "0.28em", marginBottom: 8, display: "flex", alignItems: "center", gap: 6, fontWeight: 700,
@@ -3356,13 +3381,13 @@ export default function StamfordMap() {
               )}
               {/* Distance away */}
               {trackDistM !== null && (
-                <div className={ssReacquire ? "tl-track-rowreveal-slow" : "tl-track-rowreveal"} style={{ marginBottom: 4, animationDelay: "0.38s", display: "flex", alignItems: "baseline", gap: 2 }}>
+                <div className={ssReacquire ? "tl-track-rowreveal-slow" : "tl-track-rowreveal"} style={{ marginBottom: 4, animationDelay: "0.38s", display: "flex", alignItems: "baseline", gap: 5 }}>
                   <span key={fmtMi(trackDistM)} className="tl-dist-tick"
                     style={{ fontSize: Math.round(14 * uiScale), color: distColor(trackDistM), fontWeight: 600,
                       textShadow: `0 0 8px ${distColor(trackDistM)}66`, fontVariantNumeric: "tabular-nums" }}>
                     {fmtMi(trackDistM).replace(/mi$/, "")}
                   </span>
-                  <span style={{ fontSize: Math.round(14 * uiScale), color: "#e2ecffcc", fontWeight: 600 }}> mi away</span>
+                  <span style={{ fontSize: Math.round(14 * uiScale), color: "#e2ecffcc", fontWeight: 600 }}>mi away</span>
                 </div>
               )}
               </div>{/* end inner padding div */}
@@ -3692,6 +3717,14 @@ export default function StamfordMap() {
         .tl-ss-popup .leaflet-popup-content-wrapper {
           animation: tl-ss-lock 0.52s cubic-bezier(0.4, 0, 0.2, 1) both;
         }
+
+        /* ── Pane corner brackets — larger than reticle, same hue-cycle ── */
+        .tl-pane-rc { position:absolute; width:18px; height:18px; border-color:currentColor; border-style:solid; opacity:0.8; }
+        .tl-pane-rc-tl { top:0; left:0; border-width:1.5px 0 0 1.5px; }
+        .tl-pane-rc-tr { top:0; right:0; border-width:1.5px 1.5px 0 0; }
+        .tl-pane-rc-bl { bottom:0; left:0; border-width:0 0 1.5px 1.5px; }
+        .tl-pane-rc-br { bottom:0; right:0; border-width:0 1.5px 1.5px 0; }
+        .tl-pane-corners-active { color:#22d3ee; animation:tl-rc-hue-cycle 1.8s ease-in-out infinite; }
 
         /* ── TRACKING detail pane — tactical glitch acquire ── */
         @keyframes tl-track-pane-in {
