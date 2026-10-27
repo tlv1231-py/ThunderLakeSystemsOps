@@ -598,6 +598,18 @@ function fmtMi(meters: number): string {
   const mi = meters / 1609.34;
   return mi < 10 ? `${mi.toFixed(1)}mi` : `${Math.round(mi)}mi`;
 }
+function lerpHex(a: string, b: string, t: number): string {
+  const ah = parseInt(a.slice(1), 16), bh = parseInt(b.slice(1), 16);
+  const r = Math.round(((ah >> 16) & 0xff) + (((bh >> 16) & 0xff) - ((ah >> 16) & 0xff)) * t);
+  const g = Math.round(((ah >>  8) & 0xff) + (((bh >>  8) & 0xff) - ((ah >>  8) & 0xff)) * t);
+  const b2= Math.round(( ah        & 0xff) + (( bh        & 0xff) - ( ah        & 0xff)) * t);
+  return `#${r.toString(16).padStart(2,"0")}${g.toString(16).padStart(2,"0")}${b2.toString(16).padStart(2,"0")}`;
+}
+function distColor(meters: number): string {
+  const mi = Math.max(0, Math.min(20, meters / 1609.34));
+  if (mi >= 10) return lerpHex("#eab308", "#22c55e", (mi - 10) / 10);
+  return lerpHex("#ef4444", "#eab308", mi / 10);
+}
 function parseDetailAltFt(detail: string): number | null {
   const p = detail.split(" · ").find(s => s.includes("ft"));
   if (!p) return null;
@@ -3105,9 +3117,13 @@ export default function StamfordMap() {
                         </div>
                       ) : null;
                     })()}
-                    <div style={{ fontSize: sz2, color: ageColor, fontVariantNumeric: "tabular-nums", letterSpacing: "0.08em", display: "flex", gap: 6 }}>
-                      <span>{fmtMi(e.distM)}</span>
-                      <span style={{ opacity: 0.6 }}>[{e.age}s]</span>
+                    <div style={{ fontSize: sz2, fontVariantNumeric: "tabular-nums", letterSpacing: "0.08em", display: "flex", gap: 6, alignItems: "baseline" }}>
+                      <span key={fmtMi(e.distM)} className="tl-dist-tick"
+                        style={{ color: distColor(e.distM), fontWeight: 600,
+                          textShadow: `0 0 8px ${distColor(e.distM)}66` }}>
+                        {fmtMi(e.distM)}
+                      </span>
+                      <span style={{ color: ageColor, opacity: 0.6 }}>[{e.age}s]</span>
                     </div>
                   </div>
                 </div>
@@ -3640,6 +3656,18 @@ export default function StamfordMap() {
         }
         .tl-track-typereveal-slow {
           animation: tl-track-type-in 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+        }
+
+        /* ── Distance tick — flash on value change ── */
+        @keyframes tl-dist-tick {
+          0%   { opacity: 0.2; filter: brightness(5); transform: translateY(-3px) scaleX(1.08); }
+          12%  { opacity: 1;   filter: brightness(2.5); transform: translateY(1px) scaleX(0.97); }
+          28%  { filter: brightness(1.6); transform: translateY(-0.5px) scaleX(1.01); }
+          100% { opacity: 1;   filter: brightness(1); transform: translateY(0) scaleX(1); }
+        }
+        .tl-dist-tick {
+          animation: tl-dist-tick 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+          display: inline-block;
         }
 
         /* ── Sector feed card — animate in on new contact ── */
