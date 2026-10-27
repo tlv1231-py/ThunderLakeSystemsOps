@@ -2321,6 +2321,17 @@ export default function StamfordMap() {
         // Autotrack: map continuously pans to follow tracked marker
         if (ssModeRef.current && ssTrackMarkerRef.current) {
           const nowZ = Date.now();
+          // Drop lock if tracked target has moved beyond 20mi from TLS
+          const SS_MAX_TRACK_M = 32186; // 20 miles
+          try {
+            const trkLl2 = ssTrackMarkerRef.current.getLatLng();
+            const { lat: tlsLatDrop, lng: tlsLngDrop } = crosshairLatLngRef.current;
+            if (distToStamford(trkLl2.lat, trkLl2.lng, tlsLatDrop, tlsLngDrop) > SS_MAX_TRACK_M) {
+              // Target fled — release lock, autotracker will pick up next nearest
+              ssTrackMarkerRef.current = null; ssTrackMsgRef.current = null;
+              setSsTrackMsg(null); setLockExiting(false);
+            }
+          } catch {}
           // Skip panTo while a zoom animation is in flight to avoid fighting flyTo
           const zoomSettled = nowZ - ssZoomLastMs.current > 2500;
           if (zoomSettled) {
