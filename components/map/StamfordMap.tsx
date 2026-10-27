@@ -3095,12 +3095,16 @@ export default function StamfordMap() {
                         {acFull}
                       </div>
                     )}
-                    {e.info && (
-                      <div style={{ fontSize: sz2, color: infoColor, lineHeight: 1.3, marginBottom: 2,
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {e.info}
-                      </div>
-                    )}
+                    {e.info && (() => {
+                      // Strip the leading ICAO type token (e.g. "B712 · ") — already shown as acFull above
+                      const infoDisplay = e.info.split(" · ").filter(p => !p.match(/^[A-Z0-9]{2,6}$/) || p.includes("ft") || p.includes("kt") || p === "gnd").join(" · ");
+                      return infoDisplay ? (
+                        <div style={{ fontSize: sz2, color: infoColor, lineHeight: 1.3, marginBottom: 2,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {infoDisplay}
+                        </div>
+                      ) : null;
+                    })()}
                     <div style={{ fontSize: sz2, color: ageColor, fontVariantNumeric: "tabular-nums", letterSpacing: "0.08em", display: "flex", gap: 6 }}>
                       <span>{fmtMi(e.distM)}</span>
                       <span style={{ opacity: 0.6 }}>[{e.age}s]</span>
