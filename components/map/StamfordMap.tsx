@@ -774,6 +774,7 @@ export default function StamfordMap() {
   const reticleSrcRef         = useRef<any>(null);
   const reticleTravelAFRef    = useRef<number | null>(null);
   const reticleIsTravelingRef = useRef<boolean>(false);
+  const trackSyncEpochRef     = useRef<number>(0);
   const lRef                = useRef<any>(null);
   const ssTrackMarkerRef    = useRef<any>(null);
   const ssTrackMsgRef       = useRef<SsTrackInfo | null>(null);
@@ -955,6 +956,7 @@ export default function StamfordMap() {
       reticleSrcRef.current = initM;
       const initMsg = { type: initType2, id: initId2, detail: initDetail2, enteredMs: Date.now() };
       ssTrackMsgRef.current = initMsg;
+      trackSyncEpochRef.current = Date.now() % 1800;
       setSsTrackMsg(initMsg);
       ssZoomLastMs.current = Date.now();
       // Single smooth fly to midpoint between aircraft and TLS at distance-based zoom
@@ -1060,6 +1062,7 @@ export default function StamfordMap() {
           if (!reticleIsTravelingRef.current) reticleSrcRef.current = newMarker;
           const msg = { type: newType, id: newId, detail: newDetail, enteredMs: Date.now() };
           ssTrackMsgRef.current = msg;
+          trackSyncEpochRef.current = Date.now() % 1800;
           setSsTrackMsg(msg);
           setLockExiting(false);
           ssZoomLastMs.current = Date.now();
@@ -3299,7 +3302,7 @@ export default function StamfordMap() {
               if (!isLocked) return card;
               return (
                 <div key={e.name + "_lk"} style={{ position: "relative", pointerEvents: "auto" }}>
-                  <div className="tl-pane-corners-active" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1 }}>
+                  <div className="tl-pane-corners-active" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1, animationDelay: `calc(-${trackSyncEpochRef.current}ms)` }}>
                     <div className="tl-pane-rc tl-pane-rc-tl" />
                     <div className="tl-pane-rc tl-pane-rc-tr" />
                     <div className="tl-pane-rc tl-pane-rc-bl" />
@@ -3427,7 +3430,7 @@ export default function StamfordMap() {
           return (
             <div key={ssTrackMsg.id} className={ssReacquire ? "tl-track-pane-reveal-slow" : "tl-track-pane-reveal"} style={{ position: "relative", flex: "0 0 auto", marginBottom: 8 }}>
               {/* Corner brackets — hue-cycle matches reticle */}
-              <div className="tl-pane-corners-active" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1 }}>
+              <div className="tl-pane-corners-active" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1, animationDelay: `calc(-${trackSyncEpochRef.current}ms)` }}>
                 <div className="tl-pane-rc tl-pane-rc-tl" />
                 <div className="tl-pane-rc tl-pane-rc-tr" />
                 <div className="tl-pane-rc tl-pane-rc-bl" />
@@ -3537,12 +3540,14 @@ export default function StamfordMap() {
         ];
         return (
           <div key={ssTrackMsg.id} className={`absolute inset-0 pointer-events-none ${lockExiting ? "tl-lockon-exit" : "tl-lockon-overlay"}`} style={{ zIndex: 22 }}>
-            {/* SVG: corner brackets only */}
-            <svg style={{ position: "absolute", top: 0, left: 0, width: W, height: H, overflow: "visible" }}>
-              {brackets.flat().map((pts, i) => (
-                <polyline key={i} points={pts} fill="none" stroke="#22d3ee" strokeWidth="1.5" strokeOpacity="0.65" />
-              ))}
-            </svg>
+            {/* SVG: corner brackets — animated in sync with panel corners */}
+            <div className="tl-pane-corners-active" style={{ position: "absolute", inset: 0, animationDelay: `calc(-${trackSyncEpochRef.current}ms)` }}>
+              <svg style={{ position: "absolute", top: 0, left: 0, width: W, height: H, overflow: "visible" }}>
+                {brackets.flat().map((pts, i) => (
+                  <polyline key={i} points={pts} fill="none" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.65" />
+                ))}
+              </svg>
+            </div>
             {/* Callsign label floats near the reticle */}
             {trackPx && (() => {
               const pad = 54;
