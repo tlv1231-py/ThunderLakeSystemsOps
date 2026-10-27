@@ -1196,7 +1196,7 @@ export default function StamfordMap() {
           detail: `${typeStr || "—"} · ${alt > 0 ? metersToFt(alt).toLocaleString() + "ft" : "gnd"} · ${speedMs > 0 ? mpsToKnots(speedMs) + "kt" : "—"}`,
           reg: regStr, op: opStr, acType: typeStr, hdg: heading,
         };
-        const altLabel = ssModeRef.current ? (alt > 0 ? fmtAltShort(metersToFt(alt)) : "gnd") : undefined;
+        const altLabel = alt > 0 ? fmtAltShort(metersToFt(alt)) : "gnd";
         if (aircraftMarkersRef.current.has(id)) {
           const m = aircraftMarkersRef.current.get(id);
           // Update heading arrow without tl-anim (no fade-in on update)
@@ -2366,13 +2366,15 @@ export default function StamfordMap() {
         // Autotrack: map continuously pans to follow tracked marker
         if (ssModeRef.current && ssTrackMarkerRef.current) {
           const nowZ = Date.now();
-          // Drop lock if tracked target has moved beyond 20mi from TLS
+          // Drop lock if tracked marker removed from map (ADS-B lost) or target fled beyond 20mi
           const SS_MAX_TRACK_M = 32186; // 20 miles
           try {
             const trkLl2 = ssTrackMarkerRef.current.getLatLng();
             const { lat: tlsLatDrop, lng: tlsLngDrop } = crosshairLatLngRef.current;
-            if (distToStamford(trkLl2.lat, trkLl2.lng, tlsLatDrop, tlsLngDrop) > SS_MAX_TRACK_M) {
-              // Target fled — release lock, autotracker will pick up next nearest
+            const shouldDrop = !ssTrackMarkerRef.current._map || distToStamford(trkLl2.lat, trkLl2.lng, tlsLatDrop, tlsLngDrop) > SS_MAX_TRACK_M;
+            if (shouldDrop) {
+              if (reticleTravelAFRef.current !== null) { cancelAnimationFrame(reticleTravelAFRef.current); reticleTravelAFRef.current = null; }
+              reticleIsTravelingRef.current = false;
               ssTrackMarkerRef.current = null; ssTrackMsgRef.current = null;
               setSsTrackMsg(null); setLockExiting(false);
             }
