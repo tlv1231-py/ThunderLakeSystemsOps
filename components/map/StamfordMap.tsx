@@ -632,6 +632,15 @@ function optimalTrackZoom(altFt: number | null, spdKt: number | null): number {
   if (spdKt !== null && spdKt > 350) z = Math.max(z - 1, 11);
   return z;
 }
+// Distance-aware zoom: fit both tracked aircraft and TLS in viewport, capped at z14
+function getTrackedZoom(map: any, trackLat: number, trackLon: number, tlsLat: number, tlsLng: number): number {
+  try {
+    const sw = [Math.min(trackLat, tlsLat) - 0.003, Math.min(trackLon, tlsLng) - 0.004];
+    const ne = [Math.max(trackLat, tlsLat) + 0.003, Math.max(trackLon, tlsLng) + 0.004];
+    const z = map.getBoundsZoom([sw, ne], false, [70, 70]);
+    return Math.min(Math.max(z, 11), 14);
+  } catch { return 13; }
+}
 function ssDistOpacity(distM: number): number {
   const MI10 = 16093, MI25 = 40233;
   if (distM <= MI10) return 1.0;
@@ -925,19 +934,13 @@ export default function StamfordMap() {
       ssTrackMsgRef.current = initMsg;
       setSsTrackMsg(initMsg);
       ssZoomLastMs.current = Date.now();
-      // Acquire pulse on initial lock
+      // Single smooth fly to midpoint between aircraft and TLS at distance-based zoom
       const initLl = initM.getLatLng();
-      const az0init = optimalTrackZoom(parseDetailAltFt(initDetail2), parseDetailSpdKt(initDetail2));
-      const pulseZ0 = Math.min(az0init + 2, 15);
-      map.flyTo([initLl.lat, initLl.lng], pulseZ0, { animate: true, duration: 0.32 });
-      setTimeout(() => {
-        const m2 = mapInst.current; const trk = ssTrackMarkerRef.current;
-        if (!ssModeRef.current || !m2 || !trk) return;
-        const ll2 = trk.getLatLng();
-        const az = optimalTrackZoom(parseDetailAltFt(initDetail2), parseDetailSpdKt(initDetail2));
-        m2.flyTo([ll2.lat, ll2.lng], az, { animate: true, duration: 1.8 });
-        ssZoomLastMs.current = Date.now();
-      }, 720);
+      const { lat: tlsLat0i, lng: tlsLng0i } = crosshairLatLngRef.current;
+      const az0init = getTrackedZoom(map, initLl.lat, initLl.lng, tlsLat0i, tlsLng0i);
+      const midLat0i = (initLl.lat + tlsLat0i) / 2;
+      const midLng0i = (initLl.lng + tlsLng0i) / 2;
+      map.flyTo([midLat0i, midLng0i], az0init, { animate: true, duration: 1.5 });
       import("leaflet").then(mod => {
         const Lx = mod.default;
         if (reticleMarkerRef.current) { try { map.removeLayer(reticleMarkerRef.current); } catch {} }
@@ -1037,22 +1040,14 @@ export default function StamfordMap() {
           setSsTrackMsg(msg);
           setLockExiting(false);
           ssZoomLastMs.current = Date.now();
-          // Acquire pulse: hard zoom-in, then settle to altitude+speed optimal zoom
+          // Single smooth fly to midpoint between aircraft and TLS at distance-based zoom
           if (mapNow) {
-            const az0new = optimalTrackZoom(parseDetailAltFt(newDetail), parseDetailSpdKt(newDetail));
-            const pulseZNew = Math.min(az0new + 2, 15);
-            const pulseDur   = isTransition ? 0.65 : 0.32;
-            const settleDelay = isTransition ? 1100 : 720;
-            const settleDur  = isTransition ? 2.8  : 1.8;
-            mapNow.flyTo([newLat, newLon], pulseZNew, { animate: true, duration: pulseDur });
-            setTimeout(() => {
-              const m2 = mapInst.current; const trk = ssTrackMarkerRef.current;
-              if (!ssModeRef.current || !m2 || !trk) return;
-              const ll2 = trk.getLatLng();
-              const az = optimalTrackZoom(parseDetailAltFt(newDetail), parseDetailSpdKt(newDetail));
-              m2.flyTo([ll2.lat, ll2.lng], az, { animate: true, duration: settleDur });
-              ssZoomLastMs.current = Date.now();
-            }, settleDelay);
+            const { lat: tlsLatA, lng: tlsLngA } = crosshairLatLngRef.current;
+            const azNew = getTrackedZoom(mapNow, newLat, newLon, tlsLatA, tlsLngA);
+            const midLatA = (newLat + tlsLatA) / 2;
+            const midLngA = (newLon + tlsLngA) / 2;
+            const flyDur = isTransition ? 2.0 : 1.5;
+            mapNow.flyTo([midLatA, midLngA], azNew, { animate: true, duration: flyDur });
           }
           import("leaflet").then(mod => {
             const Lx = mod.default;
@@ -2330,21 +2325,29 @@ export default function StamfordMap() {
           const zoomSettled = nowZ - ssZoomLastMs.current > 2500;
           if (zoomSettled) {
             try {
-              const map2 = mapInst.current;
-              if (map2) map2.panTo(ssTrackMarkerRef.current.getLatLng(), { animate: true, duration: 0.22, easeLinearity: 0.2, noMoveStart: true });
+              const map2 = mapInst.current; const trk = ssTrackMarkerRef.current;
+              if (map2 && trk) {
+                const trkLl = trk.getLatLng();
+                const { lat: tlsLatP, lng: tlsLngP } = crosshairLatLngRef.current;
+                const midLatP = (trkLl.lat + tlsLatP) / 2;
+                const midLngP = (trkLl.lng + tlsLngP) / 2;
+                map2.panTo([midLatP, midLngP], { animate: true, duration: 0.35, easeLinearity: 0.1, noMoveStart: true });
+              }
             } catch {}
           }
-          // Periodic zoom re-evaluation based on altitude + speed (every 20s, after 3s settle)
+          // Periodic zoom re-evaluation (every 20s, after 3s settle) — keep TLS in view
           const msg2 = ssTrackMsgRef.current;
           if (msg2 && nowZ - msg2.enteredMs > 3000 && nowZ - ssZoomLastMs.current > 20000) {
             try {
               const map2 = mapInst.current; const trk = ssTrackMarkerRef.current;
               if (map2 && trk) {
-                // Use live marker detail, not stale lock-time snapshot
-                const liveD = (trk as any)._tlMeta?.detail ?? msg2.detail;
-                const az = optimalTrackZoom(parseDetailAltFt(liveD), parseDetailSpdKt(liveD));
+                const trkLl = trk.getLatLng();
+                const { lat: tlsLatZ, lng: tlsLngZ } = crosshairLatLngRef.current;
+                const az = getTrackedZoom(map2, trkLl.lat, trkLl.lng, tlsLatZ, tlsLngZ);
+                const midLatZ = (trkLl.lat + tlsLatZ) / 2;
+                const midLngZ = (trkLl.lng + tlsLngZ) / 2;
                 if (Math.abs(map2.getZoom() - az) >= 1) {
-                  map2.flyTo(trk.getLatLng(), az, { animate: true, duration: 1.5 });
+                  map2.flyTo([midLatZ, midLngZ], az, { animate: true, duration: 1.5 });
                   ssZoomLastMs.current = nowZ;
                 } else {
                   ssZoomLastMs.current = nowZ;
