@@ -749,8 +749,10 @@ export default function StamfordMap() {
   const ssModeRef           = useRef(false);
   const ssKnownRef          = useRef<Set<string>>(new Set());
   const ssScanTimerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
-  const reticleMarkerRef    = useRef<any>(null);
-  const reticleSrcRef       = useRef<any>(null);
+  const reticleMarkerRef      = useRef<any>(null);
+  const reticleSrcRef         = useRef<any>(null);
+  const reticleTravelAFRef    = useRef<number | null>(null);
+  const reticleIsTravelingRef = useRef<boolean>(false);
   const lRef                = useRef<any>(null);
   const ssTrackMarkerRef    = useRef<any>(null);
   const ssTrackMsgRef       = useRef<SsTrackInfo | null>(null);
@@ -1034,7 +1036,7 @@ export default function StamfordMap() {
           if (!ssModeRef.current) return;
           setSsReacquire(isTransition);
           ssTrackMarkerRef.current = newMarker;
-          reticleSrcRef.current = newMarker;
+          if (!reticleIsTravelingRef.current) reticleSrcRef.current = newMarker;
           const msg = { type: newType, id: newId, detail: newDetail, enteredMs: Date.now() };
           ssTrackMsgRef.current = msg;
           setSsTrackMsg(msg);
@@ -1049,27 +1051,61 @@ export default function StamfordMap() {
             const flyDur = isTransition ? 2.0 : 1.5;
             mapNow.flyTo([midLatA, midLngA], azNew, { animate: true, duration: flyDur });
           }
-          import("leaflet").then(mod => {
-            const Lx = mod.default;
-            if (reticleMarkerRef.current) { try { mapNow.removeLayer(reticleMarkerRef.current); } catch {} }
-            reticleMarkerRef.current = Lx.marker([newLat, newLon], {
-              icon: Lx.divIcon({ html: reticleHTML("enter"), className: "", iconSize: [80, 80], iconAnchor: [40, 40] }),
-              interactive: false, keyboard: false, zIndexOffset: -1000,
-            }).addTo(mapNow);
-            setTimeout(() => {
-              const rEl = reticleMarkerRef.current?.getElement?.();
-              const inner = rEl?.querySelector(".tl-reticle") as HTMLElement | null;
-              if (inner) { inner.classList.remove("tl-reticle-enter"); inner.classList.add("tl-reticle-lock"); }
-            }, 700);
-          });
+          if (!reticleIsTravelingRef.current) {
+            import("leaflet").then(mod => {
+              const Lx = mod.default;
+              if (reticleMarkerRef.current) { try { mapNow.removeLayer(reticleMarkerRef.current); } catch {} }
+              reticleMarkerRef.current = Lx.marker([newLat, newLon], {
+                icon: Lx.divIcon({ html: reticleHTML("enter"), className: "", iconSize: [80, 80], iconAnchor: [40, 40] }),
+                interactive: false, keyboard: false, zIndexOffset: -1000,
+              }).addTo(mapNow);
+              setTimeout(() => {
+                const rEl = reticleMarkerRef.current?.getElement?.();
+                const inner = rEl?.querySelector(".tl-reticle") as HTMLElement | null;
+                if (inner) { inner.classList.remove("tl-reticle-enter"); inner.classList.add("tl-reticle-lock"); }
+              }, 700);
+            });
+          }
         };
 
         if (ssTrackMsgRef.current) {
-          // Switching targets: exit old overlay + reticle, then acquire
           setLockExiting(true);
-          const oldREl = reticleMarkerRef.current?.getElement?.();
-          const oldInner = oldREl?.querySelector(".tl-reticle") as HTMLElement | null;
-          if (oldInner) { oldInner.classList.remove("tl-reticle-lock", "tl-reticle-enter"); oldInner.classList.add("tl-reticle-exiting"); }
+          const oldLl = reticleMarkerRef.current?.getLatLng?.();
+          if (oldLl) {
+            // In saver mode: reticle travels from old target position to new target
+            reticleIsTravelingRef.current = true;
+            reticleSrcRef.current = null;
+            if (reticleTravelAFRef.current !== null) { cancelAnimationFrame(reticleTravelAFRef.current); reticleTravelAFRef.current = null; }
+            const fromLat = oldLl.lat, fromLon = oldLl.lng;
+            const travelStartMs = performance.now();
+            const travelTick = (now: number) => {
+              const t = Math.min(1, (now - travelStartMs) / 2000);
+              const e = t < 0.5 ? 2*t*t : -1+(4-2*t)*t; // ease in-out quad
+              try { reticleMarkerRef.current?.setLatLng?.([fromLat + (newLat - fromLat)*e, fromLon + (newLon - fromLon)*e]); } catch {}
+              if (t < 1) {
+                reticleTravelAFRef.current = requestAnimationFrame(travelTick);
+              } else {
+                reticleTravelAFRef.current = null;
+                reticleIsTravelingRef.current = false;
+                reticleSrcRef.current = newMarker;
+                const rEl = reticleMarkerRef.current?.getElement?.();
+                const inner = rEl?.querySelector(".tl-reticle") as HTMLElement | null;
+                if (inner) {
+                  inner.classList.remove("tl-reticle-lock", "tl-reticle-exiting");
+                  inner.classList.add("tl-reticle-enter");
+                  setTimeout(() => {
+                    const inner2 = reticleMarkerRef.current?.getElement?.()?.querySelector(".tl-reticle") as HTMLElement | null;
+                    if (inner2) { inner2.classList.remove("tl-reticle-enter"); inner2.classList.add("tl-reticle-lock"); }
+                  }, 700);
+                }
+              }
+            };
+            reticleTravelAFRef.current = requestAnimationFrame(travelTick);
+          } else {
+            const oldREl = reticleMarkerRef.current?.getElement?.();
+            const oldInner = oldREl?.querySelector(".tl-reticle") as HTMLElement | null;
+            if (oldInner) { oldInner.classList.remove("tl-reticle-lock", "tl-reticle-enter"); oldInner.classList.add("tl-reticle-exiting"); }
+          }
           ssTrackMsgTimerRef.current = setTimeout(doAcquire, 600);
         } else {
           doAcquire();
@@ -2314,8 +2350,8 @@ export default function StamfordMap() {
           const inner = m._icon?.querySelector?.(".tl-train-icon") as HTMLElement | null;
           if (inner && !inner.style.transform.includes("rotate")) inner.style.transform = `scale(${trainScaleRef.current})`;
         });
-        // Reticle follows moving source marker
-        if (reticleSrcRef.current && reticleMarkerRef.current) {
+        // Reticle follows moving source marker (gated: rAF travel drives position during transitions)
+        if (reticleSrcRef.current && reticleMarkerRef.current && !reticleIsTravelingRef.current) {
           try { reticleMarkerRef.current.setLatLng(reticleSrcRef.current.getLatLng()); } catch {}
         }
         // Autotrack: map continuously pans to follow tracked marker
@@ -2779,7 +2815,7 @@ export default function StamfordMap() {
 
       {/* ── Feed orbs ──────────────────────────────────────────────────────── */}
       <div className="absolute z-10 left-0 right-0 flex justify-center"
-        style={{ top: 92, gap: 6, padding: "0 10px", pointerEvents: "none" }}>
+        style={{ top: 92, gap: 6, padding: "0 10px", pointerEvents: "none", display: ssMode ? "none" : undefined }}>
         {FEED_ORDER.map(key => {
           const meta   = FEED_META[key];
           const layerKey = FEED_LAYER[key];
