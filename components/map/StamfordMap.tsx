@@ -3244,7 +3244,8 @@ export default function StamfordMap() {
           const acFullName = acTypeCode ? (ICAO_NAMES[acTypeCode] ?? acTypeCode) : "";
           const acSlug = acTypeCode ? WS_SLUGS[acTypeCode] : undefined;
           const acShape = acTypeCode ? AC_SHAPES[acTypeCode] : undefined;
-          const detailParts = ssTrackMsg.detail ? ssTrackMsg.detail.split(" · ") : [];
+          const liveDetail: string = meta?.detail ?? ssTrackMsg.detail ?? "";
+          const detailParts = liveDetail ? liveDetail.split(" · ") : [];
           const altVal = detailParts.find(p => p.includes("ft") || p === "gnd") ?? "";
           const spdVal = detailParts.find(p => p.includes("kt")) ?? "";
           const trackLl = ssTrackMarkerRef.current?.getLatLng();
@@ -3253,8 +3254,8 @@ export default function StamfordMap() {
           const spdDisplay = spdVal.replace(/(\d)kt$/, "$1 kt");
           const trackPrevKey = ssTrackMsg.id;
           const trackPrev = feedPrevRef.current.get("__track__" + trackPrevKey);
-          const curAltFt = parseDetailAltFt(ssTrackMsg.detail);
-          const curSpdKt = parseDetailSpdKt(ssTrackMsg.detail);
+          const curAltFt = parseDetailAltFt(liveDetail);
+          const curSpdKt = parseDetailSpdKt(liveDetail);
           const tAltDir = (trackPrev?.altFt != null && curAltFt != null) ? (curAltFt > trackPrev.altFt ? "up" : curAltFt < trackPrev.altFt ? "dn" : null) : null;
           const tSpdDir = (trackPrev?.spdKt != null && curSpdKt != null) ? (curSpdKt > trackPrev.spdKt ? "up" : curSpdKt < trackPrev.spdKt ? "dn" : null) : null;
           feedPrevRef.current.set("__track__" + trackPrevKey, { altFt: curAltFt, spdKt: curSpdKt });
@@ -3266,6 +3267,9 @@ export default function StamfordMap() {
                 <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22d3ee", display: "inline-block", animation: "tl-blink 1.2s ease-in-out infinite", flexShrink: 0,
                   boxShadow: "0 0 7px #22d3ee" }} />
                 AUTOTRACKING
+                <span style={{ marginLeft: "auto", color: "#22d3ee88", fontSize: Math.round(11 * uiScale), fontVariantNumeric: "tabular-nums", letterSpacing: "0.06em", fontWeight: 400 }}>
+                  [{lockDisplay}]
+                </span>
               </div>
               {/* Type label */}
               <div style={{ fontSize: Math.round(17 * uiScale), color: "#22d3ee77", letterSpacing: "0.18em", marginBottom: 4, fontWeight: 600 }}>{typeLabel}</div>
@@ -3329,12 +3333,6 @@ export default function StamfordMap() {
                   </span>
                 </div>
               )}
-              {/* Lock time */}
-              <div className={ssReacquire ? "tl-track-rowreveal-slow" : "tl-track-rowreveal"} style={{ fontSize: Math.round(12 * uiScale), color: "#22d3ee66",
-                fontVariantNumeric: "tabular-nums", letterSpacing: "0.08em", animationDelay: "0.39s" }}>
-                <span style={{ color: "#22d3ee44" }}>Lock </span>
-                <span style={{ color: "#22d3eebb" }}>{lockDisplay}</span>
-              </div>
             </div>
           );
         })()}
@@ -3365,12 +3363,28 @@ export default function StamfordMap() {
             {trackPx && (() => {
               const pad = 54;
               const labelX = Math.min(trackPx.x + pad, W - 180);
+              const tipMeta = (ssTrackMarkerRef.current as any)?._tlMeta;
+              const tipDetail = tipMeta?.detail ?? ssTrackMsg.detail;
+              const tipAltFt = parseDetailAltFt(tipDetail);
+              const tipSpdKt = parseDetailSpdKt(tipDetail);
+              const tipAlt = tipAltFt !== null ? `${tipAltFt.toLocaleString()} ft` : (tipDetail?.includes("gnd") ? "gnd" : null);
+              const tipSpd = tipSpdKt !== null ? `${tipSpdKt} kt` : null;
               return (
                 <div style={{ position: "absolute", top: trackPx.y, left: labelX, transform: "translateY(-50%)", fontFamily: "Menlo,Consolas,monospace", pointerEvents: "none" }}>
                   <div style={{ fontSize: 9, color: "#22d3ee66", letterSpacing: "0.30em", marginBottom: 5, fontWeight: 700 }}>AUTOTRACKING</div>
-                  <div style={{ fontSize: 28, color: "#e2ecffdd", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, textShadow: "0 0 18px #22d3ee66, 0 0 4px #22d3ee33" }}>
+                  <div style={{ fontSize: 28, color: "#e2ecffdd", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, textShadow: "0 0 18px #22d3ee66, 0 0 4px #22d3ee33", marginBottom: 5 }}>
                     {ssTrackMsg.id}
                   </div>
+                  {tipAlt && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                      <span key={tipAlt} className="tl-dist-tick" style={{ fontSize: 11, color: "#b0cce0bb", fontVariantNumeric: "tabular-nums", lineHeight: 1.3 }}>{tipAlt}</span>
+                    </div>
+                  )}
+                  {tipSpd && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                      <span key={tipSpd} className="tl-dist-tick" style={{ fontSize: 11, color: "#b0cce0bb", fontVariantNumeric: "tabular-nums", lineHeight: 1.3 }}>{tipSpd}</span>
+                    </div>
+                  )}
                 </div>
               );
             })()}
