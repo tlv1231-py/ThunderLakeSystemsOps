@@ -3228,30 +3228,11 @@ export default function StamfordMap() {
               const pad = 50;
               const labelX = Math.min(trackPx.x + pad, W - 170);
               const labelY = Math.max(trackPx.y - 48, 8);
-              const parts = ssTrackMsg.detail ? ssTrackMsg.detail.split(" · ") : [];
-              const acTypePart = parts.find(p => !p.includes("ft") && !p.includes("kt") && p !== "gnd" && p !== "—") ?? "";
-              const altPart    = parts.find(p => p.includes("ft") || p === "gnd") ?? "";
-              const spdPart    = parts.find(p => p.includes("kt")) ?? "";
-              const tipMeta = (ssTrackMarkerRef.current as any)?._tlMeta;
-              const tipAcCode = tipMeta?.acType ?? acTypePart;
-              const tipFullName = tipAcCode ? (ICAO_NAMES[tipAcCode] ?? "") : "";
-              const tipLines: { val: string; highlight?: boolean }[] = [];
-              if (tipFullName) tipLines.push({ val: tipFullName });
-              else if (acTypePart && acTypePart !== "—") tipLines.push({ val: acTypePart });
-              if (altPart) tipLines.push({ val: altPart });
-              if (spdPart) tipLines.push({ val: spdPart });
-              tipLines.push({ val: `${lockSec}s`, highlight: true });
               return (
                 <div style={{ position: "absolute", top: labelY, left: labelX, fontFamily: "Menlo,Consolas,monospace", pointerEvents: "none" }}>
-                  <div style={{ fontSize: 18, color: "#e2ecffcc", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, textShadow: "0 0 12px #22d3ee55", marginBottom: 5 }}>
+                  <div style={{ fontSize: 6, color: "#22d3ee55", letterSpacing: "0.32em", marginBottom: 4 }}>AUTOTRACKING</div>
+                  <div style={{ fontSize: 18, color: "#e2ecffcc", fontWeight: 700, letterSpacing: "0.06em", lineHeight: 1, textShadow: "0 0 12px #22d3ee55" }}>
                     {ssTrackMsg.id}
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                    {tipLines.map(({ val, highlight }, i) => (
-                      <div key={i} style={{ fontSize: 10, color: highlight ? "#22d3ee88" : "#b0cce0bb", letterSpacing: "0.06em", fontWeight: 500 }}>
-                        {val}
-                      </div>
-                    ))}
                   </div>
                 </div>
               );
