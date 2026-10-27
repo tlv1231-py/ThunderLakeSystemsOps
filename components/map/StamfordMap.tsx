@@ -2997,15 +2997,18 @@ export default function StamfordMap() {
               const ageColor  = dimLevel === "near" ? "#22d3ee44" : "#22d3ee28";
               const iconOp    = dimLevel === "near" ? 0.6 : 0.4;
               const borderC   = dimLevel === "near" ? "#22d3ee08" : "#22d3ee05";
+              const iconFilter = e.type === "AIR"
+                ? "brightness(0) invert(1) sepia(1) saturate(600%) hue-rotate(234deg) brightness(0.95)"
+                : undefined;
               return (
-                <div key={e.name} style={{ display: "flex", gap: 10, marginBottom: 14, paddingBottom: 12, borderBottom: `1px solid ${borderC}` }}>
+                <div key={e.name} className="tl-feed-card-in" style={{ display: "flex", gap: 10, marginBottom: 14, paddingBottom: 12, borderBottom: `1px solid ${borderC}` }}>
                   <div style={{ width: 42, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", opacity: iconOp }}>
                     {acSh ? (
-                      <div style={{ width: 34, height: 44 }} dangerouslySetInnerHTML={{ __html: genAcSVG(acSh) }} />
+                      <div style={{ width: 34, height: 44, filter: iconFilter }} dangerouslySetInnerHTML={{ __html: genAcSVG(acSh) }} />
                     ) : e.type === "AIS" ? (
                       <span style={{ fontSize: 24, color: e.color + "88" }}>≈</span>
                     ) : (
-                      <span style={{ fontSize: 22, color: e.color + "88" }}>✈</span>
+                      <span style={{ fontSize: 22, color: "#a855f788" }}>✈</span>
                     )}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -3039,7 +3042,7 @@ export default function StamfordMap() {
                   textShadow: "0 0 10px #22d3ee44", borderBottom: "1px solid #22d3ee22", paddingBottom: 5,
                   display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ color: "#22d3ee66", fontSize: szH - 1 }}>◈</span>
-                  SECTOR 10MI
+                  10MI
                 </div>
                 {S10.length > 0 ? (() => {
                   const trainCount10 = S10.filter(e => e.type === "TRAIN").length;
@@ -3063,7 +3066,7 @@ export default function StamfordMap() {
                   textShadow: "0 0 8px #22d3ee22", borderBottom: "1px solid #22d3ee14", paddingBottom: 5,
                   display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ color: "#22d3ee44", fontSize: szH - 1 }}>◈</span>
-                  SECTOR 20MI
+                  20MI
                 </div>
                 {S20.length > 0 ? (() => {
                   const trainCount20 = S20.filter(e => e.type === "TRAIN").length;
@@ -3174,11 +3177,12 @@ export default function StamfordMap() {
                 <div style={{ marginBottom: 10 }}>
                   <img src={`https://checkwingspan.vercel.app/api/svg/${acSlug}`}
                     style={{ width: 90, height: 116, objectFit: "contain", opacity: 0.85,
-                      filter: "brightness(0) invert(1) sepia(1) saturate(500%) hue-rotate(148deg) brightness(0.85)" }}
+                      filter: "brightness(0) invert(1) sepia(1) saturate(600%) hue-rotate(234deg) brightness(0.95)" }}
                     alt={acTypeCode} />
                 </div>
               ) : acShape ? (
-                <div style={{ width: 66, height: 82, marginBottom: 10, opacity: 0.85 }}
+                <div style={{ width: 66, height: 82, marginBottom: 10, opacity: 0.85,
+                  filter: "brightness(0) invert(1) sepia(1) saturate(600%) hue-rotate(234deg) brightness(0.95)" }}
                   dangerouslySetInnerHTML={{ __html: genAcSVG(acShape) }} />
               ) : null}
               {/* Full aircraft name */}
@@ -3549,6 +3553,19 @@ export default function StamfordMap() {
         }
         .tl-track-typereveal {
           animation: tl-track-type-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.07s both;
+        }
+
+        /* ── Sector feed card — animate in on new contact ── */
+        @keyframes tl-feed-card-in {
+          0%   { opacity: 0; transform: translateX(-22px); filter: brightness(5); }
+          8%   { opacity: 1; filter: brightness(3); }
+          14%  { opacity: 0.5; filter: brightness(1); }
+          20%  { opacity: 1; transform: translateX(-4px); }
+          55%  { transform: translateX(1px); filter: brightness(1.1); }
+          100% { opacity: 1; transform: translateX(0); filter: brightness(1); }
+        }
+        .tl-feed-card-in {
+          animation: tl-feed-card-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
         }
       `}</style>
     </div>
