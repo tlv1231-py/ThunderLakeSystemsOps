@@ -1155,7 +1155,7 @@ export default function StamfordMap() {
         const tlMeta = {
           type: "AIRPLANE", id: cs,
           detail: `${typeStr || "—"} · ${alt > 0 ? metersToFt(alt).toLocaleString() + "ft" : "gnd"} · ${speedMs > 0 ? mpsToKnots(speedMs) + "kt" : "—"}`,
-          reg: regStr, op: opStr, acType: typeStr,
+          reg: regStr, op: opStr, acType: typeStr, hdg: heading,
         };
         if (aircraftMarkersRef.current.has(id)) {
           const m = aircraftMarkersRef.current.get(id);
@@ -3267,8 +3267,22 @@ export default function StamfordMap() {
           const tAltDir = (trackPrev?.altFt != null && curAltFt != null) ? (curAltFt > trackPrev.altFt ? "up" : curAltFt < trackPrev.altFt ? "dn" : null) : null;
           const tSpdDir = (trackPrev?.spdKt != null && curSpdKt != null) ? (curSpdKt > trackPrev.spdKt ? "up" : curSpdKt < trackPrev.spdKt ? "dn" : null) : null;
           feedPrevRef.current.set("__track__" + trackPrevKey, { altFt: curAltFt, spdKt: curSpdKt });
+          const bArm = 18; // corner bracket arm length px
           return (
-            <div key={ssTrackMsg.id} className={ssReacquire ? "tl-track-pane-reveal-slow" : "tl-track-pane-reveal"} style={{ flex: "0 0 auto", marginBottom: 8, borderLeft: "2px solid #22d3ee33", paddingLeft: 12 }}>
+            <div key={ssTrackMsg.id} className={ssReacquire ? "tl-track-pane-reveal-slow" : "tl-track-pane-reveal"} style={{ position: "relative", flex: "0 0 auto", marginBottom: 8 }}>
+              {/* Corner brackets matching reticle style */}
+              {([
+                { top: 0,       left: 0,    right: "auto", bottom: "auto", pts: `${bArm},0 0,0 0,${bArm}` },
+                { top: 0,       left: "auto", right: 0,   bottom: "auto", pts: `0,0 ${bArm},0 ${bArm},${bArm}` },
+                { top: "auto",  left: 0,    right: "auto", bottom: 0,     pts: `${bArm},${bArm} 0,${bArm} 0,0` },
+                { top: "auto",  left: "auto", right: 0,   bottom: 0,     pts: `0,${bArm} ${bArm},${bArm} ${bArm},0` },
+              ]).map(({ top, left, right, bottom, pts }, i) => (
+                <svg key={i} width={bArm} height={bArm} viewBox={`0 0 ${bArm} ${bArm}`}
+                  style={{ position: "absolute", top, left, right, bottom, pointerEvents: "none", zIndex: 1, overflow: "visible" }}>
+                  <polyline points={pts} fill="none" stroke="#22d3ee" strokeWidth="1.2" opacity={0.55} />
+                </svg>
+              ))}
+              <div style={{ paddingLeft: 14, paddingTop: 8, paddingBottom: 8, paddingRight: 6 }}>
               {/* Header */}
               <div style={{ fontSize: Math.round(13 * uiScale), color: "#22d3eecc", letterSpacing: "0.28em", marginBottom: 8, display: "flex", alignItems: "center", gap: 6, fontWeight: 700,
                 textShadow: "0 0 8px #22d3ee44" }}>
@@ -3331,16 +3345,27 @@ export default function StamfordMap() {
                   {tSpdDir && <span style={{ fontSize: Math.round(12 * uiScale), color: tSpdDir === "up" ? "#22c55e99" : "#f59e0b99" }}>{tSpdDir === "up" ? "▲" : "▼"}</span>}
                 </div>
               )}
-              {/* Distance away */}
-              {trackDistM !== null && (
-                <div className={ssReacquire ? "tl-track-rowreveal-slow" : "tl-track-rowreveal"} style={{ marginBottom: 4, animationDelay: "0.32s" }}>
-                  <span key={fmtMi(trackDistM)} className="tl-dist-tick"
-                    style={{ fontSize: Math.round(14 * uiScale), color: distColor(trackDistM), fontWeight: 600,
-                      textShadow: `0 0 8px ${distColor(trackDistM)}66`, fontVariantNumeric: "tabular-nums" }}>
-                    {fmtMi(trackDistM).replace("mi", " mi")} away
+              {/* Heading — just degrees, no label */}
+              {meta?.hdg != null && meta.hdg !== 0 && (
+                <div className={ssReacquire ? "tl-track-rowreveal-slow" : "tl-track-rowreveal"} style={{ display: "flex", alignItems: "baseline", gap: 5, marginBottom: 8, animationDelay: "0.31s" }}>
+                  <span key={Math.round(meta.hdg).toString()} className="tl-dist-tick"
+                    style={{ fontSize: Math.round(22 * uiScale), color: "#b0cce0dd", fontWeight: 700, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+                    {Math.round(meta.hdg)}°
                   </span>
                 </div>
               )}
+              {/* Distance away */}
+              {trackDistM !== null && (
+                <div className={ssReacquire ? "tl-track-rowreveal-slow" : "tl-track-rowreveal"} style={{ marginBottom: 4, animationDelay: "0.38s", display: "flex", alignItems: "baseline", gap: 2 }}>
+                  <span key={fmtMi(trackDistM)} className="tl-dist-tick"
+                    style={{ fontSize: Math.round(14 * uiScale), color: distColor(trackDistM), fontWeight: 600,
+                      textShadow: `0 0 8px ${distColor(trackDistM)}66`, fontVariantNumeric: "tabular-nums" }}>
+                    {fmtMi(trackDistM).replace(/mi$/, "")}
+                  </span>
+                  <span style={{ fontSize: Math.round(14 * uiScale), color: "#e2ecffcc", fontWeight: 600 }}> mi away</span>
+                </div>
+              )}
+              </div>{/* end inner padding div */}
             </div>
           );
         })()}
@@ -3668,17 +3693,24 @@ export default function StamfordMap() {
           animation: tl-ss-lock 0.52s cubic-bezier(0.4, 0, 0.2, 1) both;
         }
 
-        /* ── TRACKING detail pane — tactical acquire ── */
+        /* ── TRACKING detail pane — tactical glitch acquire ── */
         @keyframes tl-track-pane-in {
-          0%   { opacity: 0; clip-path: inset(0 0 100% 0); transform: translateX(10px); filter: brightness(5); }
-          6%   { opacity: 1; filter: brightness(3); }
-          10%  { opacity: 0.3; filter: brightness(1); }
-          15%  { opacity: 1; clip-path: inset(0 0 88% 0); }
-          19%  { opacity: 0.6; }
-          23%  { opacity: 1; clip-path: inset(0 0 72% 0); transform: translateX(4px); }
-          55%  { clip-path: inset(0 0 16% 0); transform: translateX(1px); }
-          80%  { clip-path: inset(0 0 1% 0); }
-          100% { clip-path: inset(0); opacity: 1; transform: translateX(0); filter: brightness(1); }
+          0%   { opacity: 0;    clip-path: inset(0 0 100% 0); filter: brightness(9) hue-rotate(160deg) saturate(4); transform: translateX(14px) scaleX(1.04); }
+          3%   { opacity: 1;    filter: brightness(6) hue-rotate(80deg);  transform: translateX(-9px) scaleX(0.97); }
+          6%   { opacity: 0.03; filter: brightness(1);                     transform: translateX(11px); }
+          9%   { opacity: 0.95; filter: brightness(5) hue-rotate(40deg);  clip-path: inset(0 0 78% 0); transform: translateX(-6px); }
+          12%  { opacity: 0.1;  filter: brightness(1);                     clip-path: inset(0 0 68% 0); transform: translateX(8px); }
+          16%  { opacity: 1;    filter: brightness(3.5);                   clip-path: inset(0 0 52% 0); transform: translateX(-4px); }
+          20%  { opacity: 0.35; filter: brightness(1);                     clip-path: inset(0 0 44% 0); transform: translateX(6px) scaleX(1.02); }
+          25%  { opacity: 1;    filter: brightness(2.5);                   clip-path: inset(0 0 32% 0); transform: translateX(-2px); }
+          33%  { opacity: 0.7;  clip-path: inset(0 0 22% 0); filter: brightness(1.8) hue-rotate(15deg); transform: translateX(3px); }
+          44%  { opacity: 1;    clip-path: inset(0 0 12% 0); filter: brightness(1.5); transform: translateX(-1px); }
+          55%  {                clip-path: inset(0 0 4% 0);  filter: brightness(1.2); transform: translateX(0.5px); }
+          65%  { opacity: 0.75; filter: brightness(1.7);     transform: translateX(-0.5px); }
+          74%  { opacity: 1;    filter: brightness(1.1);     clip-path: inset(0); }
+          82%  { opacity: 0.85; filter: brightness(1.35); }
+          90%  { opacity: 1;    filter: brightness(1.05); }
+          100% { clip-path: inset(0); opacity: 1; transform: translateX(0) scaleX(1); filter: brightness(1); }
         }
         @keyframes tl-track-pane-borderglow {
           0%   { border-left-color: #22d3eedd; box-shadow: -5px 0 22px #22d3ee99; }
