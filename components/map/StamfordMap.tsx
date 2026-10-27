@@ -347,13 +347,21 @@ const degToCompass = (d: number) =>
   ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"][Math.round(d / 22.5) % 16];
 const mpsToKnots = (v: number) => Math.round(v * 1.944);
 const metersToFt = (m: number) => Math.round(m * 3.281);
+function fmtAltShort(altFt: number): string {
+  if (altFt >= 18000) return `FL${Math.round(altFt / 100)}`;
+  if (altFt >= 1000)  return `${(altFt / 1000).toFixed(1)}k`;
+  return `${altFt}ft`;
+}
 const fmtHMS = (d: Date) => d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 
-function aircraftSVG(heading: number) {
-  return `<div style="transform:rotate(${heading}deg);width:22px;height:22px;filter:drop-shadow(0 0 5px #a855f7aa)">
-    <svg viewBox="0 0 32 32" fill="#a855f7" xmlns="http://www.w3.org/2000/svg">
-      <path d="M16 2C16 2 19 10 19 14L28 20L27 23L19 18L18 28L21 30L16 32L11 30L14 28L13 18L5 23L4 20L13 14C13 10 16 2 16 2Z"/>
-    </svg>
+function aircraftSVG(heading: number, altLabel?: string) {
+  return `<div style="display:flex;flex-direction:column;align-items:center;gap:1px">
+    <div style="transform:rotate(${heading}deg);width:22px;height:22px;filter:drop-shadow(0 0 5px #a855f7aa)">
+      <svg viewBox="0 0 32 32" fill="#a855f7" xmlns="http://www.w3.org/2000/svg">
+        <path d="M16 2C16 2 19 10 19 14L28 20L27 23L19 18L18 28L21 30L16 32L11 30L14 28L13 18L5 23L4 20L13 14C13 10 16 2 16 2Z"/>
+      </svg>
+    </div>
+    ${altLabel ? `<div style="font-family:Menlo,Consolas,monospace;font-size:8px;color:#c084fccc;letter-spacing:0.05em;white-space:nowrap;text-shadow:0 0 8px #a855f744,0 1px 2px #000c;line-height:1">${altLabel}</div>` : ""}
   </div>`;
 }
 function issSVG() {
@@ -1188,14 +1196,15 @@ export default function StamfordMap() {
           detail: `${typeStr || "—"} · ${alt > 0 ? metersToFt(alt).toLocaleString() + "ft" : "gnd"} · ${speedMs > 0 ? mpsToKnots(speedMs) + "kt" : "—"}`,
           reg: regStr, op: opStr, acType: typeStr, hdg: heading,
         };
+        const altLabel = ssModeRef.current ? (alt > 0 ? fmtAltShort(metersToFt(alt)) : "gnd") : undefined;
         if (aircraftMarkersRef.current.has(id)) {
           const m = aircraftMarkersRef.current.get(id);
           // Update heading arrow without tl-anim (no fade-in on update)
-          m.setIcon(L.divIcon({ html: `<div>${aircraftSVG(heading)}</div>`, className: "", iconSize: [22, 22], iconAnchor: [11, 11] }));
+          m.setIcon(L.divIcon({ html: `<div>${aircraftSVG(heading, altLabel)}</div>`, className: "", iconSize: [22, 22], iconAnchor: [11, 11] }));
           m.getPopup()?.setContent(popupHtml);
           m._tlMeta = tlMeta;
         } else {
-          const icon = L.divIcon({ html: `<div class="tl-anim">${aircraftSVG(heading)}</div>`, className: "", iconSize: [22, 22], iconAnchor: [11, 11] });
+          const icon = L.divIcon({ html: `<div class="tl-anim">${aircraftSVG(heading, altLabel)}</div>`, className: "", iconSize: [22, 22], iconAnchor: [11, 11] });
           const m = L.marker([lat, lon], { icon })
             .bindPopup(L.popup({ className: "tl-popup", maxWidth: 240, offset: [0, -4] }).setContent(popupHtml))
             .addTo(g);
