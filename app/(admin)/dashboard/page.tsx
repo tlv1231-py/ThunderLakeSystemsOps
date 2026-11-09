@@ -1,14 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { formatCurrency } from "@/lib/utils";
-import { CashflowTimeline } from "@/components/dashboard/CashflowTimeline";
 import { InvoiceCycleWidget, type DraftInvoice, type UnbilledClient, type MonthSummary, type HistoricalInvoice } from "@/components/admin/invoice-cycle-widget";
-import {
-  buildCashflowTimeline,
-  type CashflowInvoice,
-  type CashflowTimeEntry,
-} from "@/services/cashflow-service";
 import { QuickLinks } from "@/components/dashboard/QuickLinks";
 import { DashboardThemeShell } from "@/components/dashboard/DashboardThemeShell";
+import { PunchClock } from "@/components/dashboard/PunchClock";
+import { ClientSnapshot, type ClientSnapshotRow } from "@/components/dashboard/ClientSnapshot";
+import { TodaysFocus } from "@/components/dashboard/TodaysFocus";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -41,9 +38,8 @@ export default async function DashboardPage() {
     { data: draftInvoices },
     { data: allUninvoicedTime },
     { data: monthlyExpenses },
-    { data: recentActivity },
   ] = await Promise.all([
-    // Non-draft, non-void invoices — for AR totals + cashflow + history
+    // Non-draft, non-void invoices — for AR totals + history
     supabase
       .from("invoices")
       .select("id, invoice_number, status, issue_date, due_date, total_amount, balance_due, currency, client_id, clients(company_name)")
@@ -77,14 +73,6 @@ export default async function DashboardPage() {
       .eq("status", "uninvoiced")
       .gte("date_incurred", monthStart)
       .lte("date_incurred", monthEnd),
-
-    // Recent activity feed
-    supabase
-      .from("activity_events")
-      .select("id, event_type, event_data, created_at, clients(company_name)")
-      .eq("user_id", user!.id)
-      .order("created_at", { ascending: false })
-      .limit(12),
   ]);
 
   const today = now.toISOString().split("T")[0];
@@ -98,17 +86,27 @@ export default async function DashboardPage() {
     .filter((inv) => inv.status !== "paid" && inv.due_date < today)
     .reduce((sum, inv) => sum + (inv.balance_due ?? 0), 0);
 
-  // ── AR aging ────────────────────────────────────────────────────────────────
-  const buckets = { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90plus: 0 };
+  // ── Client snapshot ────────────────────────────────────────────────────────
+  const snapMap = new Map<string, ClientSnapshotRow>();
   for (const inv of invoices ?? []) {
-    if (inv.status === "paid") continue;
-    const days = Math.floor((Date.now() - new Date(inv.due_date).getTime()) / 86400000);
-    if (days <= 0)       buckets.current += inv.balance_due ?? 0;
-    else if (days <= 30) buckets.d1_30   += inv.balance_due ?? 0;
-    else if (days <= 60) buckets.d31_60  += inv.balance_due ?? 0;
-    else if (days <= 90) buckets.d61_90  += inv.balance_due ?? 0;
-    else                 buckets.d90plus += inv.balance_due ?? 0;
+    const clientName = (inv.clients as { company_name: string } | null)?.company_name ?? "Unknown";
+    const existing = snapMap.get(inv.client_id) ?? { id: inv.client_id, name: clientName, balance: 0, uninvoicedHours: 0, lastInvoiceDaysAgo: null };
+    if (inv.status !== "paid") existing.balance += inv.balance_due ?? 0;
+    const daysAgo = Math.floor((Date.now() - new Date(inv.issue_date + "T12:00:00Z").getTime()) / 86400000);
+    if (existing.lastInvoiceDaysAgo === null || daysAgo < existing.lastInvoiceDaysAgo) {
+      existing.lastInvoiceDaysAgo = daysAgo;
+    }
+    snapMap.set(inv.client_id, existing);
   }
+  for (const te of allUninvoicedTime ?? []) {
+    const clientName = (te.clients as { company_name: string; default_hourly_rate: number | null } | null)?.company_name ?? "Unknown";
+    const existing = snapMap.get(te.client_id) ?? { id: te.client_id, name: clientName, balance: 0, uninvoicedHours: 0, lastInvoiceDaysAgo: null };
+    existing.uninvoicedHours += te.hours_decimal;
+    snapMap.set(te.client_id, existing);
+  }
+  const clientSnapshotRows = Array.from(snapMap.values())
+    .filter((c) => c.balance > 0 || c.uninvoicedHours > 0)
+    .sort((a, b) => b.balance - a.balance);
 
   // ── KPI: uninvoiced hours ───────────────────────────────────────────────────
   const uninvoicedHours = (allUninvoicedTime ?? []).reduce(
@@ -211,22 +209,6 @@ export default async function DashboardPage() {
     });
   }
 
-  // ── Cashflow timeline ───────────────────────────────────────────────────────
-  // Include drafts in cashflow so they show as projected-ish (we use all invoices)
-  const allInvoicesForCashflow = [
-    ...(invoices ?? []),
-    ...(draftInvoices ?? []).map((d) => ({
-      ...d,
-      status: "draft", // will be filtered out by buildCashflowTimeline (only shows sent/paid/overdue)
-      due_date: today,
-    })),
-  ];
-
-  const cashflowWeeks = buildCashflowTimeline(
-    allInvoicesForCashflow as unknown as CashflowInvoice[],
-    (allUninvoicedTime ?? []) as CashflowTimeEntry[]
-  );
-
   return (
     <DashboardThemeShell initialTheme={initialTheme} userId={user!.id}>
     <div className="space-y-6">
@@ -262,63 +244,19 @@ export default async function DashboardPage() {
         monthHistory={monthHistory}
       />
 
-      {/* Cashflow Timeline + AR Aging */}
+      {/* Work Tracker + Client Snapshot */}
       <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2">
-          <CashflowTimeline weeks={cashflowWeeks} />
+          <PunchClock userId={user!.id} />
         </div>
-
         <div className="col-span-1">
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
-            <div className="px-5 py-4 border-b border-zinc-800">
-              <h2 className="text-sm font-medium text-zinc-100">AR Aging</h2>
-            </div>
-            <div className="divide-y divide-zinc-800">
-              {[
-                { label: "Current",    value: buckets.current, red: false },
-                { label: "1–30 days",  value: buckets.d1_30,   red: true  },
-                { label: "31–60 days", value: buckets.d31_60,  red: true  },
-                { label: "61–90 days", value: buckets.d61_90,  red: true  },
-                { label: "90+ days",   value: buckets.d90plus, red: true  },
-              ].map(({ label, value, red }) => (
-                <div key={label} className="flex items-center justify-between px-5 py-3">
-                  <span className="text-sm text-zinc-400">{label}</span>
-                  <span className={`text-sm font-medium tabular-nums ${value > 0 && red ? "text-red-400" : "text-zinc-300"}`}>
-                    {formatCurrency(value)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+          <ClientSnapshot rows={clientSnapshotRows} />
         </div>
       </div>
 
-      {/* Activity feed + Quick Links */}
+      {/* Today's Focus + Quick Links */}
       <div className="grid grid-cols-2 gap-6 items-start">
-        <div>
-          <h2 className="mb-4 text-sm font-medium text-zinc-400">Recent Activity</h2>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900 divide-y divide-zinc-800">
-            {(recentActivity ?? []).length === 0 && (
-              <p className="px-4 py-6 text-sm text-zinc-500 text-center">No activity yet</p>
-            )}
-            {(recentActivity ?? []).map((event) => (
-              <div key={event.id} className="flex items-center gap-3 px-4 py-3">
-                <div className="h-1.5 w-1.5 rounded-full bg-zinc-600 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-zinc-300 truncate">
-                    {formatEventLabel(event.event_type)}
-                    {(event.clients as { company_name: string } | null)?.company_name
-                      ? ` — ${(event.clients as { company_name: string }).company_name}`
-                      : ""}
-                  </p>
-                </div>
-                <time className="text-xs text-zinc-500 flex-shrink-0">
-                  {new Date(event.created_at).toLocaleDateString()}
-                </time>
-              </div>
-            ))}
-          </div>
-        </div>
+        <TodaysFocus />
         <QuickLinks userId={user!.id} />
       </div>
     </div>
@@ -342,6 +280,3 @@ function StatCard({
   );
 }
 
-function formatEventLabel(type: string): string {
-  return type.split(".").map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(" ");
-}
