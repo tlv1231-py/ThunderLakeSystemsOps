@@ -137,10 +137,11 @@ export function PunchClock({ userId }: { userId: string }) {
 
   // ── Open punch-out modal ───────────────────────────────────────────────────
   function handlePunchOutClick() {
+    // Round up to nearest 0.5h (ceil to nearest half)
     const computedHours = punchInAt
-      ? Math.round(((Date.now() - punchInAt) / 3_600_000) * 100) / 100
-      : 0;
-    setHours(String(Math.max(0.01, computedHours)));
+      ? Math.ceil(((Date.now() - punchInAt) / 3_600_000) * 2) / 2
+      : 0.5;
+    setHours(String(computedHours));
     setDateWorked(new Date().toISOString().split("T")[0]);
     setSelClientId(clients[0]?.id ?? "");
     setTask("");
@@ -300,6 +301,7 @@ export function PunchClock({ userId }: { userId: string }) {
                 <select
                   value={selClientId}
                   onChange={(e) => setSelClientId(e.target.value)}
+                  style={{ colorScheme: "dark" }}
                   className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
                 >
                   <option value="">Select client…</option>
@@ -347,6 +349,7 @@ export function PunchClock({ userId }: { userId: string }) {
                       setSelProjectId(e.target.value);
                     }}
                     disabled={!selClientId}
+                    style={{ colorScheme: "dark" }}
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500 disabled:opacity-40"
                   >
                     <option value="">No project</option>
