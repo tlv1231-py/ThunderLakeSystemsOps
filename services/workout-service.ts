@@ -113,6 +113,22 @@ export async function createSession(
   return { session, sets: sets ?? [] };
 }
 
+export async function getLastCompletedSession(userId: string): Promise<{ day_of_week: string } | null> {
+  const supabase = await createClient();
+  const db = supabase as any;
+
+  const { data } = await db
+    .from("workout_sessions")
+    .select("day_of_week")
+    .eq("user_id", userId)
+    .eq("status", "completed")
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return data;
+}
+
 export async function getProgressionMap(
   userId: string,
   exerciseSlugs: string[]

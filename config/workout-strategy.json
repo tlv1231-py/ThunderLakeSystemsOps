@@ -11,13 +11,13 @@
     "priorities": ["chest", "back", "shoulders", "arms", "legs"]
   },
   "schedule": {
-    "monday":    { "workout_key": "push_heavy",        "focus": "Push (Heavy)",      "calories": 3100, "protein_g": 170 },
-    "tuesday":   { "workout_key": "pull_heavy",        "focus": "Pull (Heavy)",      "calories": 3100, "protein_g": 170 },
-    "wednesday": { "workout_key": "legs_heavy",        "focus": "Legs (Heavy)",      "calories": 3100, "protein_g": 170 },
-    "thursday":  { "workout_key": "conditioning",      "focus": "Conditioning",      "calories": 3200, "protein_g": 170 },
-    "friday":    { "workout_key": "upper_hypertrophy", "focus": "Upper Hypertrophy", "calories": 3100, "protein_g": 170 },
-    "saturday":  { "workout_key": "legs_zone2",        "focus": "Legs + Zone 2",     "calories": 3200, "protein_g": 170 },
-    "sunday":    { "workout_key": "recovery",          "focus": "Recovery",          "calories": 3000, "protein_g": 170 }
+    "day_1": { "workout_key": "push_heavy",        "focus": "Push (Heavy)",      "calories": 3100, "protein_g": 170 },
+    "day_2": { "workout_key": "pull_heavy",        "focus": "Pull (Heavy)",      "calories": 3100, "protein_g": 170 },
+    "day_3": { "workout_key": "legs_heavy",        "focus": "Legs (Heavy)",      "calories": 3100, "protein_g": 170 },
+    "day_4": { "workout_key": "conditioning",      "focus": "Conditioning",      "calories": 3200, "protein_g": 170 },
+    "day_5": { "workout_key": "upper_hypertrophy", "focus": "Upper Hypertrophy", "calories": 3100, "protein_g": 170 },
+    "day_6": { "workout_key": "legs_zone2",        "focus": "Legs + Zone 2",     "calories": 3200, "protein_g": 170 },
+    "day_7": { "workout_key": "recovery",          "focus": "Recovery",          "calories": 3000, "protein_g": 170 }
   },
   "workouts": {
     "push_heavy": {

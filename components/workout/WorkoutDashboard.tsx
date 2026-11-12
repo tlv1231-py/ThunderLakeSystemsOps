@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import type { WorkoutPlan } from "@/lib/workout/engine";
-import type { DbWorkoutSession, DbWorkoutSet } from "@/services/workout-service";
+import type { WorkoutPlan, ProgramDayInfo } from "@/lib/workout/engine";
+import type { DbWorkoutSession } from "@/services/workout-service";
 import type { ProgressionRow } from "@/lib/workout/engine";
 import { WorkoutStartScreen } from "./WorkoutStartScreen";
 import { WorkoutPlayer } from "./WorkoutPlayer";
@@ -13,7 +13,8 @@ interface WorkoutDashboardProps {
   initialPlan: WorkoutPlan | null;
   userId: string;
   today: string;
-  dayOfWeek: string;
+  suggestedDay: string;
+  allDays: ProgramDayInfo[];
   initialProgressionMap?: Record<string, ProgressionRow>;
 }
 
@@ -22,7 +23,8 @@ export function WorkoutDashboard({
   initialPlan,
   userId,
   today,
-  dayOfWeek,
+  suggestedDay,
+  allDays,
   initialProgressionMap = {},
 }: WorkoutDashboardProps) {
   const [session, setSession] = useState<DbWorkoutSession | null>(initialSession);
@@ -63,7 +65,8 @@ export function WorkoutDashboard({
         plan={plan}
         userId={userId}
         today={today}
-        dayOfWeek={dayOfWeek}
+        suggestedDay={suggestedDay}
+        allDays={allDays}
         progressionMap={initialProgressionMap}
         onSessionStarted={handleSessionStarted}
       />
@@ -76,9 +79,6 @@ export function WorkoutDashboard({
       plan={plan!}
       onComplete={handleWorkoutComplete}
       onTravelToggle={handleTravelToggle}
-      userId={userId}
-      today={today}
-      dayOfWeek={dayOfWeek}
       progressionMap={initialProgressionMap}
     />
   );

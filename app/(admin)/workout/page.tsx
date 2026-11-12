@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import { getActiveSession, getProgressionMap } from "@/services/workout-service";
-import { buildWorkoutPlan } from "@/lib/workout/engine";
+import { getActiveSession, getLastCompletedSession, getProgressionMap } from "@/services/workout-service";
+import { buildWorkoutPlan, getAllProgramDays } from "@/lib/workout/engine";
 import { WorkoutDashboard } from "@/components/workout/WorkoutDashboard";
 
 export default async function WorkoutPage() {
@@ -9,16 +9,15 @@ export default async function WorkoutPage() {
   if (!user) return null;
 
   const today = new Date().toISOString().split("T")[0];
-  const dayOfWeek = new Date().toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
+  const allDays = getAllProgramDays();
 
-  // Check for an existing session today
+  // Check for an existing session today (resume)
   const existing = await getActiveSession(user.id);
 
   if (existing) {
-    // Resume: rebuild the plan matching the session's workout key + travel mode
-    const plan = buildWorkoutPlan(dayOfWeek, existing.session.travel_mode, {});
+    const programDay = existing.session.day_of_week; // stored as "day_1" etc.
+    const plan = buildWorkoutPlan(programDay, existing.session.travel_mode, {});
 
-    // Merge DB completion state into plan sets
     if (plan) {
       for (const ex of plan.exercises) {
         for (const set of ex.sets) {
@@ -45,15 +44,20 @@ export default async function WorkoutPage() {
         initialPlan={plan}
         userId={user.id}
         today={today}
-        dayOfWeek={dayOfWeek}
+        suggestedDay={programDay}
+        allDays={allDays}
       />
     );
   }
 
-  // No session yet — build the plan preview
-  const slugs = collectSlugs(dayOfWeek);
-  const progressionMap = await getProgressionMap(user.id, slugs);
-  const plan = buildWorkoutPlan(dayOfWeek, false, progressionMap);
+  // No session — suggest the next day based on last completed
+  const lastSession = await getLastCompletedSession(user.id);
+  const suggestedDay = computeNextDay(lastSession?.day_of_week ?? null, allDays.length);
+
+  // Fetch progression for all exercises (so the picker can preview any day)
+  const allSlugs = collectAllSlugs();
+  const progressionMap = await getProgressionMap(user.id, allSlugs);
+  const plan = buildWorkoutPlan(suggestedDay, false, progressionMap);
 
   return (
     <WorkoutDashboard
@@ -61,20 +65,31 @@ export default async function WorkoutPage() {
       initialPlan={plan}
       userId={user.id}
       today={today}
-      dayOfWeek={dayOfWeek}
+      suggestedDay={suggestedDay}
+      allDays={allDays}
       initialProgressionMap={progressionMap}
     />
   );
 }
 
-function collectSlugs(dayOfWeek: string): string[] {
+function computeNextDay(lastDayKey: string | null, totalDays: number): string {
+  if (!lastDayKey) return "day_1";
+  const lastNum = parseInt(lastDayKey.replace("day_", ""), 10);
+  if (isNaN(lastNum)) return "day_1";
+  const nextNum = (lastNum % totalDays) + 1;
+  return `day_${nextNum}`;
+}
+
+function collectAllSlugs(): string[] {
   try {
     const strategy = require("@/config/workout-strategy.json");
-    const entry = strategy.schedule[dayOfWeek];
-    if (!entry) return [];
-    const workout = strategy.workouts[entry.workout_key];
-    if (!workout) return [];
-    return workout.exercises.map((e: { slug: string }) => e.slug);
+    const slugs = new Set<string>();
+    for (const workout of Object.values(strategy.workouts)) {
+      for (const ex of (workout as any).exercises) {
+        slugs.add(ex.slug);
+      }
+    }
+    return [...slugs];
   } catch {
     return [];
   }

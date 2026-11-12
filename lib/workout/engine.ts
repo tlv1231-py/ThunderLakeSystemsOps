@@ -72,13 +72,32 @@ export interface WorkoutExercisePlan {
   sets: WorkoutSetPlan[];
 }
 
+export interface ProgramDayInfo {
+  key: string;
+  dayNumber: number;
+  workoutKey: string;
+  focus: string;
+}
+
 export interface WorkoutPlan {
   workoutKey: string;
   focus: string;
-  dayOfWeek: string;
+  programDay: string;
   exercises: WorkoutExercisePlan[];
   estimatedDurationMinutes: number;
   travelMode: boolean;
+}
+
+export function getAllProgramDays(): ProgramDayInfo[] {
+  const sched = strategy.schedule as Record<string, { workout_key: string; focus: string }>;
+  return Object.entries(sched)
+    .map(([key, val]) => ({
+      key,
+      dayNumber: parseInt(key.replace("day_", ""), 10),
+      workoutKey: val.workout_key,
+      focus: val.focus,
+    }))
+    .sort((a, b) => a.dayNumber - b.dayNumber);
 }
 
 const DB_WEIGHTS = strategy.equipment.dumbbells as number[];
@@ -125,11 +144,11 @@ export function resolveWeight(
 }
 
 export function buildWorkoutPlan(
-  dayOfWeek: string,
+  programDay: string,
   travelMode: boolean,
   progressionMap: Record<string, ProgressionRow>
 ): WorkoutPlan | null {
-  const scheduleEntry = (strategy.schedule as Record<string, { workout_key: string; focus: string }>)[dayOfWeek];
+  const scheduleEntry = (strategy.schedule as Record<string, { workout_key: string; focus: string }>)[programDay];
   if (!scheduleEntry) return null;
 
   const workoutDef = (strategy.workouts as Record<string, { exercises: StrategyExercise[] }>)[scheduleEntry.workout_key];
@@ -187,7 +206,7 @@ export function buildWorkoutPlan(
   return {
     workoutKey: scheduleEntry.workout_key,
     focus: scheduleEntry.focus,
-    dayOfWeek,
+    programDay,
     exercises,
     estimatedDurationMinutes: estimateWorkoutDuration(exercises),
     travelMode,

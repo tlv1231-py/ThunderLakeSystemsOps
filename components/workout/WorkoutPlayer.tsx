@@ -19,9 +19,6 @@ interface WorkoutPlayerProps {
   plan: WorkoutPlan;
   onComplete: (session: DbWorkoutSession) => void;
   onTravelToggle: (newPlan: WorkoutPlan) => void;
-  userId: string;
-  today: string;
-  dayOfWeek: string;
   progressionMap: Record<string, ProgressionRow>;
 }
 
@@ -30,9 +27,6 @@ export function WorkoutPlayer({
   plan,
   onComplete,
   onTravelToggle,
-  userId,
-  today,
-  dayOfWeek,
   progressionMap,
 }: WorkoutPlayerProps) {
   // Local plan state (mutable for travel mode switches)
@@ -163,7 +157,7 @@ export function WorkoutPlayer({
     setTravelMode(newTravel);
 
     // Build new plan
-    const newPlan = buildWorkoutPlan(dayOfWeek, newTravel, progressionMap);
+    const newPlan = buildWorkoutPlan(session.day_of_week, newTravel, progressionMap);
     if (!newPlan) return;
 
     // Preserve completion state from current plan
