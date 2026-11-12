@@ -21,6 +21,7 @@ import {
   Compass,
   Package,
   Map,
+  Dumbbell,
 } from "lucide-react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { createClient } from "@/lib/supabase/client";
@@ -36,6 +37,7 @@ const NAV_ITEMS = [
   { href: "/reports",    label: "Reports",   icon: BarChart3       },
   { href: "/strategy",   label: "Strategy",  icon: Compass         },
   { href: "/tools",      label: "Products",  icon: Package         },
+  { href: "/workout",    label: "Workout",   icon: Dumbbell        },
 ];
 
 const OWNER_ITEMS = [

@@ -1,0 +1,112 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "last_updated": "2026-11-12",
+    "description": "Master training strategy — edit this file with Claude Code to modify the program",
+    "philosophy": "PPL+Conditioning 6-day hypertrophy split with heavy compound days and volume days"
+  },
+  "objectives": {
+    "primary": "Hypertrophy — muscle building and aesthetic development",
+    "secondary": "Efficiency — effective workouts without wasted time or unnecessary decisions",
+    "priorities": ["chest", "back", "shoulders", "arms", "legs"]
+  },
+  "schedule": {
+    "monday":    { "workout_key": "push_heavy",        "focus": "Push (Heavy)",      "calories": 3100, "protein_g": 170 },
+    "tuesday":   { "workout_key": "pull_heavy",        "focus": "Pull (Heavy)",      "calories": 3100, "protein_g": 170 },
+    "wednesday": { "workout_key": "legs_heavy",        "focus": "Legs (Heavy)",      "calories": 3100, "protein_g": 170 },
+    "thursday":  { "workout_key": "conditioning",      "focus": "Conditioning",      "calories": 3200, "protein_g": 170 },
+    "friday":    { "workout_key": "upper_hypertrophy", "focus": "Upper Hypertrophy", "calories": 3100, "protein_g": 170 },
+    "saturday":  { "workout_key": "legs_zone2",        "focus": "Legs + Zone 2",     "calories": 3200, "protein_g": 170 },
+    "sunday":    { "workout_key": "recovery",          "focus": "Recovery",          "calories": 3000, "protein_g": 170 }
+  },
+  "workouts": {
+    "push_heavy": {
+      "exercises": [
+        { "slug": "db-bench-press",       "sets": 4, "reps_min": 6,  "reps_max": 10, "starting_weight_lb": 50, "notes": "Heavy compound — full ROM" },
+        { "slug": "db-overhead-press",    "sets": 4, "reps_min": 6,  "reps_max": 10, "starting_weight_lb": 30, "notes": "Keep core tight" },
+        { "slug": "incline-db-press",     "sets": 3, "reps_min": 8,  "reps_max": 12, "starting_weight_lb": 45, "notes": "Upper chest focus" },
+        { "slug": "lateral-raise",        "sets": 4, "reps_min": 12, "reps_max": 20, "starting_weight_lb": 15, "notes": "Controlled arc — no momentum" },
+        { "slug": "skull-crushers-db",    "sets": 3, "reps_min": 10, "reps_max": 15, "starting_weight_lb": 30, "notes": "Elbows fixed — slow negative" },
+        { "slug": "band-tricep-pushdown", "sets": 3, "reps_min": 15, "reps_max": 20, "starting_band_lb": 50,   "notes": "Full lockout at bottom" }
+      ]
+    },
+    "pull_heavy": {
+      "exercises": [
+        { "slug": "pullups",           "sets": 4, "amrap": true,                        "starting_weight_lb": 0,   "notes": "AMRAP — progress to weighted" },
+        { "slug": "db-row-1arm",       "sets": 4, "reps_min": 8,  "reps_max": 12,       "starting_weight_lb": 50,  "notes": "Pause at top — squeeze lat" },
+        { "slug": "band-lat-pulldown", "sets": 3, "reps_min": 20, "reps_max": 20,       "starting_band_lb": 50,    "notes": "Full stretch at top" },
+        { "slug": "band-face-pull",    "sets": 3, "reps_min": 15, "reps_max": 20,       "starting_band_lb": 50,    "notes": "Rear delts — elbows high" },
+        { "slug": "db-curl",           "sets": 3, "reps_min": 8,  "reps_max": 12,       "starting_weight_lb": 27.5,"notes": "Slow negative — full extension" },
+        { "slug": "hammer-curl",       "sets": 3, "reps_min": 10, "reps_max": 12,       "starting_weight_lb": 30,  "notes": "Neutral grip throughout" }
+      ]
+    },
+    "legs_heavy": {
+      "exercises": [
+        { "slug": "bulgarian-split-squat", "sets": 4, "reps_min": 8,  "reps_max": 12, "starting_weight_lb": 25, "notes": "Each leg — rear foot elevated" },
+        { "slug": "db-rdl",               "sets": 4, "reps_min": 8,  "reps_max": 12, "starting_weight_lb": 45, "notes": "Hip hinge — feel hamstring stretch" },
+        { "slug": "goblet-squat",         "sets": 4, "reps_min": 10, "reps_max": 15, "starting_weight_lb": 50, "notes": "Deep reps — chest up" },
+        { "slug": "band-leg-curl",        "sets": 3, "reps_min": 15, "reps_max": 20, "starting_band_lb": 50,   "notes": "Squeeze hard at top" },
+        { "slug": "calf-raise-db",        "sets": 4, "reps_min": 20, "reps_max": 20, "starting_weight_lb": 45, "notes": "Pause at top and bottom" }
+      ]
+    },
+    "conditioning": {
+      "exercises": [
+        { "slug": "interval-run",   "sets": 1, "reps_min": 8,  "reps_max": 8,  "is_cardio": true, "notes": "30s sprint / 90s walk × 8 rounds" },
+        { "slug": "plank",          "sets": 3, "reps_min": 60, "reps_max": 60, "is_timed": true,  "notes": "Brace core — neutral spine" },
+        { "slug": "weighted-situp", "sets": 3, "reps_min": 12, "reps_max": 15, "starting_weight_lb": 27.5, "notes": "Controlled — no hip flexor pull" }
+      ]
+    },
+    "upper_hypertrophy": {
+      "exercises": [
+        { "slug": "incline-db-press",      "sets": 4, "reps_min": 10, "reps_max": 15, "starting_weight_lb": 45, "notes": "Hypertrophy focus — feel the stretch" },
+        { "slug": "pullups",               "sets": 4, "amrap": true,                  "starting_weight_lb": 0,  "notes": "Volume work" },
+        { "slug": "arnold-press",          "sets": 3, "reps_min": 10, "reps_max": 15, "starting_weight_lb": 30, "notes": "Full rotation — controlled" },
+        { "slug": "db-row-1arm",           "sets": 3, "reps_min": 12, "reps_max": 12, "starting_weight_lb": 50, "notes": "Lat focus — slight pause" },
+        { "slug": "lateral-raise",         "sets": 4, "reps_min": 15, "reps_max": 20, "starting_weight_lb": 15, "notes": "Pump work — lighter and strict" },
+        { "slug": "db-curl",               "sets": 3, "reps_min": 12, "reps_max": 15, "starting_weight_lb": 25, "notes": "Strict form — no swing" },
+        { "slug": "band-tricep-extension", "sets": 3, "reps_min": 15, "reps_max": 15, "starting_band_lb": 50,   "notes": "Full stretch overhead" }
+      ]
+    },
+    "legs_zone2": {
+      "exercises": [
+        { "slug": "goblet-squat",    "sets": 4, "reps_min": 15, "reps_max": 15, "starting_weight_lb": 50, "notes": "Tempo focus — 3 seconds down" },
+        { "slug": "reverse-lunge-db","sets": 3, "reps_min": 5,  "reps_max": 5,  "starting_weight_lb": 25, "notes": "Each leg — stay upright" },
+        { "slug": "db-rdl",          "sets": 3, "reps_min": 12, "reps_max": 12, "starting_weight_lb": 45, "notes": "Pause at stretch — hamstring emphasis" },
+        { "slug": "calf-raise-db",   "sets": 4, "reps_min": 20, "reps_max": 20, "starting_weight_lb": 45, "notes": "High reps — feel the burn" },
+        { "slug": "zone2-run",       "sets": 1, "reps_min": 20, "reps_max": 30, "is_cardio": true,        "notes": "Easy pace — can hold full conversation" }
+      ]
+    },
+    "recovery": {
+      "exercises": [
+        { "slug": "walk", "sets": 1, "reps_min": 30, "reps_max": 60, "is_cardio": true, "notes": "Low intensity — active recovery" }
+      ]
+    }
+  },
+  "volume_targets": {
+    "chest":      { "weekly_sets_min": 10, "weekly_sets_max": 20 },
+    "back":       { "weekly_sets_min": 10, "weekly_sets_max": 20 },
+    "shoulders":  { "weekly_sets_min": 12, "weekly_sets_max": 20 },
+    "biceps":     { "weekly_sets_min": 6,  "weekly_sets_max": 12 },
+    "triceps":    { "weekly_sets_min": 6,  "weekly_sets_max": 12 },
+    "quads":      { "weekly_sets_min": 10, "weekly_sets_max": 20 },
+    "hamstrings": { "weekly_sets_min": 6,  "weekly_sets_max": 12 },
+    "calves":     { "weekly_sets_min": 6,  "weekly_sets_max": 12 }
+  },
+  "progression": {
+    "model": "double_progression",
+    "increase_weight_after_consecutive_successes": 2,
+    "db_weight_increments": [5, 7.5, 10, 12.5, 15, 17.5, 20, 22.5, 25, 30, 35, 40, 45, 50],
+    "band_increments": [10, 20, 30, 40, 50],
+    "rest_periods_seconds": {
+      "compound_heavy": 180,
+      "compound_volume": 120,
+      "isolation": 90,
+      "cardio": 0
+    }
+  },
+  "equipment": {
+    "dumbbells": [5, 7.5, 10, 12.5, 15, 17.5, 20, 22.5, 25, 30, 35, 40, 45, 50],
+    "bands": [10, 20, 30, 40, 50],
+    "other": ["pull_up_bar", "bench"]
+  }
+}
