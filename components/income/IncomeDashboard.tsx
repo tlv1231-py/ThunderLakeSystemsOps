@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/utils";
 import {
   dismissOpportunity, markOpportunityInProgress,
-  approveAction, rejectAction, logEarning, markEarningCollected,
-  createAsset, setActiveMode,
+  approveAction, rejectAction, markEarningCollected,
+  setActiveMode,
 } from "@/app/(admin)/income/actions";
 import type { IncomeSummary, Opportunity, Asset, Earning, WorkItem, Approval, ActivityEntry } from "@/lib/income/types";
 import { IncomePipeline } from "@/components/income/IncomePipeline";
@@ -22,93 +22,40 @@ interface Props {
   pipelineItems: any[];
 }
 
-// ── Color maps (cyberpunk palette) ────────────────────────────────────────────
+// ── Status colors: minimal — only carry meaning ───────────────────────────────
 
-const SOURCE_CYBER: Record<string, string> = {
-  algora:    "text-[#00e5ff] border-[#00e5ff]/40",
-  issuehunt: "text-[#00ff41] border-[#00ff41]/40",
-  opire:     "text-[#ff8c00] border-[#ff8c00]/40",
-  github:    "text-[#aa77ff] border-[#aa77ff]/40",
-  manual:    "text-[#007a1f] border-[#007a1f]/40",
+const STATUS_COLOR: Record<string, string> = {
+  discovered:  "text-zinc-600",
+  analyzing:   "text-zinc-400",
+  queued:      "text-zinc-300",
+  in_progress: "text-amber-400",
+  submitted:   "text-zinc-300",
+  accepted:    "text-green-400",
+  rejected:    "text-red-400",
+  paid:        "text-green-400",
+  dismissed:   "text-zinc-700",
+  pending:     "text-amber-400",
+  collected:   "text-green-400",
+  draft:       "text-zinc-600",
+  ready:       "text-zinc-300",
+  published:   "text-green-400",
+  done:        "text-green-400",
+  failed:      "text-red-400",
+  review:      "text-amber-400",
+  cancelled:   "text-zinc-700",
 };
 
-const STATUS_CYBER: Record<string, string> = {
-  discovered:  "text-[#007a1f]  border-[#007a1f]/40",
-  analyzing:   "text-[#00e5ff] border-[#00e5ff]/40",
-  queued:      "text-[#00e5ff] border-[#00e5ff]/40",
-  in_progress: "text-[#ffb800] border-[#ffb800]/40",
-  submitted:   "text-[#ff8c00] border-[#ff8c00]/40",
-  accepted:    "text-[#00ff41] border-[#00ff41]/40",
-  rejected:    "text-[#ff0040] border-[#ff0040]/40",
-  paid:        "text-[#00ff41] border-[#00ff41]/40",
-  dismissed:   "text-[#1a3d1a] border-[#1a3d1a]/40",
-  pending:     "text-[#ffb800] border-[#ffb800]/40",
-  collected:   "text-[#00ff41] border-[#00ff41]/40",
-  draft:       "text-[#004d14] border-[#004d14]/40",
-  ready:       "text-[#00e5ff] border-[#00e5ff]/40",
-  published:   "text-[#00ff41] border-[#00ff41]/40",
-  done:        "text-[#00ff41] border-[#00ff41]/40",
-  failed:      "text-[#ff0040] border-[#ff0040]/40",
-  review:      "text-[#ffb800] border-[#ffb800]/40",
+const DIFF_COLOR: Record<string, string> = {
+  easy:   "text-green-400",
+  medium: "text-amber-400",
+  hard:   "text-red-400",
 };
 
-const DIFF_CYBER: Record<string, string> = {
-  easy:   "text-[#00ff41]",
-  medium: "text-[#ffb800]",
-  hard:   "text-[#ff0040]",
-};
-
-function CyberBadge({ label, className }: { label: string; className: string }) {
+function StatusPill({ label }: { label: string }) {
   return (
-    <span className={`inline-flex items-center px-1.5 py-px border text-[9px] font-bold uppercase tracking-[0.12em] ${className}`}>
+    <span className={`text-[10px] font-mono ${STATUS_COLOR[label] ?? "text-zinc-500"}`}>
       {label}
     </span>
-  );
-}
-
-function CyberBar({ value, max, color = "#00ff41" }: { value: number; max: number; color?: string }) {
-  const pct = Math.min(1, max > 0 ? value / max : 0);
-  const filled = Math.round(pct * 20);
-  const empty  = 20 - filled;
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-[11px] tabular-nums" style={{ color }}>
-        {"▓".repeat(filled)}{"░".repeat(empty)}
-      </span>
-      <span className="text-[10px] text-[#004d14] tabular-nums">{Math.round(pct * 100)}%</span>
-    </div>
-  );
-}
-
-function ScoreBar({ score }: { score: number }) {
-  const color = score >= 70 ? "#00ff41" : score >= 50 ? "#ffb800" : score >= 30 ? "#ff8c00" : "#1a4d1a";
-  const filled = Math.round((score / 100) * 12);
-  const empty  = 12 - filled;
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-[9px] text-[#004d14] uppercase tracking-widest">SCORE:</span>
-      <span className="text-[10px] tabular-nums" style={{ color }}>
-        {"▓".repeat(filled)}{"░".repeat(empty)}
-      </span>
-      <span className="text-[10px] text-[#004d14] tabular-nums">{score}</span>
-    </div>
-  );
-}
-
-// ── Compact inline KPI chip ───────────────────────────────────────────────────
-
-function KpiChip({
-  label, value, sub, accent = "default",
-}: {
-  label: string; value: string; sub?: string; accent?: "default" | "green" | "amber" | "red";
-}) {
-  const c = accent === "green" ? "#00ff41" : accent === "amber" ? "#ffb800" : accent === "red" ? "#ff0040" : "#00cc33";
-  return (
-    <div className="flex items-baseline gap-2 border border-[#00ff41]/15 bg-[#030603] px-3 py-2">
-      <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.18em] shrink-0">{label}</span>
-      <span className="text-base font-bold tabular-nums leading-none" style={{ color: c }}>{value}</span>
-      {sub && <span className="text-[9px] text-[#004d14] hidden sm:block">{sub}</span>}
-    </div>
   );
 }
 
@@ -116,33 +63,31 @@ function KpiChip({
 
 export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipelineItems }: Props) {
   const router = useRouter();
-  const [tab, setTab]   = useState<Tab>("overview");
-  const [pending, startTransition] = useTransition();
+  const [tab, setTab] = useState<Tab>("overview");
   const [discovering, setDiscovering] = useState(false);
   const [discoverResult, setDiscoverResult] = useState<string | null>(null);
   const [activeMode, setActiveModeState] = useState(false);
   const [oppFilter, setOppFilter] = useState<string>("all");
 
-  const activePipeline   = pipelineItems.filter((w: any) => !["done","failed","cancelled"].includes(w.status)).length;
-  const pendingQueue     = summary.workQueue.filter(w => w.status === "pending").length;
-  const submittedCount   = pipelineItems.filter((w: any) => w.status === "submitted").length;
-  const inProgressCount  = pipelineItems.filter((w: any) => w.status === "in_progress").length;
-  const doneCount        = pipelineItems.filter((w: any) => w.status === "done").length;
-  const paidCount        = allEarnings.filter(e => e.status === "collected").length;
+  const activePipeline  = pipelineItems.filter((w: any) => !["done","failed","cancelled"].includes(w.status)).length;
+  const pendingQueue    = summary.workQueue.filter(w => w.status === "pending").length;
+  const submittedCount  = pipelineItems.filter((w: any) => w.status === "submitted").length;
+  const inProgressCount = pipelineItems.filter((w: any) => w.status === "in_progress").length;
+  const doneCount       = pipelineItems.filter((w: any) => w.status === "done").length;
+  const paidCount       = allEarnings.filter(e => e.status === "collected").length;
   const allTimeCollected = allEarnings.filter(e => e.status === "collected").reduce((s, e) => s + e.amount_usd, 0);
-  const totalAttempted   = submittedCount + doneCount + paidCount;
-  const totalWon         = doneCount + paidCount;
-  const winRate          = totalAttempted > 0 ? Math.round((totalWon / totalAttempted) * 100) : 0;
+  const totalAttempted  = submittedCount + doneCount + paidCount;
+  const totalWon        = doneCount + paidCount;
+  const winRate         = totalAttempted > 0 ? Math.round((totalWon / totalAttempted) * 100) : 0;
 
-  // Visible tabs — QUEUE & LOG accessible via CTA/links, not cluttering the bar
   const tabs: { id: Tab; label: string; count?: number }[] = [
-    { id: "overview",      label: "OVERVIEW" },
-    { id: "opportunities", label: "SCAN",     count: summary.activeOpportunities },
-    { id: "pipeline",      label: "PIPELINE", count: activePipeline || undefined },
-    { id: "assets",        label: "ASSETS",   count: allAssets.length },
-    { id: "ledger",        label: "LEDGER",   count: allEarnings.length },
-    { id: "approvals",     label: "APPROVE",  count: summary.pendingApprovals || undefined },
-    { id: "log",           label: "LOG" },
+    { id: "overview",      label: "Overview" },
+    { id: "opportunities", label: "Scan",     count: summary.activeOpportunities },
+    { id: "pipeline",      label: "Pipeline", count: activePipeline || undefined },
+    { id: "assets",        label: "Assets" },
+    { id: "ledger",        label: "Ledger",   count: allEarnings.length },
+    { id: "approvals",     label: "Approvals", count: summary.pendingApprovals || undefined },
+    { id: "log",           label: "Log" },
   ];
 
   async function handleDiscover() {
@@ -152,230 +97,171 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
       const res = await fetch("/api/income/discover");
       const data = await res.json();
       if (data.ok) {
-        setDiscoverResult(`+${data.new} new from ${data.sources?.map((s: any) => `${s.source}(${s.count})`).join(", ")}`);
+        setDiscoverResult(`+${data.new} new`);
         router.refresh();
       } else {
-        setDiscoverResult("ERR: " + (data.error ?? "unknown"));
+        setDiscoverResult("error: " + (data.error ?? "unknown"));
       }
     } catch {
-      setDiscoverResult("NET_ERROR");
+      setDiscoverResult("network error");
     } finally {
       setDiscovering(false);
     }
   }
 
   return (
-    <div className="relative bg-black text-[#00cc33] font-mono min-h-[calc(100vh-0px)] -mx-4 -mt-6 -mb-6 px-4 pt-5 pb-6">
-      {/* Scanline overlay */}
-      <div
-        className="pointer-events-none fixed inset-0 z-50 opacity-[0.03]"
-        style={{ background: "repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.5) 2px,rgba(0,0,0,0.5) 4px)" }}
-      />
-      {/* CRT glow */}
-      <div
-        className="pointer-events-none fixed inset-0 z-40 opacity-10"
-        style={{ background: "radial-gradient(ellipse at 50% 30%, rgba(0,255,65,0.08) 0%, transparent 65%)" }}
-      />
-
-      <div className="relative z-10 max-w-[1800px] mx-auto">
+    <div className="bg-black text-zinc-300 font-mono min-h-[calc(100vh-0px)] -mx-4 -mt-6 -mb-6 px-4 pt-5 pb-6">
+      <div className="max-w-[1800px] mx-auto">
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between gap-3 mb-3 pb-3 border-b border-[#00ff41]/20">
+        <div className="flex items-center justify-between gap-3 mb-3 pb-2 border-b border-zinc-800">
           <div>
-            <span className="text-[#00ff41] text-xs font-bold tracking-[0.2em] uppercase">⚡ BOUNTY ENGINE</span>
-            <div className="text-[9px] text-[#007a1f] mt-0.5 tracking-wider">
+            <span className="text-zinc-100 text-sm font-semibold tracking-wide">Bounty Engine</span>
+            <div className="text-[10px] text-zinc-600 mt-0.5">
               {summary.lastDiscoveryRun
-                ? `LAST_SCAN: ${new Date(summary.lastDiscoveryRun).toLocaleString("en-US", { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" })}`
-                : "LAST_SCAN: never"}
-              {"  ·  "}{summary.activeOpportunities} ACTIVE
+                ? `last scan ${new Date(summary.lastDiscoveryRun).toLocaleString("en-US", { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" })}`
+                : "never scanned"}
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
             {discoverResult && (
-              <span className={`text-[10px] font-mono border px-2 py-1 ${
-                discoverResult.startsWith("ERR") || discoverResult.startsWith("NET")
-                  ? "text-[#ff0040] border-[#ff0040]/40"
-                  : "text-[#00ff41] border-[#00ff41]/40"
-              }`}>
+              <span className={`text-[10px] font-mono ${discoverResult.startsWith("error") || discoverResult.startsWith("network") ? "text-red-400" : "text-green-400"}`}>
                 {discoverResult}
               </span>
             )}
             <button
-              onClick={async () => {
-                const next = !activeMode;
-                setActiveModeState(next);
-                await setActiveMode(next);
-              }}
-              className={`px-2.5 py-1 text-[10px] font-bold border tracking-widest uppercase transition-all flex items-center gap-1.5 ${
-                activeMode
-                  ? "border-[#00ff41] text-[#00ff41] bg-[#00ff41]/10"
-                  : "border-[#007a1f]/50 text-[#007a1f] hover:border-[#00ff41] hover:text-[#00ff41]"
+              onClick={async () => { const next = !activeMode; setActiveModeState(next); await setActiveMode(next); }}
+              className={`text-[10px] px-2 py-1 border transition-colors ${
+                activeMode ? "border-zinc-500 text-zinc-200" : "border-zinc-800 text-zinc-600 hover:text-zinc-400 hover:border-zinc-600"
               }`}
             >
-              {activeMode && <span className="w-1.5 h-1.5 rounded-full bg-[#00ff41] animate-pulse" />}
-              {activeMode ? "ACTIVE" : "ACTIVE_MODE"}
+              {activeMode ? "● active" : "○ idle"}
             </button>
             <button
               onClick={handleDiscover}
               disabled={discovering}
-              className="px-2.5 py-1 text-[10px] border border-[#007a1f]/50 text-[#007a1f] hover:border-[#00ff41] hover:text-[#00ff41] transition-all tracking-widest uppercase disabled:opacity-40"
+              className="text-[10px] px-2 py-1 border border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors disabled:opacity-30"
             >
-              {discovering ? "SCANNING…" : "⟳ SCAN"}
+              {discovering ? "scanning…" : "⟳ scan"}
             </button>
           </div>
         </div>
 
-        {/* ── AGENT CTA — unmissable when queue has items ──────────────────── */}
+        {/* ── Agent CTA — shown when bounties are waiting ──────────────────── */}
         {pendingQueue > 0 && (
           <div
-            className="mb-3 relative overflow-hidden border-2 border-[#ffb800] cursor-pointer group"
+            className="mb-3 flex items-center justify-between gap-4 px-4 py-3 border border-amber-400/30 bg-amber-400/5 cursor-pointer hover:bg-amber-400/8 transition-colors"
             onClick={() => setTab("queue")}
-            style={{ background: "rgba(255,184,0,0.04)" }}
           >
-            {/* Sweep animation */}
-            <div
-              className="absolute inset-y-0 w-24 bg-gradient-to-r from-transparent via-[#ffb800]/15 to-transparent pointer-events-none"
-              style={{ animation: "agentSweep 2s ease-in-out infinite" }}
-            />
-            <style>{`
-              @keyframes agentSweep {
-                0%   { left: -6rem; }
-                100% { left: 100%; }
-              }
-            `}</style>
-            <div className="relative flex items-center gap-5 px-5 py-4">
-              <div className="flex-1 min-w-0">
-                <div className="text-[#ffb800] text-sm font-bold uppercase tracking-[0.2em] animate-pulse">
-                  ⚡ RUN AGENT NOW — {pendingQueue} BOUNT{pendingQueue === 1 ? "Y" : "IES"} READY
-                </div>
-                {summary.queueProjectedUsd > 0 && (
-                  <div className="text-[#ffb800]/60 text-[10px] mt-0.5 tracking-wider">
-                    {formatCurrency(summary.queueProjectedUsd)} potential earnings queued · click to view queue
-                  </div>
-                )}
-              </div>
-              <code className="shrink-0 text-[11px] text-[#ffb800] border border-[#ffb800]/50 px-3 py-2 select-all group-hover:border-[#ffb800] transition-colors">
-                node scripts/income-agent.mjs
-              </code>
+            <div>
+              <span className="text-amber-400 text-[13px] font-semibold">
+                {pendingQueue} {pendingQueue === 1 ? "bounty" : "bounties"} ready to work
+              </span>
+              {summary.queueProjectedUsd > 0 && (
+                <span className="text-zinc-500 text-[10px] ml-3">{formatCurrency(summary.queueProjectedUsd)} potential</span>
+              )}
             </div>
+            <code className="text-[11px] text-amber-400/70 select-all shrink-0">
+              node scripts/income-agent.mjs
+            </code>
           </div>
         )}
 
-        {/* ── Scan active banner ───────────────────────────────────────────── */}
-        {discovering && (
-          <div className="mb-3 border border-[#00e5ff]/50 bg-[#00e5ff]/5 px-4 py-2.5 overflow-hidden relative">
-            <div
-              className="absolute inset-y-0 w-16 bg-gradient-to-r from-transparent via-[#00e5ff]/20 to-transparent pointer-events-none"
-              style={{ animation: "scan 1.6s ease-in-out infinite" }}
-            />
-            <style>{`@keyframes scan { 0% { left:-4rem; } 100% { left:100%; } }`}</style>
-            <div className="relative flex items-center gap-3">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#00e5ff] animate-pulse shrink-0" />
-              <span className="text-[10px] text-[#00e5ff] font-bold uppercase tracking-widest">DISCOVERY ACTIVE</span>
-              <span className="text-[9px] text-[#00e5ff]/50 uppercase tracking-wider hidden sm:block">— algora · issuehunt · opire · github</span>
-            </div>
-          </div>
-        )}
-
-        {/* ── Approval banner ──────────────────────────────────────────────── */}
+        {/* ── Approvals banner ─────────────────────────────────────────────── */}
         {summary.pendingApprovals > 0 && (
           <div
-            className="mb-3 flex items-center justify-between px-4 py-2 border border-[#ffb800]/40 bg-[#ffb800]/3 cursor-pointer hover:bg-[#ffb800]/8 transition-colors"
+            className="mb-3 flex items-center justify-between px-4 py-2 border border-amber-400/20 cursor-pointer hover:bg-amber-400/5 transition-colors"
             onClick={() => setTab("approvals")}
           >
-            <span className="text-[10px] text-[#ffb800] tracking-wider uppercase">
-              ⚠ {summary.pendingApprovals} action{summary.pendingApprovals > 1 ? "s" : ""} require your approval
+            <span className="text-[11px] text-amber-400/80">
+              {summary.pendingApprovals} action{summary.pendingApprovals > 1 ? "s" : ""} need your approval
             </span>
-            <span className="text-[9px] text-[#ffb800]/50 uppercase tracking-widest shrink-0">[REVIEW →]</span>
+            <span className="text-[10px] text-zinc-600">review →</span>
           </div>
         )}
 
-        {/* ── KPI chips + cooldowns ────────────────────────────────────────── */}
-        <div className="flex items-center gap-3 mb-3 overflow-x-auto flex-wrap">
-          <KpiChip
-            label="THIS_WEEK"
-            value={formatCurrency(summary.collectedThisWeek)}
-            sub={`/ ${formatCurrency(summary.weeklyTarget)} target`}
-            accent={summary.weeklyProgress >= 1 ? "green" : summary.collectedThisWeek > 0 ? "amber" : "default"}
-          />
-          <KpiChip
-            label="QUEUED"
-            value={String(pendingQueue)}
-            sub={pendingQueue > 0 ? "run agent" : "queue empty"}
-            accent={pendingQueue > 0 ? "amber" : "default"}
-          />
-          <KpiChip
-            label="WIN_RATE"
-            value={`${winRate}%`}
-            sub={totalAttempted > 0 ? `${totalWon}/${totalAttempted}` : "no PRs yet"}
-            accent={winRate >= 50 ? "green" : winRate > 0 ? "amber" : "default"}
-          />
-          <KpiChip
-            label="ALL_TIME"
-            value={formatCurrency(allTimeCollected)}
-            sub={`${paidCount} confirmed`}
-            accent={allTimeCollected > 0 ? "green" : "default"}
-          />
-          <div className="ml-auto shrink-0">
-            <CooldownPanel />
+        {/* ── Scan active ───────────────────────────────────────────────────── */}
+        {discovering && (
+          <div className="mb-3 px-4 py-2 border border-zinc-700">
+            <span className="text-[11px] text-zinc-400 animate-pulse">scanning algora · issuehunt · opire · github…</span>
           </div>
+        )}
+
+        {/* ── Stats + cooldowns row ────────────────────────────────────────── */}
+        <div className="flex items-center justify-between gap-4 mb-3 overflow-x-auto text-[11px]">
+          <div className="flex items-center gap-4 text-zinc-500 whitespace-nowrap">
+            <span>
+              <span className={allTimeCollected > 0 ? "text-green-400 font-semibold" : "text-zinc-300"}>
+                {formatCurrency(summary.collectedThisWeek)}
+              </span>
+              {" "}<span className="text-zinc-700">/ {formatCurrency(summary.weeklyTarget)} this week</span>
+            </span>
+            <span className="text-zinc-800">·</span>
+            <span>
+              <span className={pendingQueue > 0 ? "text-amber-400 font-semibold" : "text-zinc-500"}>{pendingQueue}</span>
+              {" "}waiting
+            </span>
+            <span className="text-zinc-800">·</span>
+            <span>
+              <span className={winRate > 0 ? "text-zinc-300" : "text-zinc-600"}>{winRate}%</span>
+              {" "}win rate
+            </span>
+            <span className="text-zinc-800">·</span>
+            <span>
+              <span className={allTimeCollected > 0 ? "text-green-400" : "text-zinc-600"}>
+                {formatCurrency(allTimeCollected)}
+              </span>
+              {" "}all-time
+            </span>
+          </div>
+          <CooldownStrip />
         </div>
 
-        {/* ── Pipeline funnel ──────────────────────────────────────────────── */}
-        <div className="border border-[#00ff41]/12 bg-[#030603] px-4 py-2.5 mb-3 overflow-x-auto">
-          <div className="flex items-center gap-0.5 min-w-max">
-            {([
-              { label: "SCAN",      value: summary.activeOpportunities, color: "#00e5ff" },
-              { label: "QUEUE",     value: pendingQueue,                 color: "#00e5ff" },
-              { label: "WORKING",   value: inProgressCount,             color: "#ffb800" },
-              { label: "SUBMITTED", value: submittedCount,              color: "#ff8c00" },
-              { label: "MERGED",    value: doneCount,                   color: "#00ff41" },
-              { label: "PAID",      value: paidCount,                   color: "#00ff41" },
-            ] as const).map((stage, i, arr) => (
-              <div key={stage.label} className="flex items-center">
-                <div className="flex flex-col items-center px-4 py-0.5">
-                  <span className="text-[9px] uppercase tracking-wider" style={{ color: stage.value > 0 ? stage.color : "#1a4d1a" }}>
-                    {stage.label}
-                  </span>
-                  <span className="text-xl font-bold tabular-nums leading-tight" style={{ color: stage.value > 0 ? stage.color : "#1a4d1a" }}>
-                    {stage.value}
-                  </span>
-                </div>
-                {i < arr.length - 1 && (
-                  <span className="text-[#007a1f]/40 text-xs">▶</span>
-                )}
-              </div>
-            ))}
-          </div>
+        {/* ── Pipeline stages ───────────────────────────────────────────────── */}
+        <div className="flex items-center gap-1 mb-3 text-[11px] text-zinc-600 overflow-x-auto whitespace-nowrap">
+          {([
+            { label: "opportunities", value: summary.activeOpportunities },
+            { label: "waiting",       value: pendingQueue },
+            { label: "working",       value: inProgressCount },
+            { label: "PR open",       value: submittedCount },
+            { label: "merged",        value: doneCount },
+            { label: "paid",          value: paidCount },
+          ] as const).map((stage, i, arr) => (
+            <span key={stage.label} className="flex items-center gap-1">
+              <span className={stage.value > 0 ? "text-zinc-300" : "text-zinc-700"}>
+                <span className="font-semibold tabular-nums">{stage.value}</span>
+                {" "}{stage.label}
+              </span>
+              {i < arr.length - 1 && <span className="text-zinc-800 mx-1">→</span>}
+            </span>
+          ))}
         </div>
 
         {/* ── Two-panel layout ─────────────────────────────────────────────── */}
         <div className="flex gap-4">
-          {/* Left: main tabs + content */}
+          {/* Left: tabs */}
           <div className="flex-1 min-w-0">
-            {/* Tab bar */}
-            <div className="flex gap-0 border-b border-[#00ff41]/15 mb-3 overflow-x-auto">
+            <div className="flex gap-0 border-b border-zinc-800 mb-3 overflow-x-auto">
               {tabs.map(t => (
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className={`flex items-center gap-1.5 px-3 py-2 text-[10px] font-bold border-b-2 transition-colors whitespace-nowrap tracking-[0.12em] uppercase ${
+                  className={`flex items-center gap-1.5 px-3 py-2 text-[11px] border-b-2 transition-colors whitespace-nowrap ${
                     tab === t.id
-                      ? "border-[#00ff41] text-[#00ff41] bg-[#00ff41]/5"
-                      : "border-transparent text-[#007a1f] hover:text-[#00cc33]"
+                      ? "border-zinc-300 text-zinc-100"
+                      : "border-transparent text-zinc-600 hover:text-zinc-400"
                   }`}
                 >
                   {t.label}
                   {t.count != null && t.count > 0 && (
-                    <span className={`text-[9px] font-bold ${
-                      t.id === "approvals" ? "text-[#ffb800]" : "text-[#00cc33]"
-                    }`}>{t.count}</span>
+                    <span className={`text-[10px] ${t.id === "approvals" ? "text-amber-400" : "text-zinc-500"}`}>
+                      {t.count}
+                    </span>
                   )}
                 </button>
               ))}
             </div>
 
-            {/* Tab content */}
             {tab === "overview"      && <OverviewTab summary={summary} onTabChange={setTab} />}
             {tab === "opportunities" && <OpportunitiesTab opps={summary.topOpportunities} filter={oppFilter} onFilterChange={setOppFilter} />}
             {tab === "pipeline"      && <IncomePipeline initialItems={pipelineItems} userId={userId} />}
@@ -386,7 +272,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
             {tab === "log"           && <ActivityTab entries={summary.recentActivity} />}
           </div>
 
-          {/* Right: live terminal feed — takes more space */}
+          {/* Right: live terminal */}
           <div className="w-[380px] xl:w-[480px] 2xl:w-[560px] shrink-0 h-[calc(100vh-220px)] sticky top-4">
             <IncomeTerminalFeed initialEntries={summary.recentActivity} lastDiscoveryRun={summary.lastDiscoveryRun} />
           </div>
@@ -396,89 +282,54 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   );
 }
 
-// ── Cooldown timers ───────────────────────────────────────────────────────────
+// ── Cooldown strip (plain countdown text) ────────────────────────────────────
 
-function nextSlotFromHours(slots: number[], now: number): number {
+function nextSlotMs(slots: number[], now: number): number {
   const d = new Date(now);
   const h = d.getUTCHours();
   const nextH = slots.find(s => s > h);
   const next = new Date(d);
   next.setUTCMinutes(0, 0, 0);
-  if (nextH !== undefined) {
-    next.setUTCHours(nextH);
-  } else {
-    next.setUTCDate(next.getUTCDate() + 1);
-    next.setUTCHours(slots[0]);
-  }
+  if (nextH !== undefined) next.setUTCHours(nextH);
+  else { next.setUTCDate(next.getUTCDate() + 1); next.setUTCHours(slots[0]); }
   return next.getTime();
 }
 
-const DISCOVER_SLOTS  = Array.from({ length: 24 }, (_, i) => i);
-const CHECK_PR_SLOTS  = Array.from({ length: 12 }, (_, i) => i * 2 + 1);
+const DISCOVER_SLOTS = Array.from({ length: 24 }, (_, i) => i);
+const CHECK_PR_SLOTS = Array.from({ length: 12 }, (_, i) => i * 2 + 1);
 
-type CooldownDef = {
-  label: string;
-  icon: string;
-  slots: number[];
-  intervalMs: number;
-  color: string;
-  glowColor: string;
-};
-
-const COOLDOWNS: CooldownDef[] = [
-  { label: "DISCOVER",  icon: "⚡", slots: DISCOVER_SLOTS,  intervalMs: 3600000,  color: "#00e5ff", glowColor: "rgba(0,229,255,0.25)" },
-  { label: "CHECK_PRS", icon: "⚙", slots: CHECK_PR_SLOTS,  intervalMs: 7200000,  color: "#ffb800", glowColor: "rgba(255,184,0,0.25)" },
-];
-
-function CooldownBar({ def, now }: { def: CooldownDef; now: number }) {
-  const nextSlot  = nextSlotFromHours(def.slots, now);
-  const remaining = nextSlot - now;
-  const elapsed   = def.intervalMs - remaining;
-  const pct       = Math.min(1, Math.max(0, elapsed / def.intervalMs));
-  const filled    = Math.round(pct * 14);
-  const empty     = 14 - filled;
-  const nearFull  = pct >= 0.85;
-
-  const h = Math.floor(remaining / 3600000);
-  const m = Math.floor((remaining % 3600000) / 60000);
-  const s = Math.floor((remaining % 60000) / 1000);
-  const countdown = h > 0
+function fmt(ms: number) {
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  return h > 0
     ? `${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`
     : `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
-
-  return (
-    <div className="flex flex-col gap-0.5 min-w-[110px]">
-      <div className="flex items-center justify-between gap-1">
-        <span className="text-[9px] uppercase tracking-[0.12em] font-bold" style={{ color: def.color }}>
-          {def.icon} {def.label}
-        </span>
-      </div>
-      <div
-        className={`text-[10px] tabular-nums font-mono tracking-[-0.05em] ${nearFull ? "animate-pulse" : ""}`}
-        style={{ color: def.color, textShadow: nearFull ? `0 0 8px ${def.glowColor}` : undefined }}
-      >
-        {"▓".repeat(filled)}{"░".repeat(empty)}
-      </div>
-      <p
-        className={`text-base font-bold tabular-nums tracking-widest leading-none ${nearFull ? "animate-pulse" : ""}`}
-        style={{ color: def.color, textShadow: nearFull ? `0 0 10px ${def.glowColor}` : undefined }}
-      >
-        {countdown}
-      </p>
-    </div>
-  );
 }
 
-function CooldownPanel() {
+function CooldownStrip() {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
+  const scanIn   = nextSlotMs(DISCOVER_SLOTS, now) - now;
+  const checkIn  = nextSlotMs(CHECK_PR_SLOTS, now) - now;
+  const scanSoon = scanIn < 300_000;
+  const checkSoon = checkIn < 300_000;
+
   return (
-    <div className="flex gap-4">
-      {COOLDOWNS.map(def => <CooldownBar key={def.label} def={def} now={now} />)}
+    <div className="flex items-center gap-3 text-[10px] text-zinc-600 whitespace-nowrap shrink-0">
+      <span>
+        scan in{" "}
+        <span className={scanSoon ? "text-zinc-300 font-semibold" : "text-zinc-500"}>{fmt(scanIn)}</span>
+      </span>
+      <span className="text-zinc-800">·</span>
+      <span>
+        PR check in{" "}
+        <span className={checkSoon ? "text-zinc-300 font-semibold" : "text-zinc-500"}>{fmt(checkIn)}</span>
+      </span>
     </div>
   );
 }
@@ -487,145 +338,148 @@ function CooldownPanel() {
 
 function OverviewTab({ summary, onTabChange }: { summary: IncomeSummary; onTabChange: (t: Tab) => void }) {
   const sourceOrder = ["opire", "algora", "issuehunt", "github"];
-  const sourcesWithData = sourceOrder.filter(s => summary.winRateBySource[s]?.submitted > 0);
-  const allSources = [...sourcesWithData, ...Object.keys(summary.winRateBySource).filter(s => !sourceOrder.includes(s) && summary.winRateBySource[s]?.submitted > 0)];
+  const allSources = [
+    ...sourceOrder.filter(s => summary.winRateBySource[s]?.submitted > 0),
+    ...Object.keys(summary.winRateBySource).filter(s => !sourceOrder.includes(s) && summary.winRateBySource[s]?.submitted > 0),
+  ];
   const activePipelineItems = summary.workQueue.filter(w => !["done","cancelled","failed"].includes(w.status));
   const queueReady          = summary.workQueue.filter(w => w.status === "pending");
 
   return (
     <div className="space-y-4">
-      {/* Row 1: Active pipeline */}
-      <div className="border border-[#ffb800]/25 bg-[#030603]">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-[#ffb800]/15">
-          <span className="text-[9px] text-[#ffb800] uppercase tracking-[0.2em]">⚙ ACTIVE_PIPELINE</span>
-          <button onClick={() => onTabChange("pipeline")} className="text-[9px] text-[#007a1f] hover:text-[#00ff41] uppercase tracking-widest">[VIEW_ALL →]</button>
+      {/* Active work */}
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[10px] text-zinc-600 uppercase tracking-wider">Active work</span>
+          <button onClick={() => onTabChange("pipeline")} className="text-[10px] text-zinc-700 hover:text-zinc-400">all →</button>
         </div>
         {activePipelineItems.length === 0 ? (
-          <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; No active work — run agent to begin</p>
+          <p className="text-[11px] text-zinc-700 py-3">Nothing in progress — run the agent to start working bounties.</p>
         ) : (
-          <div className="divide-y divide-[#ffb800]/8">
+          <div className="divide-y divide-zinc-900">
             {activePipelineItems.slice(0, 5).map(w => (
-              <div key={w.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+              <div key={w.id} className="flex items-center justify-between gap-3 py-2.5">
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] text-[#00cc33] truncate">{w.title}</p>
-                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  <p className="text-[11px] text-zinc-200 truncate">{w.title}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <StatusPill label={w.status} />
                     {(w as any).progress_note && (
-                      <span className="text-[9px] text-[#007a1f] truncate max-w-[200px]">{(w as any).progress_note}</span>
+                      <span className="text-[10px] text-zinc-600 truncate max-w-[200px]">{(w as any).progress_note}</span>
                     )}
                     {(w as any).pr_url && (
                       <a href={(w as any).pr_url} target="_blank" rel="noopener noreferrer"
-                        className="text-[9px] text-[#00e5ff] hover:underline truncate max-w-[200px]">
-                        PR → {(w as any).pr_url.replace("https://github.com/","gh/")}
+                        className="text-[10px] text-zinc-500 hover:text-zinc-300 truncate max-w-[200px]">
+                        {(w as any).pr_url.replace("https://github.com/","gh/")}
                       </a>
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <CyberBadge label={w.status} className={STATUS_CYBER[w.status] ?? "text-[#004d14] border-[#004d14]/40"} />
-                  {w.expected_usd && <span className="text-[11px] tabular-nums text-[#00ff41] font-bold">{formatCurrency(w.expected_usd)}</span>}
-                </div>
+                {w.expected_usd && (
+                  <span className="text-[11px] tabular-nums text-green-400 font-semibold shrink-0">{formatCurrency(w.expected_usd)}</span>
+                )}
               </div>
             ))}
           </div>
         )}
-      </div>
+      </section>
 
-      {/* Row 2: Queue ready + Top picks */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="border border-[#00e5ff]/25 bg-[#030603]">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-[#00e5ff]/15">
-            <span className="text-[9px] text-[#00e5ff] uppercase tracking-[0.2em]">⬡ QUEUE_READY</span>
-            <button onClick={() => onTabChange("queue")} className="text-[9px] text-[#007a1f] hover:text-[#00ff41] uppercase tracking-widest">[RUN_AGENT →]</button>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Waiting for agent */}
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] text-zinc-600 uppercase tracking-wider">Waiting for agent</span>
+            <button onClick={() => onTabChange("queue")} className="text-[10px] text-zinc-700 hover:text-zinc-400">run →</button>
           </div>
-          <div className="divide-y divide-[#00e5ff]/8">
-            {queueReady.length === 0 ? (
-              <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; Queue empty — waiting for discovery scan</p>
-            ) : (
-              queueReady.slice(0, 5).map(w => (
-                <div key={w.id} className="flex items-center justify-between gap-2 px-4 py-2.5">
-                  <p className="text-[11px] text-[#00cc33] truncate flex-1">{w.title}</p>
-                  {w.expected_usd && <span className="text-[11px] tabular-nums text-[#00e5ff] font-bold shrink-0">{formatCurrency(w.expected_usd)}</span>}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="border border-[#00ff41]/15 bg-[#030603]">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-[#00ff41]/12">
-            <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em]">TOP_PICKS</span>
-            <button onClick={() => onTabChange("opportunities")} className="text-[9px] text-[#007a1f] hover:text-[#00ff41] uppercase tracking-widest">[VIEW_ALL →]</button>
-          </div>
-          <div className="divide-y divide-[#00ff41]/8">
-            {summary.topOpportunities.slice(0, 5).map(opp => (
-              <OppRow key={opp.id} opp={opp} compact />
-            ))}
-            {summary.topOpportunities.length === 0 && (
-              <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; No opportunities — run scan to find bounties</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Row 3: Earnings + Source win rate */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="border border-[#00ff41]/15 bg-[#030603]">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-[#00ff41]/12">
-            <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em]">EARNINGS_LEDGER</span>
-            <button onClick={() => onTabChange("ledger")} className="text-[9px] text-[#007a1f] hover:text-[#00ff41] uppercase tracking-widest">[FULL_LEDGER →]</button>
-          </div>
-          {summary.recentEarnings.length === 0 ? (
-            <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; No earnings logged yet</p>
+          {queueReady.length === 0 ? (
+            <p className="text-[11px] text-zinc-700 py-3">Nothing queued.</p>
           ) : (
-            <div className="divide-y divide-[#00ff41]/8">
-              {summary.recentEarnings.slice(0, 4).map(e => (
-                <div key={e.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <div>
-                    <p className="text-[11px] text-[#00cc33]">{e.description}</p>
-                    <p className="text-[9px] text-[#004d14] uppercase tracking-wider">{e.source} · {e.earned_date}</p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <CyberBadge label={e.status} className={STATUS_CYBER[e.status] ?? ""} />
-                    <span className={`text-sm font-bold tabular-nums ${e.status === "collected" ? "text-[#00ff41]" : "text-[#ffb800]"}`}>
-                      {formatCurrency(e.amount_usd)}
-                    </span>
-                  </div>
+            <div className="divide-y divide-zinc-900">
+              {queueReady.slice(0, 5).map(w => (
+                <div key={w.id} className="flex items-center justify-between gap-2 py-2.5">
+                  <p className="text-[11px] text-zinc-300 truncate flex-1">{w.title}</p>
+                  {w.expected_usd && (
+                    <span className="text-[11px] tabular-nums text-zinc-400 shrink-0">{formatCurrency(w.expected_usd)}</span>
+                  )}
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </section>
 
-        <div className="border border-[#00ff41]/15 bg-[#030603]">
-          <div className="px-4 py-2 border-b border-[#00ff41]/12">
-            <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em]">WIN_RATE_BY_SOURCE</span>
+        {/* Top picks */}
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] text-zinc-600 uppercase tracking-wider">Top picks</span>
+            <button onClick={() => onTabChange("opportunities")} className="text-[10px] text-zinc-700 hover:text-zinc-400">all →</button>
+          </div>
+          <div className="divide-y divide-zinc-900">
+            {summary.topOpportunities.slice(0, 5).map(opp => (
+              <OppRow key={opp.id} opp={opp} compact />
+            ))}
+            {summary.topOpportunities.length === 0 && (
+              <p className="text-[11px] text-zinc-700 py-3">No opportunities — run a scan.</p>
+            )}
+          </div>
+        </section>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Recent earnings */}
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] text-zinc-600 uppercase tracking-wider">Recent earnings</span>
+            <button onClick={() => onTabChange("ledger")} className="text-[10px] text-zinc-700 hover:text-zinc-400">full ledger →</button>
+          </div>
+          {summary.recentEarnings.length === 0 ? (
+            <p className="text-[11px] text-zinc-700 py-3">No earnings yet.</p>
+          ) : (
+            <div className="divide-y divide-zinc-900">
+              {summary.recentEarnings.slice(0, 4).map(e => (
+                <div key={e.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <div>
+                    <p className="text-[11px] text-zinc-300">{e.description}</p>
+                    <p className="text-[10px] text-zinc-600">{e.source} · {e.earned_date}</p>
+                  </div>
+                  <span className={`text-[12px] font-semibold tabular-nums ${e.status === "collected" ? "text-green-400" : "text-amber-400"}`}>
+                    {formatCurrency(e.amount_usd)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Win rate by source */}
+        <section>
+          <div className="mb-2">
+            <span className="text-[10px] text-zinc-600 uppercase tracking-wider">Win rate by source</span>
           </div>
           {allSources.length === 0 ? (
-            <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; Submit PRs to build win rate history</p>
+            <p className="text-[11px] text-zinc-700 py-3">No PR history yet.</p>
           ) : (
-            <div className="divide-y divide-[#00ff41]/8">
+            <div className="divide-y divide-zinc-900">
               {allSources.map(src => {
                 const s = summary.winRateBySource[src];
                 const pct = Math.round(s.rate * 100);
-                const filled = Math.round(s.rate * 10);
-                const empty = 10 - filled;
-                const color = pct >= 50 ? "#00ff41" : pct > 0 ? "#ffb800" : "#1a4d1a";
                 return (
-                  <div key={src} className="flex items-center gap-3 px-4 py-2.5">
-                    <span className={`text-[9px] font-bold uppercase tracking-widest w-20 shrink-0 ${SOURCE_CYBER[src]?.split(" ")[0] ?? "text-[#007a1f]"}`}>
-                      {src}
+                  <div key={src} className="flex items-center gap-3 py-2">
+                    <span className="text-[10px] text-zinc-500 w-20 shrink-0">{src}</span>
+                    <div className="flex-1 h-px bg-zinc-800">
+                      <div
+                        className={`h-px ${pct >= 50 ? "bg-green-400" : pct > 0 ? "bg-amber-400" : "bg-zinc-700"}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className={`text-[10px] tabular-nums w-8 text-right ${pct >= 50 ? "text-green-400" : pct > 0 ? "text-amber-400" : "text-zinc-600"}`}>
+                      {pct}%
                     </span>
-                    <span className="text-[10px] tabular-nums font-mono" style={{ color }}>
-                      {"▓".repeat(filled)}{"░".repeat(empty)}
-                    </span>
-                    <span className="text-[10px] tabular-nums" style={{ color }}>{pct}%</span>
-                    <span className="text-[9px] text-[#004d14] ml-auto">{s.won}/{s.submitted}</span>
+                    <span className="text-[10px] text-zinc-700 w-10 text-right">{s.won}/{s.submitted}</span>
                   </div>
                 );
               })}
             </div>
           )}
-        </div>
+        </section>
       </div>
     </div>
   );
@@ -633,9 +487,7 @@ function OverviewTab({ summary, onTabChange }: { summary: IncomeSummary; onTabCh
 
 // ── Opportunities tab ─────────────────────────────────────────────────────────
 
-function OpportunitiesTab({
-  opps, filter, onFilterChange,
-}: {
+function OpportunitiesTab({ opps, filter, onFilterChange }: {
   opps: Opportunity[];
   filter: string;
   onFilterChange: (f: string) => void;
@@ -649,31 +501,39 @@ function OpportunitiesTab({
     return o.source === filter;
   });
 
+  const filters = [
+    { id: "all",      label: `all (${opps.length})` },
+    { id: "high",     label: "high score" },
+    { id: "cash",     label: "has reward" },
+    { id: "easy",     label: "easy" },
+    { id: "algora",   label: "algora" },
+    { id: "issuehunt",label: "issuehunt" },
+    { id: "opire",    label: "opire" },
+    { id: "github",   label: "github" },
+    { id: "queued",   label: "queued" },
+  ];
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
-        {["all", "high", "cash", "easy", "algora", "issuehunt", "opire", "github", "queued"].map(f => (
+        {filters.map(f => (
           <button
-            key={f}
-            onClick={() => onFilterChange(f)}
-            className={`px-3 py-1 text-[10px] border transition-colors tracking-wider uppercase ${
-              filter === f
-                ? "border-[#00ff41] text-[#00ff41] bg-[#00ff41]/10"
-                : "border-[#007a1f]/50 text-[#007a1f] hover:border-[#00cc33] hover:text-[#00cc33]"
+            key={f.id}
+            onClick={() => onFilterChange(f.id)}
+            className={`px-2.5 py-1 text-[10px] border transition-colors ${
+              filter === f.id
+                ? "border-zinc-400 text-zinc-200"
+                : "border-zinc-800 text-zinc-600 hover:border-zinc-600 hover:text-zinc-400"
             }`}
           >
-            [{f === "high" ? "HIGH_SCORE" : f === "cash" ? "HAS_REWARD" : f.toUpperCase()}
-            {f === "all" && <span className="text-[#004d14]">:{opps.length}</span>}]
+            {f.label}
           </button>
         ))}
       </div>
-
-      <div className="space-y-2">
+      <div className="divide-y divide-zinc-900">
         {filtered.map(opp => <OppRow key={opp.id} opp={opp} />)}
         {filtered.length === 0 && (
-          <div className="border border-[#007a1f]/30 bg-[#030603] px-6 py-8 text-center">
-            <p className="text-[11px] text-[#007a1f]">&gt; No opportunities match filter — run discovery scan</p>
-          </div>
+          <p className="text-[11px] text-zinc-700 py-6 text-center">No results — try a different filter or run a scan.</p>
         )}
       </div>
     </div>
@@ -684,52 +544,42 @@ function OppRow({ opp, compact = false }: { opp: Opportunity; compact?: boolean 
   const [pending, startTransition] = useTransition();
 
   return (
-    <div className={`border border-[#00ff41]/12 bg-[#030603] hover:border-[#00ff41]/30 transition-colors ${compact ? "px-4 py-2.5" : "p-4"}`}>
+    <div className={`hover:bg-zinc-900/50 transition-colors ${compact ? "py-2" : "py-3"}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <CyberBadge label={opp.source} className={SOURCE_CYBER[opp.source] ?? "text-[#004d14] border-[#004d14]/40"} />
-            {opp.language && (
-              <span className="text-[9px] text-[#004d14]">{opp.language}</span>
-            )}
+          <div className="flex items-center gap-2 flex-wrap mb-0.5">
+            <span className="text-[10px] text-zinc-600">{opp.source}</span>
+            {opp.language && <span className="text-[10px] text-zinc-700">{opp.language}</span>}
             {opp.difficulty && (
-              <span className={`text-[9px] font-bold uppercase tracking-widest ${DIFF_CYBER[opp.difficulty] ?? "text-[#004d14]"}`}>
-                {opp.difficulty}
-              </span>
+              <span className={`text-[10px] ${DIFF_COLOR[opp.difficulty] ?? "text-zinc-600"}`}>{opp.difficulty}</span>
             )}
-            {opp.status !== "discovered" && (
-              <CyberBadge label={opp.status} className={STATUS_CYBER[opp.status] ?? "text-[#004d14] border-[#004d14]/40"} />
+            {opp.status !== "discovered" && <StatusPill label={opp.status} />}
+            <span className="text-[10px] text-zinc-700">score {opp.score}</span>
+            {opp.estimated_hours != null && (
+              <span className="text-[10px] text-zinc-700">~{opp.estimated_hours}h</span>
+            )}
+            {opp.open_prs > 0 && (
+              <span className="text-[10px] text-amber-400/70">{opp.open_prs} competing PR{opp.open_prs > 1 ? "s" : ""}</span>
             )}
           </div>
           <a
             href={opp.url} target="_blank" rel="noopener noreferrer"
-            className="block text-[11px] text-[#00cc33] hover:text-[#00ff41] transition-colors line-clamp-2 leading-relaxed"
+            className="block text-[11px] text-zinc-300 hover:text-zinc-100 transition-colors line-clamp-2 leading-relaxed"
           >
             {opp.title}
           </a>
           {!compact && opp.description && (
-            <p className="mt-1 text-[10px] text-[#004d14] line-clamp-2">{opp.description}</p>
+            <p className="mt-1 text-[10px] text-zinc-600 line-clamp-2">{opp.description}</p>
           )}
-          <div className="mt-1.5 flex items-center gap-3 flex-wrap">
-            <ScoreBar score={opp.score} />
-            {opp.estimated_hours != null && (
-              <span className="text-[9px] text-[#004d14]">~{opp.estimated_hours}h</span>
-            )}
-            {opp.hourly_rate_est != null && (
-              <span className="text-[9px] text-[#00cc33] tabular-nums font-bold">
-                {formatCurrency(opp.hourly_rate_est)}/hr
-              </span>
-            )}
-            {opp.open_prs > 0 && (
-              <span className="text-[9px] text-[#ff8c00]">{opp.open_prs} PR{opp.open_prs > 1 ? "s" : ""} open</span>
-            )}
-          </div>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
           {opp.reward_usd != null && (
-            <span className={`font-bold tabular-nums text-[#00ff41] ${compact ? "text-sm" : "text-lg"}`}>
+            <span className={`font-semibold tabular-nums text-green-400 ${compact ? "text-sm" : "text-base"}`}>
               {formatCurrency(opp.reward_usd)}
             </span>
+          )}
+          {opp.hourly_rate_est != null && !compact && (
+            <span className="text-[10px] text-zinc-500 tabular-nums">{formatCurrency(opp.hourly_rate_est)}/hr</span>
           )}
           {!compact && (
             <div className="flex gap-1.5">
@@ -737,18 +587,18 @@ function OppRow({ opp, compact = false }: { opp: Opportunity; compact?: boolean 
                 <button
                   onClick={() => startTransition(() => dismissOpportunity(opp.id))}
                   disabled={pending}
-                  className="px-2.5 py-1 text-[9px] border border-[#007a1f]/30 text-[#007a1f] hover:text-[#00cc33] uppercase tracking-widest transition-colors"
+                  className="text-[10px] text-zinc-700 hover:text-zinc-400 transition-colors"
                 >
-                  [DISMISS]
+                  dismiss
                 </button>
               )}
               {opp.status === "queued" && (
                 <button
                   onClick={() => startTransition(() => markOpportunityInProgress(opp.id))}
                   disabled={pending}
-                  className="px-2.5 py-1 text-[9px] font-bold border border-[#00e5ff]/60 text-[#00e5ff] hover:bg-[#00e5ff]/10 uppercase tracking-widest transition-colors"
+                  className="text-[10px] text-zinc-400 hover:text-zinc-200 transition-colors"
                 >
-                  [START_WORK]
+                  start work
                 </button>
               )}
             </div>
@@ -766,69 +616,61 @@ function WorkQueueTab({ queue }: { queue: WorkItem[] }) {
   const done   = queue.filter(w =>  ["done","cancelled","failed"].includes(w.status));
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-1">
       {active.length === 0 && (
-        <div className="border border-[#007a1f]/30 bg-[#030603] px-6 py-8 text-center">
-          <p className="text-[11px] text-[#007a1f]">&gt; Queue empty — waiting for auto-discovery</p>
-          <p className="text-[9px] text-[#004d14] mt-2 font-mono">Opportunities are queued automatically — run the agent to begin</p>
-        </div>
+        <p className="text-[11px] text-zinc-700 py-6">
+          Queue empty. Opportunities are auto-queued when discovered — run the agent to begin.
+        </p>
       )}
       {active.map(w => (
-        <div key={w.id} className="border border-[#00ff41]/15 bg-[#030603] p-4">
+        <div key={w.id} className="border border-zinc-800 p-3 hover:border-zinc-700 transition-colors">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                <CyberBadge label={w.engine} className="text-[#007a1f] border-[#007a1f]/40" />
-                <CyberBadge label={w.status} className={STATUS_CYBER[w.status] ?? "text-[#004d14] border-[#004d14]/40"} />
-                <span className="text-[9px] text-[#004d14]">P{w.priority}</span>
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <StatusPill label={w.status} />
+                <span className="text-[10px] text-zinc-700">{w.engine}</span>
+                <span className="text-[10px] text-zinc-700">priority {w.priority}</span>
               </div>
-              <p className="text-[11px] text-[#00cc33]">{w.title}</p>
-              {w.description && <p className="text-[10px] text-[#004d14] mt-0.5 line-clamp-2">{w.description}</p>}
-              <div className="mt-2 flex items-center gap-4 text-[9px] text-[#004d14] flex-wrap">
+              <p className="text-[11px] text-zinc-200">{w.title}</p>
+              <div className="mt-1 flex items-center gap-3 text-[10px] text-zinc-600 flex-wrap">
                 <span>{w.hours_invested.toFixed(1)}h invested{w.estimated_hours ? ` / ${w.estimated_hours}h est` : ""}</span>
-                {(w as any).progress_pct > 0 && (
-                  <div className="flex items-center gap-1">
-                    <CyberBar value={(w as any).progress_pct} max={100} />
-                  </div>
-                )}
                 {(w as any).progress_note && (
-                  <span className="text-[#007a1f] truncate max-w-[240px]">{(w as any).progress_note}</span>
+                  <span className="text-zinc-500 truncate max-w-[300px]">{(w as any).progress_note}</span>
                 )}
               </div>
               {(w as any).pr_url && (
                 <a
                   href={(w as any).pr_url} target="_blank" rel="noopener noreferrer"
-                  className="text-[10px] text-[#00e5ff] hover:underline mt-1 block truncate max-w-sm"
+                  className="text-[10px] text-zinc-500 hover:text-zinc-300 mt-1 block truncate max-w-sm"
                 >
-                  PR → {(w as any).pr_url}
+                  {(w as any).pr_url}
                 </a>
               )}
             </div>
-            <div className="flex flex-col items-end gap-2 shrink-0">
+            <div className="shrink-0 text-right">
               {w.expected_usd != null && (
-                <span className="text-base font-bold tabular-nums text-[#00ff41]">{formatCurrency(w.expected_usd)}</span>
+                <span className="text-sm font-semibold tabular-nums text-green-400">{formatCurrency(w.expected_usd)}</span>
               )}
               {w.requires_approval && (
-                <div className="text-right">
-                  <p className="text-[9px] text-[#ffb800] font-bold uppercase tracking-wider">APPROVAL_REQ</p>
-                  <p className="text-[9px] text-[#007a1f] max-w-[160px] text-right">{w.approval_action}</p>
-                </div>
+                <p className="text-[10px] text-amber-400 mt-1">approval needed</p>
               )}
             </div>
           </div>
         </div>
       ))}
       {done.length > 0 && (
-        <details className="text-[10px] text-[#004d14]">
-          <summary className="cursor-pointer hover:text-[#007a1f] select-none uppercase tracking-widest">
-            [{done.length} completed/failed items]
+        <details className="text-[10px] text-zinc-700 pt-2">
+          <summary className="cursor-pointer hover:text-zinc-500 select-none">
+            {done.length} completed / failed
           </summary>
-          <div className="mt-2 space-y-1 pl-2 border-l border-[#007a1f]/20">
+          <div className="mt-2 space-y-1 pl-3 border-l border-zinc-800">
             {done.map(w => (
               <div key={w.id} className="flex items-center gap-2 py-0.5">
-                <CyberBadge label={w.status} className={STATUS_CYBER[w.status] ?? ""} />
-                <span className="text-[#004d14] truncate">{w.title}</span>
-                {w.expected_usd && <span className="text-[#004d14] tabular-nums ml-auto">{formatCurrency(w.expected_usd)}</span>}
+                <StatusPill label={w.status} />
+                <span className="text-zinc-600 truncate">{w.title}</span>
+                {w.expected_usd && (
+                  <span className="text-zinc-700 tabular-nums ml-auto">{formatCurrency(w.expected_usd)}</span>
+                )}
               </div>
             ))}
           </div>
@@ -842,53 +684,48 @@ function WorkQueueTab({ queue }: { queue: WorkItem[] }) {
 
 function AssetsTab({ assets }: { assets: Asset[] }) {
   const engines = ["asset", "product", "content"] as const;
+  const descriptions = {
+    asset:   "Tailwind kits, icon packs, templates — Gumroad/Itch.io",
+    product: "VS Code extensions, npm utilities, CLI tools",
+    content: "Educational videos, data explainers — YouTube/affiliate",
+  };
   return (
     <div className="space-y-6">
       {engines.map(eng => {
         const list = assets.filter(a => a.engine === eng);
         if (list.length === 0 && eng !== "asset") return null;
         return (
-          <div key={eng}>
-            <p className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em] mb-3">
-              ENGINE_{eng.toUpperCase()} :: {eng === "asset" ? "DIGITAL_ASSETS" : eng === "product" ? "SOFTWARE_PRODUCTS" : "CONTENT"}
-            </p>
+          <section key={eng}>
+            <p className="text-[10px] text-zinc-600 uppercase tracking-wider mb-2">{eng}</p>
             {list.length === 0 ? (
-              <div className="border border-[#007a1f]/20 bg-[#030603] px-5 py-4 text-[10px] text-[#004d14]">
-                {eng === "asset"   && "&gt; Build Tailwind kits, icon packs, templates — list on Gumroad/Itch.io"}
-                {eng === "product" && "&gt; Build VS Code extensions, npm utilities, CLI tools — distribute free-tier marketplaces"}
-                {eng === "content" && "&gt; Educational videos, data explainers — YouTube AdSense + affiliate"}
-              </div>
+              <p className="text-[11px] text-zinc-700">{descriptions[eng]}</p>
             ) : (
-              <div className="space-y-2">
+              <div className="divide-y divide-zinc-900">
                 {list.map(a => (
-                  <div key={a.id} className="border border-[#00ff41]/12 bg-[#030603] p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <CyberBadge label={a.status} className={STATUS_CYBER[a.status] ?? ""} />
-                          {a.marketplace && <span className="text-[9px] text-[#004d14]">{a.marketplace}</span>}
-                          {a.category && <span className="text-[9px] text-[#004d14]">{a.category}</span>}
-                        </div>
-                        <p className="text-[11px] text-[#00cc33]">{a.name}</p>
-                        {a.description && <p className="text-[10px] text-[#004d14] mt-0.5">{a.description}</p>}
-                        {a.listing_url && (
-                          <a href={a.listing_url} target="_blank" rel="noopener noreferrer"
-                            className="text-[10px] text-[#00e5ff] hover:underline mt-1 block truncate max-w-xs">
-                            {a.listing_url}
-                          </a>
-                        )}
+                  <div key={a.id} className="flex items-start justify-between gap-3 py-3">
+                    <div>
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <StatusPill label={a.status} />
+                        {a.marketplace && <span className="text-[10px] text-zinc-600">{a.marketplace}</span>}
                       </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-sm font-bold tabular-nums text-[#00ff41]">{formatCurrency(a.total_revenue)}</p>
-                        <p className="text-[10px] text-[#004d14]">{a.total_sales} sales</p>
-                        {a.quality_score && <p className="text-[10px] text-[#004d14]">Q{a.quality_score}</p>}
-                      </div>
+                      <p className="text-[11px] text-zinc-200">{a.name}</p>
+                      {a.description && <p className="text-[10px] text-zinc-600 mt-0.5">{a.description}</p>}
+                      {a.listing_url && (
+                        <a href={a.listing_url} target="_blank" rel="noopener noreferrer"
+                          className="text-[10px] text-zinc-500 hover:text-zinc-300 mt-1 block truncate max-w-xs">
+                          {a.listing_url}
+                        </a>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-semibold tabular-nums text-green-400">{formatCurrency(a.total_revenue)}</p>
+                      <p className="text-[10px] text-zinc-600">{a.total_sales} sales</p>
                     </div>
                   </div>
                 ))}
               </div>
             )}
-          </div>
+          </section>
         );
       })}
     </div>
@@ -904,64 +741,61 @@ function LedgerTab({ earnings }: { earnings: Earning[] }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          { label: "TOTAL_COLLECTED", value: formatCurrency(collected.reduce((s, e) => s + e.amount_usd, 0)), color: "text-[#00ff41]" },
-          { label: "PENDING",         value: formatCurrency(pendingList.reduce((s, e) => s + e.amount_usd, 0)), color: "text-[#ffb800]" },
-          { label: "TOTAL_RECORDS",   value: String(earnings.length), color: "text-[#00cc33]" },
-          { label: "COLLECTED_CNT",   value: String(collected.length), color: "text-[#00cc33]" },
-        ].map(item => (
-          <div key={item.label} className="border border-[#00ff41]/12 bg-[#030603] px-4 py-3">
-            <p className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em] mb-1">{item.label}</p>
-            <p className={`text-xl font-bold tabular-nums ${item.color}`}>{item.value}</p>
-          </div>
-        ))}
+      <div className="flex gap-6 text-[11px]">
+        <span>
+          <span className="text-green-400 font-semibold tabular-nums">
+            {formatCurrency(collected.reduce((s, e) => s + e.amount_usd, 0))}
+          </span>
+          <span className="text-zinc-600 ml-1">collected</span>
+        </span>
+        <span>
+          <span className="text-amber-400 font-semibold tabular-nums">
+            {formatCurrency(pendingList.reduce((s, e) => s + e.amount_usd, 0))}
+          </span>
+          <span className="text-zinc-600 ml-1">pending</span>
+        </span>
+        <span className="text-zinc-600">{earnings.length} records</span>
       </div>
 
       {earnings.length === 0 ? (
-        <div className="border border-[#007a1f]/30 bg-[#030603] px-6 py-8 text-center">
-          <p className="text-[11px] text-[#007a1f]">&gt; No earnings logged yet</p>
-        </div>
+        <p className="text-[11px] text-zinc-700 py-6">No earnings logged yet.</p>
       ) : (
-        <div className="border border-[#00ff41]/15 overflow-hidden">
-          <table className="w-full text-[10px] font-mono">
-            <thead className="bg-[#030603] border-b border-[#00ff41]/15">
-              <tr>
-                {["DATE", "DESCRIPTION", "SOURCE", "STATUS", "AMOUNT", ""].map(h => (
-                  <th key={h} className="px-4 py-2 text-left text-[9px] text-[#007a1f] uppercase tracking-[0.15em] font-bold">{h}</th>
-                ))}
+        <table className="w-full text-[11px] font-mono">
+          <thead className="border-b border-zinc-800">
+            <tr className="text-[10px] text-zinc-600">
+              <th className="text-left pb-2 pr-4">Date</th>
+              <th className="text-left pb-2 pr-4">Description</th>
+              <th className="text-left pb-2 pr-4">Source</th>
+              <th className="text-left pb-2 pr-4">Status</th>
+              <th className="text-right pb-2">Amount</th>
+              <th className="pb-2 w-6" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-900">
+            {earnings.map(e => (
+              <tr key={e.id} className="hover:bg-zinc-900/50 transition-colors">
+                <td className="py-2 pr-4 text-zinc-600 tabular-nums whitespace-nowrap">{e.earned_date}</td>
+                <td className="py-2 pr-4 text-zinc-300">{e.description}</td>
+                <td className="py-2 pr-4 text-zinc-600">{e.source}</td>
+                <td className="py-2 pr-4"><StatusPill label={e.status} /></td>
+                <td className={`py-2 text-right font-semibold tabular-nums ${e.status === "collected" ? "text-green-400" : "text-amber-400"}`}>
+                  {formatCurrency(e.amount_usd)}
+                </td>
+                <td className="py-2 pl-3">
+                  {e.status === "pending" && (
+                    <button
+                      onClick={() => startTransition(() => markEarningCollected(e.id))}
+                      disabled={pending}
+                      className="text-[10px] text-zinc-600 hover:text-zinc-300 transition-colors"
+                    >
+                      ✓
+                    </button>
+                  )}
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-[#00ff41]/8">
-              {earnings.map(e => (
-                <tr key={e.id} className="bg-black hover:bg-[#030603] transition-colors">
-                  <td className="px-4 py-2 text-[#004d14] tabular-nums whitespace-nowrap">{e.earned_date}</td>
-                  <td className="px-4 py-2 text-[#00cc33]">{e.description}</td>
-                  <td className="px-4 py-2 text-[#004d14]">{e.source}</td>
-                  <td className="px-4 py-2">
-                    <CyberBadge label={e.status} className={STATUS_CYBER[e.status] ?? ""} />
-                  </td>
-                  <td className={`px-4 py-2 text-sm font-bold tabular-nums text-right ${
-                    e.status === "collected" ? "text-[#00ff41]" : "text-[#ffb800]"
-                  }`}>
-                    {formatCurrency(e.amount_usd)}
-                  </td>
-                  <td className="px-2 py-2">
-                    {e.status === "pending" && (
-                      <button
-                        onClick={() => startTransition(() => markEarningCollected(e.id))}
-                        disabled={pending}
-                        className="text-[9px] border border-[#00ff41]/40 text-[#00ff41] hover:bg-[#00ff41]/10 px-1.5 py-0.5 uppercase tracking-wider transition-colors"
-                      >
-                        [✓COLLECTED]
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   );
@@ -973,36 +807,32 @@ function ApprovalsTab({ approvals }: { approvals: Approval[] }) {
   const [pending, startTransition] = useTransition();
 
   if (approvals.length === 0) {
-    return (
-      <div className="border border-[#007a1f]/30 bg-[#030603] px-6 py-8 text-center">
-        <p className="text-[11px] text-[#007a1f]">&gt; No pending approvals — system will request action when needed</p>
-      </div>
-    );
+    return <p className="text-[11px] text-zinc-700 py-6">No pending approvals.</p>;
   }
 
   const ACTION_LABELS: Record<string, string> = {
-    register_account: "CREATE_ACCT",
-    submit_pr:        "SUBMIT_PR",
-    publish_asset:    "PUBLISH",
-    claim_bounty:     "CLAIM_BOUNTY",
-    verify_identity:  "VERIFY_ID",
+    register_account: "Create account",
+    submit_pr:        "Submit PR",
+    publish_asset:    "Publish",
+    claim_bounty:     "Claim bounty",
+    verify_identity:  "Verify identity",
   };
 
   return (
     <div className="space-y-3">
       {approvals.map(a => (
-        <div key={a.id} className="border border-[#ffb800]/40 bg-[#1a0f00]/30 p-4">
+        <div key={a.id} className="border border-amber-400/20 p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                <CyberBadge label={ACTION_LABELS[a.action_type] ?? a.action_type} className="text-[#ffb800] border-[#ffb800]/50" />
-                <span className="text-[9px] text-[#007a1f]">P{a.priority}</span>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[10px] text-amber-400">{ACTION_LABELS[a.action_type] ?? a.action_type}</span>
+                <span className="text-[10px] text-zinc-700">priority {a.priority}</span>
               </div>
-              <p className="text-[11px] text-[#00cc33]">{a.title}</p>
-              <p className="text-[10px] text-[#007a1f] mt-1 leading-relaxed whitespace-pre-wrap">{a.description}</p>
+              <p className="text-[11px] text-zinc-200">{a.title}</p>
+              <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed whitespace-pre-wrap">{a.description}</p>
               {a.action_url && (
                 <a href={a.action_url} target="_blank" rel="noopener noreferrer"
-                  className="text-[10px] text-[#00e5ff] hover:underline mt-1.5 block">
+                  className="text-[10px] text-zinc-500 hover:text-zinc-300 mt-1.5 block">
                   {a.action_url}
                 </a>
               )}
@@ -1011,16 +841,16 @@ function ApprovalsTab({ approvals }: { approvals: Approval[] }) {
               <button
                 onClick={() => startTransition(() => approveAction(a.id))}
                 disabled={pending}
-                className="px-3 py-1.5 text-[9px] font-bold border border-[#00ff41]/60 text-[#00ff41] hover:bg-[#00ff41]/10 uppercase tracking-wider transition-colors disabled:opacity-40"
+                className="px-3 py-1.5 text-[10px] border border-zinc-600 text-zinc-300 hover:border-zinc-400 hover:text-zinc-100 transition-colors disabled:opacity-30"
               >
-                [✓ DONE]
+                done
               </button>
               <button
                 onClick={() => startTransition(() => rejectAction(a.id))}
                 disabled={pending}
-                className="px-3 py-1.5 text-[9px] border border-[#007a1f]/30 text-[#007a1f] hover:text-[#00cc33] uppercase tracking-wider transition-colors"
+                className="px-3 py-1.5 text-[10px] text-zinc-700 hover:text-zinc-500 transition-colors"
               >
-                [DISMISS]
+                dismiss
               </button>
             </div>
           </div>
@@ -1033,35 +863,30 @@ function ApprovalsTab({ approvals }: { approvals: Approval[] }) {
 // ── Activity log tab ──────────────────────────────────────────────────────────
 
 function ActivityTab({ entries }: { entries: ActivityEntry[] }) {
+  if (entries.length === 0) {
+    return <p className="text-[11px] text-zinc-700 py-6">No activity yet.</p>;
+  }
   return (
-    <div className="border border-[#00ff41]/15 bg-black overflow-hidden">
-      {entries.length === 0 ? (
-        <div className="px-6 py-8 text-center">
-          <p className="text-[11px] text-[#007a1f]">&gt; No activity logged yet</p>
-        </div>
-      ) : (
-        <table className="w-full text-[10px] font-mono">
-          <tbody className="divide-y divide-[#00ff41]/8">
-            {entries.map(a => (
-              <tr key={a.id} className="hover:bg-[#030603] transition-colors">
-                <td className="px-4 py-2 text-[#2a4d2a] whitespace-nowrap tabular-nums w-[7rem]">
-                  {new Date(a.created_at).toLocaleString("en-US", {
-                    month:"numeric", day:"numeric",
-                    hour:"2-digit", minute:"2-digit", hour12:false,
-                  })}
-                </td>
-                <td className={`px-3 py-2 w-[5rem] font-bold uppercase tracking-wider ${
-                  a.status === "error" ? "text-[#ff0040]" : a.status === "warning" ? "text-[#ffb800]" : "text-[#004d14]"
-                }`}>
-                  {(a.engine ?? "SYS").slice(0, 6)}
-                </td>
-                <td className="px-3 py-2 text-[#007a1f] w-[9rem]">{a.action}</td>
-                <td className="px-3 py-2 text-[#00cc33]">{a.detail}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
+    <table className="w-full text-[10px] font-mono">
+      <tbody className="divide-y divide-zinc-900">
+        {entries.map(a => (
+          <tr key={a.id} className="hover:bg-zinc-900/50 transition-colors">
+            <td className="py-2 pr-4 text-zinc-700 whitespace-nowrap tabular-nums w-28">
+              {new Date(a.created_at).toLocaleString("en-US", {
+                month:"numeric", day:"numeric",
+                hour:"2-digit", minute:"2-digit", hour12:false,
+              })}
+            </td>
+            <td className={`py-2 pr-3 w-20 ${
+              a.status === "error" ? "text-red-400" : a.status === "warning" ? "text-amber-400" : "text-zinc-600"
+            }`}>
+              {(a.engine ?? "sys").slice(0, 6)}
+            </td>
+            <td className="py-2 pr-3 text-zinc-600 w-32">{a.action}</td>
+            <td className="py-2 text-zinc-400">{a.detail}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
