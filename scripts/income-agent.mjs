@@ -128,7 +128,7 @@ for (const item of queuedItems) {
     // ── 2. Fork repo ──────────────────────────────────────────────────────────
     await progress(workId, 10, `Forking ${ghRepo}…`);
 
-    let forkRepo = ghRepo;
+    let forkRepo = null;
     try {
       const ghUser = run("gh api user --jq .login");
       forkRepo = `${ghUser}/${ghRepo.split("/")[1]}`;
@@ -141,8 +141,10 @@ for (const item of queuedItems) {
         await sleep(4000);
       }
     } catch (e) {
-      await progress(workId, 10, `Fork failed — will work directly on repo`);
-      forkRepo = ghRepo;
+      await progress(workId, 0, `Fork failed — cannot proceed without push access`);
+      await db.from("income_work_queue").update({ status: "failed" }).eq("id", workId);
+      await log(userId, "agent_skip", `Fork failed for: ${issueTitle}`, "warning");
+      continue;
     }
 
     // ── 3. Clone ──────────────────────────────────────────────────────────────
@@ -154,10 +156,13 @@ for (const item of queuedItems) {
 
     run(`gh repo clone ${forkRepo} "${cloneDir}" -- --depth=50 --quiet`);
 
-    // Set upstream if forked
-    if (forkRepo !== ghRepo) {
-      run(`git remote add upstream https://github.com/${ghRepo}.git`, { cwd: cloneDir });
+    // Override remote URL to use token directly (avoids Windows credential store mismatch)
+    if (GITHUB_TOKEN) {
+      run(`git remote set-url origin https://${GITHUB_TOKEN}@github.com/${forkRepo}.git`, { cwd: cloneDir });
     }
+
+    // Set upstream to original repo
+    run(`git remote add upstream https://github.com/${ghRepo}.git`, { cwd: cloneDir });
 
     // ── 4. Create branch ──────────────────────────────────────────────────────
     await progress(workId, 30, "Creating fix branch…");
