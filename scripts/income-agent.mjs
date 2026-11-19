@@ -255,7 +255,7 @@ ${fullIssueBody}
     const summaryPath = join(cloneDir, "AGENT_SUMMARY.md");
     const summary = existsSync(summaryPath)
       ? readFileSync(summaryPath, "utf8").trim()
-      : "(no summary written)";
+      : "";
 
     if (!hasChanges) {
       await progress(workId, 0, `Claude made no changes — ${summary.slice(0, 120)}`);
