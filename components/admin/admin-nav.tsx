@@ -22,6 +22,7 @@ import {
   Package,
   Map,
   Dumbbell,
+  Terminal,
 } from "lucide-react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { createClient } from "@/lib/supabase/client";
@@ -41,7 +42,8 @@ const NAV_ITEMS = [
 ];
 
 const OWNER_ITEMS = [
-  { href: "/map", label: "Live Map", icon: Map },
+  { href: "/map",     label: "Live Map", icon: Map      },
+  { href: "/monitor", label: "Monitor",  icon: Terminal  },
 ];
 
 const COLLAPSE_DEFAULT_SLUGS = ["mark", "didi", "kelsea"];
