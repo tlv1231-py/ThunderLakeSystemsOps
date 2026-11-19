@@ -187,6 +187,13 @@ for (const item of queuedItems) {
 
     await db.from("income_work_queue").update({ branch_name: branchName }).eq("id", workId);
 
+    // ── 4b. Claim the bounty on the platform (Opire, Algora, etc.) ───────────
+    await progress(workId, 32, "Claiming bounty…");
+    try {
+      // Post /opire try to claim the issue (Opire platform — payment on merge)
+      run(`gh api repos/${ghRepo}/issues/${issueNum}/comments -X POST -f body="/opire try"`);
+    } catch {}
+
     // ── 5. Fetch issue details ────────────────────────────────────────────────
     await progress(workId, 35, "Fetching full issue details…");
 
