@@ -5,6 +5,20 @@ import { createClient } from "@/lib/supabase/server";
 
 // ── Opportunity actions ───────────────────────────────────────────────────────
 
+export async function setActiveMode(on: boolean) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const db = supabase as any;
+  await db.from("income_activity_log").insert({
+    engine: "system", action: "active_mode",
+    status: on ? "on" : "off",
+    detail: on ? "Active Mode started" : "Active Mode stopped",
+    user_id: user.id,
+  });
+  revalidatePath("/income");
+}
+
 export async function dismissOpportunity(id: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
