@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { ActivityEntry } from "@/lib/income/types";
 
+const SCAN_INTERVAL_MS = 15 * 60 * 1000; // 15 min
+
 type TermLine = {
   id: string;
   ts: string;
@@ -30,68 +32,100 @@ function toTermLine(entry: ActivityEntry): TermLine {
   const ts = new Date(entry.created_at).toLocaleTimeString("en-US", {
     hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
   });
-
   const engine = (entry.engine ?? "SYS").toUpperCase().slice(0, 6).padEnd(6);
 
   let color = "text-[#00cc33]";
-  if (entry.status === "error")                        color = "text-[#ff0040]";
-  else if (entry.status === "warning")                 color = "text-[#ffb800]";
-  else if (entry.action === "agent_pr_opened")         color = "text-[#00ff41]";
-  else if (entry.action?.startsWith("discover"))       color = "text-[#00e5ff]";
-  else if (entry.action === "active_mode")             color = "text-[#ffb800]";
-  else if (entry.action === "opportunity_queued")      color = "text-[#00e5ff]";
+  if (entry.status === "error")                  color = "text-[#ff0040]";
+  else if (entry.status === "warning")           color = "text-[#ffb800]";
+  else if (entry.action === "agent_pr_opened")   color = "text-[#00ff41]";
+  else if (entry.action?.startsWith("discover")) color = "text-[#00e5ff]";
+  else if (entry.action === "active_mode")       color = "text-[#ffb800]";
+  else if (entry.action === "opportunity_queued") color = "text-[#00e5ff]";
 
   const actionLabel = ACTION_LABELS[entry.action] ?? entry.action.toUpperCase().slice(0, 10).padEnd(10);
-  const prefix = `[${engine}] ${actionLabel}`;
   const text = entry.detail ?? entry.action ?? "";
+  return { id: entry.id, ts, prefix: `[${engine}] ${actionLabel}`, text, color };
+}
 
-  return { id: entry.id, ts, prefix, text, color };
+function isDiscoveryEntry(entry: ActivityEntry) {
+  return entry.action === "discovery_run" || entry.action === "discover";
 }
 
 interface Props {
   initialEntries: ActivityEntry[];
+  lastDiscoveryRun: string | null;
 }
 
-export function IncomeTerminalFeed({ initialEntries }: Props) {
+export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun }: Props) {
   const [lines, setLines] = useState<TermLine[]>(() =>
     [...initialEntries].reverse().slice(0, 80).map(toTermLine)
   );
   const [connected, setConnected] = useState(false);
   const [blink, setBlink] = useState(true);
+  const [now, setNow] = useState(() => Date.now());
+  // Track last scan time — updated live when a discovery event arrives
+  const [lastScan, setLastScan] = useState<number | null>(() =>
+    lastDiscoveryRun ? new Date(lastDiscoveryRun).getTime() : null
+  );
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // Auto-scroll to bottom on new lines
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [lines]);
 
+  // Tick every second for the countdown
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Blinking cursor
   useEffect(() => {
     const t = setInterval(() => setBlink(b => !b), 530);
     return () => clearInterval(t);
   }, []);
 
+  // Supabase realtime
   useEffect(() => {
     const supabase = createClient();
-
     const channel = (supabase as any)
       .channel("income_terminal_feed")
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "income_activity_log" },
         (payload: any) => {
-          setLines(prev => [...prev.slice(-99), toTermLine(payload.new as ActivityEntry)]);
+          const entry = payload.new as ActivityEntry;
+          setLines(prev => [...prev.slice(-99), toTermLine(entry)]);
+          if (isDiscoveryEntry(entry)) {
+            setLastScan(new Date(entry.created_at).getTime());
+          }
         }
       )
-      .subscribe((status: string) => {
-        setConnected(status === "SUBSCRIBED");
-      });
+      .subscribe((status: string) => setConnected(status === "SUBSCRIBED"));
 
     return () => { supabase.removeChannel(channel); };
   }, []);
 
+  // Countdown display
+  const { label: countdownLabel, overdue } = (() => {
+    if (!lastScan) return { label: "NEVER_SCANNED", overdue: true };
+    const remaining = lastScan + SCAN_INTERVAL_MS - now;
+    if (remaining <= 0) {
+      const overdueSecs = Math.floor(Math.abs(remaining) / 1000);
+      const m = Math.floor(overdueSecs / 60);
+      const s = overdueSecs % 60;
+      return { label: `+${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")} OVERDUE`, overdue: true };
+    }
+    const m = Math.floor(remaining / 60000);
+    const s = Math.floor((remaining % 60000) / 1000);
+    return { label: `NEXT: ${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`, overdue: false };
+  })();
+
   return (
     <div className="flex flex-col h-full bg-black border border-[#00ff41]/20 font-mono overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#00ff41]/20 bg-[#030603] shrink-0">
+      {/* Header row 1: title + live status */}
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#00ff41]/10 bg-[#030603] shrink-0">
         <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em]">SYS::ACTIVITY_FEED</span>
         <div className="flex items-center gap-1.5">
           <span className={`inline-block w-1.5 h-1.5 rounded-full ${connected ? "bg-[#00ff41]" : "bg-[#ff0040]"}`} />
@@ -99,6 +133,16 @@ export function IncomeTerminalFeed({ initialEntries }: Props) {
             {connected ? "LIVE" : "CONN..."}
           </span>
         </div>
+      </div>
+
+      {/* Header row 2: countdown */}
+      <div className={`px-3 py-1.5 border-b border-[#00ff41]/20 bg-[#030603] shrink-0 flex items-center justify-between`}>
+        <span className="text-[9px] text-[#004d14] uppercase tracking-widest">DISCOVERY_CYCLE · 15:00</span>
+        <span className={`text-[11px] font-bold tabular-nums tracking-widest ${
+          overdue ? "text-[#ffb800] animate-pulse" : "text-[#00ff41]"
+        }`}>
+          {countdownLabel}
+        </span>
       </div>
 
       {/* Feed body */}

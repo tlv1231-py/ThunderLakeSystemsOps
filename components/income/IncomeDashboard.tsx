@@ -352,7 +352,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
 
           {/* Right: live terminal feed */}
           <div className="w-[340px] xl:w-[400px] shrink-0 h-[calc(100vh-280px)] sticky top-4">
-            <IncomeTerminalFeed initialEntries={summary.recentActivity} />
+            <IncomeTerminalFeed initialEntries={summary.recentActivity} lastDiscoveryRun={summary.lastDiscoveryRun} />
           </div>
         </div>
       </div>
