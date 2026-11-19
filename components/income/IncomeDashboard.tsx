@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/utils";
 import {
-  dismissOpportunity, queueOpportunity, markOpportunityInProgress,
+  dismissOpportunity, markOpportunityInProgress,
   approveAction, rejectAction, logEarning, markEarningCollected,
   createAsset, setActiveMode,
 } from "@/app/(admin)/income/actions";
@@ -212,12 +212,6 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
                 {activeMode && <span className="w-1.5 h-1.5 rounded-full bg-[#00ff41] animate-pulse" />}
                 ⚡ {activeMode ? "ACTIVE" : "ACTIVE_MODE"}
               </button>
-              <a
-                href="/income/select"
-                className="px-3 py-1.5 text-[10px] font-bold border border-[#ffb800]/60 text-[#ffb800] hover:bg-[#ffb800]/10 hover:shadow-[0_0_8px_rgba(255,184,0,0.2)] transition-all tracking-widest uppercase"
-              >
-                ▶ SELECT_BOUNTIES
-              </a>
               <button
                 onClick={handleDiscover}
                 disabled={discovering}
@@ -745,22 +739,13 @@ function OppRow({ opp, compact = false }: { opp: Opportunity; compact?: boolean 
           {!compact && (
             <div className="flex gap-1.5">
               {opp.status === "discovered" && (
-                <>
-                  <button
-                    onClick={() => startTransition(() => queueOpportunity(opp.id))}
-                    disabled={pending}
-                    className="px-2.5 py-1 text-[9px] font-bold border border-[#ffb800]/60 text-[#ffb800] hover:bg-[#ffb800]/10 uppercase tracking-widest transition-colors disabled:opacity-40"
-                  >
-                    [QUEUE]
-                  </button>
-                  <button
-                    onClick={() => startTransition(() => dismissOpportunity(opp.id))}
-                    disabled={pending}
-                    className="px-2.5 py-1 text-[9px] border border-[#007a1f]/30 text-[#007a1f] hover:text-[#00cc33] uppercase tracking-widest transition-colors"
-                  >
-                    [DISMISS]
-                  </button>
-                </>
+                <button
+                  onClick={() => startTransition(() => dismissOpportunity(opp.id))}
+                  disabled={pending}
+                  className="px-2.5 py-1 text-[9px] border border-[#007a1f]/30 text-[#007a1f] hover:text-[#00cc33] uppercase tracking-widest transition-colors"
+                >
+                  [DISMISS]
+                </button>
               )}
               {opp.status === "queued" && (
                 <button

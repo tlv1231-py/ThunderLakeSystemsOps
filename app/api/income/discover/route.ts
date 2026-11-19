@@ -116,21 +116,21 @@ export async function GET(req: Request) {
         .select("id").single();
       newCount++;
 
-      // Auto-queue high-scorers (score >= 80, has reward, no open PRs competing)
-      if (score >= 80 && opp.reward_usd && opp.open_prs === 0 && inserted && userId) {
+      // Auto-queue every new opportunity that has a reward and isn't already crowded
+      if (opp.reward_usd && opp.reward_usd > 0 && (opp.open_prs ?? 0) < 5 && inserted && userId) {
         await db.from("income_opportunities").update({ status: "queued" }).eq("id", inserted.id);
         await db.from("income_work_queue").insert({
           engine:          "bounty",
           title:           opp.title,
           description:     opp.description,
           status:          "pending",
-          priority:        score >= 90 ? 1 : 2,
+          priority:        score >= 85 ? 1 : score >= 60 ? 2 : 3,
           expected_usd:    opp.reward_usd,
           estimated_hours: estimated_hours,
           opportunity_id:  inserted.id,
           repo_url:        opp.repo_url,
           requires_approval: false,
-          progress_note:   "Auto-queued (score ≥ 80) — waiting for agent",
+          progress_note:   `Auto-queued (score ${score}, $${opp.reward_usd}) — waiting for agent`,
           progress_pct:    0,
           user_id:         userId,
         });

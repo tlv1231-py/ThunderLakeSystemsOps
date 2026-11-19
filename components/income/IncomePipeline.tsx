@@ -91,7 +91,7 @@ export function IncomePipeline({ initialItems, userId }: Props) {
       <div className="rounded-xl border border-zinc-800 bg-zinc-900 px-6 py-10 text-center">
         <p className="text-sm text-zinc-500 font-mono">Pipeline empty</p>
         <p className="text-xs text-zinc-700 mt-2 font-mono">
-          Go to <a href="/income/select" className="text-amber-600 hover:text-amber-400 underline">Selector</a> to queue bounties, then run the agent
+          Opportunities are queued automatically — run the agent to begin
         </p>
         <div className="mt-6 font-mono text-left inline-block">
           <p className="text-zinc-700 text-xs">$ node scripts/income-agent.mjs</p>
