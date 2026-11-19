@@ -83,6 +83,29 @@ function extractScore(note?: string | null): number | null {
   const m = note?.match(/score (\d+)/); return m ? +m[1] : null;
 }
 
+function ElapsedTimer({ since }: { since: string | null }) {
+  const [elapsed, setElapsed] = useState("");
+  useEffect(() => {
+    if (!since) return;
+    function tick() {
+      const ms = Date.now() - new Date(since!).getTime();
+      const s = Math.floor(ms / 1000);
+      const m = Math.floor(s / 60);
+      const h = Math.floor(m / 60);
+      const d = Math.floor(h / 24);
+      if (d > 0)      setElapsed(`${d}d ${h % 24}h`);
+      else if (h > 0) setElapsed(`${h}h ${m % 60}m`);
+      else if (m > 0) setElapsed(`${m}m ${s % 60}s`);
+      else            setElapsed(`${s}s`);
+    }
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [since]);
+  if (!elapsed) return null;
+  return <span className="text-xs text-sky-400 tabular-nums font-mono">{elapsed}</span>;
+}
+
 function scoreColor(s: number) {
   if (s >= 80) return "text-emerald-400";
   if (s >= 60) return "text-amber-400";
@@ -93,7 +116,7 @@ function scoreColor(s: number) {
 
 const S_LABEL: Record<string, string> = {
   pending: "waiting", in_progress: "working", review: "review",
-  submitted: "pr open", done: "merged", failed: "failed", cancelled: "—",
+  submitted: "submitted", done: "merged", failed: "failed", cancelled: "—",
 };
 
 const S_LABEL_CLS: Record<string, string> = {
@@ -171,10 +194,13 @@ function MissionCard({ item, fresh }: { item: any; fresh: boolean }) {
           )}
 
           {item.pr_url && (
-            <a href={item.pr_url} target="_blank" rel="noopener noreferrer"
-              className="text-xs text-zinc-600 hover:text-sky-400 transition-colors mt-1 block truncate">
-              ↗ {item.pr_url.replace("https://github.com/", "github.com/")}
-            </a>
+            <div className="flex items-center gap-3 mt-1">
+              <a href={item.pr_url} target="_blank" rel="noopener noreferrer"
+                className="text-xs text-zinc-600 hover:text-sky-400 transition-colors truncate">
+                ↗ {item.pr_url.replace("https://github.com/", "github.com/")}
+              </a>
+              {st === "submitted" && <ElapsedTimer since={item.completed_at ?? item.updated_at ?? null} />}
+            </div>
           )}
 
           {st === "done" && (
@@ -528,6 +554,10 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
                 {discoverResult}
               </span>
             )}
+            <button onClick={() => router.refresh()}
+              className="text-sm text-zinc-600 hover:text-zinc-300 transition-colors px-1" title="Refresh">
+              ↺
+            </button>
             <button
               onClick={handleDiscover}
               disabled={discovering}

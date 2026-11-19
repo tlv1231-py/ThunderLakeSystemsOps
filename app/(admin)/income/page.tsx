@@ -5,8 +5,8 @@ import type { IncomeSummary, Opportunity, Asset, WinRateBySource } from "@/lib/i
 
 export const metadata = { title: "Bounty Engine" };
 
-// Revalidate every 2 minutes
-export const revalidate = 120;
+// Always fetch fresh — agent updates DB directly without invalidating Next.js cache
+export const dynamic = "force-dynamic";
 
 export default async function IncomePage() {
   const supabase = await createClient();
