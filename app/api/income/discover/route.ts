@@ -91,8 +91,30 @@ export async function GET(req: Request) {
     if (existing) {
       await db.from("income_opportunities").update(record).eq("id", existing.id);
     } else {
-      await db.from("income_opportunities").insert({ ...record, status: "discovered" });
+      const { data: inserted } = await db.from("income_opportunities")
+        .insert({ ...record, status: "discovered" })
+        .select("id").single();
       newCount++;
+
+      // Auto-queue high-scorers (score >= 80, has reward, no open PRs competing)
+      if (score >= 80 && opp.reward_usd && opp.open_prs === 0 && inserted && userId) {
+        await db.from("income_opportunities").update({ status: "queued" }).eq("id", inserted.id);
+        await db.from("income_work_queue").insert({
+          engine:          "bounty",
+          title:           opp.title,
+          description:     opp.description,
+          status:          "pending",
+          priority:        score >= 90 ? 1 : 2,
+          expected_usd:    opp.reward_usd,
+          estimated_hours: estimated_hours,
+          opportunity_id:  inserted.id,
+          repo_url:        opp.repo_url,
+          requires_approval: false,
+          progress_note:   "Auto-queued (score ≥ 80) — waiting for agent",
+          progress_pct:    0,
+          user_id:         userId,
+        });
+      }
     }
   }
 
