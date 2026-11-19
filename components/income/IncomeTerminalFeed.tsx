@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { ActivityEntry } from "@/lib/income/types";
 
-// Cron fires at these UTC hours: 0, 4, 8, 12, 16, 20
-const CRON_SLOTS_UTC = [0, 4, 8, 12, 16, 20];
+// Cron fires every hour on the hour UTC
+const CRON_SLOTS_UTC = Array.from({ length: 24 }, (_, i) => i);
 function nextCronSlot(now: number): number {
   const d = new Date(now);
   const h = d.getUTCHours();
@@ -119,16 +119,12 @@ export function IncomeTerminalFeed({ initialEntries }: Props) {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Countdown display — based on next fixed UTC cron slot
+  // Countdown display — based on next fixed UTC cron slot (hourly)
   const { label: countdownLabel, overdue } = (() => {
     const remaining = nextCronSlot(now) - now;
-    const h = Math.floor(remaining / 3600000);
-    const m = Math.floor((remaining % 3600000) / 60000);
+    const m = Math.floor(remaining / 60000);
     const s = Math.floor((remaining % 60000) / 1000);
-    const label = h > 0
-      ? `NEXT: ${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`
-      : `NEXT: ${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
-    return { label, overdue: false };
+    return { label: `NEXT: ${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`, overdue: false };
   })();
 
   return (
@@ -146,7 +142,7 @@ export function IncomeTerminalFeed({ initialEntries }: Props) {
 
       {/* Header row 2: countdown */}
       <div className={`px-3 py-1.5 border-b border-[#00ff41]/20 bg-[#030603] shrink-0 flex items-center justify-between`}>
-        <span className="text-[9px] text-[#004d14] uppercase tracking-widest">DISCOVERY_CYCLE · 4:00:00</span>
+        <span className="text-[9px] text-[#004d14] uppercase tracking-widest">DISCOVERY_CYCLE · 1:00:00</span>
         <span className={`text-[11px] font-bold tabular-nums tracking-widest ${
           overdue ? "text-[#ffb800] animate-pulse" : "text-[#00ff41]"
         }`}>

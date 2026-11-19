@@ -403,8 +403,8 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
 
 // ── Next scan countdown ───────────────────────────────────────────────────────
 
-// Cron fires at these UTC hours: 0, 4, 8, 12, 16, 20
-const CRON_SLOTS_UTC = [0, 4, 8, 12, 16, 20];
+// Cron fires every hour on the hour UTC
+const CRON_SLOTS_UTC = Array.from({ length: 24 }, (_, i) => i);
 
 function nextCronSlot(now: number): number {
   const d = new Date(now);
@@ -429,19 +429,16 @@ function NextScanCountdown({ lastDiscoveryRun }: { lastDiscoveryRun: string | nu
   }, []);
 
   const remaining = nextCronSlot(now) - now;
-  const h = Math.floor(remaining / 3600000);
-  const m = Math.floor((remaining % 3600000) / 60000);
+  const m = Math.floor(remaining / 60000);
   const s = Math.floor((remaining % 60000) / 1000);
-  const display = h > 0
-    ? `${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`
-    : `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+  const display = `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
 
   const lastScanStr = lastDiscoveryRun
     ? new Date(lastDiscoveryRun).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })
     : null;
 
   return (
-    <div className="text-center min-w-[140px]">
+    <div className="text-center min-w-[120px]">
       <p className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em] mb-1">NEXT_SCAN</p>
       <p className="text-3xl font-bold tabular-nums tracking-widest text-[#00ff41]">{display}</p>
       <p className="text-[9px] text-[#004d14] mt-0.5 uppercase tracking-widest">
