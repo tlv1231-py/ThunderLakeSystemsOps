@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { ActivityEntry } from "@/lib/income/types";
 
-const SCAN_INTERVAL_MS = 15 * 60 * 1000; // 15 min
+const SCAN_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 h — cloud cron runs every 4h
 
 type TermLine = {
   id: string;
@@ -133,9 +133,13 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun }: Props) 
       }
       return { label, overdue: true };
     }
-    const m = Math.floor(remaining / 60000);
+    const h = Math.floor(remaining / 3600000);
+    const m = Math.floor((remaining % 3600000) / 60000);
     const s = Math.floor((remaining % 60000) / 1000);
-    return { label: `NEXT: ${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`, overdue: false };
+    const label = h > 0
+      ? `NEXT: ${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`
+      : `NEXT: ${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+    return { label, overdue: false };
   })();
 
   return (
@@ -153,7 +157,7 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun }: Props) 
 
       {/* Header row 2: countdown */}
       <div className={`px-3 py-1.5 border-b border-[#00ff41]/20 bg-[#030603] shrink-0 flex items-center justify-between`}>
-        <span className="text-[9px] text-[#004d14] uppercase tracking-widest">DISCOVERY_CYCLE · 15:00</span>
+        <span className="text-[9px] text-[#004d14] uppercase tracking-widest">DISCOVERY_CYCLE · 4:00:00</span>
         <span className={`text-[11px] font-bold tabular-nums tracking-widest ${
           overdue ? "text-[#ffb800] animate-pulse" : "text-[#00ff41]"
         }`}>
