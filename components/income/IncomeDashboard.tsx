@@ -403,7 +403,23 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
 
 // ── Next scan countdown ───────────────────────────────────────────────────────
 
-const SCAN_INTERVAL_MS = 4 * 60 * 60 * 1000;
+// Cron fires at these UTC hours: 0, 4, 8, 12, 16, 20
+const CRON_SLOTS_UTC = [0, 4, 8, 12, 16, 20];
+
+function nextCronSlot(now: number): number {
+  const d = new Date(now);
+  const h = d.getUTCHours();
+  const nextHour = CRON_SLOTS_UTC.find(s => s > h);
+  const next = new Date(d);
+  next.setUTCMinutes(0, 0, 0);
+  if (nextHour !== undefined) {
+    next.setUTCHours(nextHour);
+  } else {
+    next.setUTCDate(next.getUTCDate() + 1);
+    next.setUTCHours(CRON_SLOTS_UTC[0]);
+  }
+  return next.getTime();
+}
 
 function NextScanCountdown({ lastDiscoveryRun }: { lastDiscoveryRun: string | null }) {
   const [now, setNow] = useState(() => Date.now());
@@ -412,34 +428,24 @@ function NextScanCountdown({ lastDiscoveryRun }: { lastDiscoveryRun: string | nu
     return () => clearInterval(t);
   }, []);
 
-  if (!lastDiscoveryRun) {
-    return (
-      <div className="text-center min-w-[120px]">
-        <p className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em] mb-1">NEXT_SCAN</p>
-        <p className="text-2xl font-bold text-[#ffb800] tabular-nums animate-pulse">——</p>
-        <p className="text-[9px] text-[#004d14] mt-0.5 uppercase tracking-widest">never scanned</p>
-      </div>
-    );
-  }
-
-  const remaining = new Date(lastDiscoveryRun).getTime() + SCAN_INTERVAL_MS - now;
-  const overdue = remaining <= 0;
-  const abs = Math.abs(remaining);
-  const h = Math.floor(abs / 3600000);
-  const m = Math.floor((abs % 3600000) / 60000);
-  const s = Math.floor((abs % 60000) / 1000);
+  const remaining = nextCronSlot(now) - now;
+  const h = Math.floor(remaining / 3600000);
+  const m = Math.floor((remaining % 3600000) / 60000);
+  const s = Math.floor((remaining % 60000) / 1000);
   const display = h > 0
-    ? `${overdue ? "+" : ""}${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`
-    : `${overdue ? "+" : ""}${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+    ? `${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`
+    : `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+
+  const lastScanStr = lastDiscoveryRun
+    ? new Date(lastDiscoveryRun).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })
+    : null;
 
   return (
     <div className="text-center min-w-[140px]">
       <p className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em] mb-1">NEXT_SCAN</p>
-      <p className={`text-3xl font-bold tabular-nums tracking-widest ${overdue ? "text-[#ffb800] animate-pulse" : "text-[#00ff41]"}`}>
-        {display}
-      </p>
+      <p className="text-3xl font-bold tabular-nums tracking-widest text-[#00ff41]">{display}</p>
       <p className="text-[9px] text-[#004d14] mt-0.5 uppercase tracking-widest">
-        {overdue ? "overdue" : "until next crawl"}
+        {lastScanStr ? `last: ${lastScanStr}` : "never scanned"}
       </p>
     </div>
   );

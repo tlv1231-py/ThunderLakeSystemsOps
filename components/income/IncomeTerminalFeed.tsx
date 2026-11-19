@@ -4,7 +4,22 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { ActivityEntry } from "@/lib/income/types";
 
-const SCAN_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 h — cloud cron runs every 4h
+// Cron fires at these UTC hours: 0, 4, 8, 12, 16, 20
+const CRON_SLOTS_UTC = [0, 4, 8, 12, 16, 20];
+function nextCronSlot(now: number): number {
+  const d = new Date(now);
+  const h = d.getUTCHours();
+  const nextHour = CRON_SLOTS_UTC.find(s => s > h);
+  const next = new Date(d);
+  next.setUTCMinutes(0, 0, 0);
+  if (nextHour !== undefined) {
+    next.setUTCHours(nextHour);
+  } else {
+    next.setUTCDate(next.getUTCDate() + 1);
+    next.setUTCHours(CRON_SLOTS_UTC[0]);
+  }
+  return next.getTime();
+}
 
 type TermLine = {
   id: string;
@@ -55,26 +70,18 @@ function toTermLine(entry: ActivityEntry): TermLine {
   return { id: entry.id, ts, prefix: `[${engine}] ${actionLabel}`, text, color };
 }
 
-function isDiscoveryEntry(entry: ActivityEntry) {
-  return entry.action === "discovery_run" || entry.action === "discover";
-}
-
 interface Props {
   initialEntries: ActivityEntry[];
-  lastDiscoveryRun: string | null;
+  lastDiscoveryRun: string | null; // kept for API compat; countdown uses UTC cron slots instead
 }
 
-export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun }: Props) {
+export function IncomeTerminalFeed({ initialEntries }: Props) {
   const [lines, setLines] = useState<TermLine[]>(() =>
     [...initialEntries].reverse().slice(0, 80).map(toTermLine)
   );
   const [connected, setConnected] = useState(false);
   const [blink, setBlink] = useState(true);
   const [now, setNow] = useState(() => Date.now());
-  // Track last scan time — updated live when a discovery event arrives
-  const [lastScan, setLastScan] = useState<number | null>(() =>
-    lastDiscoveryRun ? new Date(lastDiscoveryRun).getTime() : null
-  );
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom on new lines
@@ -105,9 +112,6 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun }: Props) 
         (payload: any) => {
           const entry = payload.new as ActivityEntry;
           setLines(prev => [...prev.slice(-99), toTermLine(entry)]);
-          if (isDiscoveryEntry(entry)) {
-            setLastScan(new Date(entry.created_at).getTime());
-          }
         }
       )
       .subscribe((status: string) => setConnected(status === "SUBSCRIBED"));
@@ -115,24 +119,9 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun }: Props) 
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Countdown display
+  // Countdown display — based on next fixed UTC cron slot
   const { label: countdownLabel, overdue } = (() => {
-    if (!lastScan) return { label: "NEVER_SCANNED", overdue: true };
-    const remaining = lastScan + SCAN_INTERVAL_MS - now;
-    if (remaining <= 0) {
-      const overdueSecs = Math.floor(Math.abs(remaining) / 1000);
-      const totalMins = Math.floor(overdueSecs / 60);
-      let label: string;
-      if (totalMins >= 60) {
-        const h = Math.floor(totalMins / 60);
-        const m = totalMins % 60;
-        label = `+${h}h${String(m).padStart(2,"0")}m OVERDUE`;
-      } else {
-        const s = overdueSecs % 60;
-        label = `+${String(totalMins).padStart(2,"0")}:${String(s).padStart(2,"0")} OVERDUE`;
-      }
-      return { label, overdue: true };
-    }
+    const remaining = nextCronSlot(now) - now;
     const h = Math.floor(remaining / 3600000);
     const m = Math.floor((remaining % 3600000) / 60000);
     const s = Math.floor((remaining % 60000) / 1000);
