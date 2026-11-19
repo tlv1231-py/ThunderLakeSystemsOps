@@ -229,8 +229,8 @@ ${fullIssueBody}
       agent_log: claudeOutput.slice(-4000),
     }).eq("id", workId);
 
-    // Check if Claude made changes
-    const diffStat = run("git diff --stat HEAD", { cwd: cloneDir });
+    // Check if Claude made changes (git status --porcelain works even on empty-HEAD repos)
+    const diffStat = run("git status --porcelain", { cwd: cloneDir });
     const hasChanges = diffStat.trim().length > 0;
 
     // Check for summary
@@ -324,6 +324,7 @@ ${fullIssueBody}
 }
 
 console.log(`\n${"─".repeat(60)}\n✅  Agent run complete — check the Pipeline tab in TLS Ops\n`);
+process.exit(0);
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 function formatMoney(n) {
