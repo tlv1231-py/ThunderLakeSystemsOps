@@ -33,10 +33,7 @@ const CSS = `
   0%,100%{box-shadow:2px 0 12px rgba(255,255,255,0.15)}
   50%{box-shadow:2px 0 24px rgba(255,255,255,0.5)}
 }
-@keyframes scanDown {
-  from{transform:translateY(-100%)}
-  to{transform:translateY(2000px)}
-}
+
 @keyframes fadeUp {
   from{opacity:0;transform:translateY(8px)}
   to{opacity:1;transform:translateY(0)}
@@ -232,7 +229,7 @@ function Missions({ initialItems, userId }: { initialItems: any[]; userId: strin
   if (!active.length) {
     return (
       <p className="text-sm text-zinc-700 py-4">
-        No active missions. Run a scan then queue something.<span className="cursor ml-0.5">_</span>
+        No active bounties. Run a scan then queue something.<span className="cursor ml-0.5">_</span>
       </p>
     );
   }
@@ -284,8 +281,10 @@ function HeaderStats({ summary, winRate, allTimeUsd }: {
       </div>
       <Dot />
       <div>
-        <span className="text-lg font-semibold text-white tabular-nums">{summary.workQueue.filter(w => w.status === "pending").length}</span>
-        <span className="text-sm text-zinc-500 ml-1">queued</span>
+        <span className="text-lg font-semibold text-white tabular-nums">
+          {summary.workQueue.filter(w => !["done","failed","cancelled"].includes(w.status)).length}
+        </span>
+        <span className="text-sm text-zinc-500 ml-1">active</span>
       </div>
       <Dot />
       <div>
@@ -501,12 +500,6 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
     <div className="bg-black text-white font-mono -mx-4 -mt-6 -mb-6 min-h-screen relative overflow-hidden">
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
 
-      {/* Ambient scanline — slow sweep, barely visible */}
-      <div className="fixed inset-x-0 top-0 pointer-events-none z-0 overflow-hidden" style={{ height: "100vh" }}>
-        <div className="w-full h-16 bg-gradient-to-b from-transparent via-white/[0.025] to-transparent"
-          style={{ animation: "scanDown 10s linear infinite" }} />
-      </div>
-
       <div className="max-w-[960px] mx-auto px-6 py-6 relative z-10">
 
         {/* Scan progress bar */}
@@ -545,9 +538,9 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
           <AgentCTA count={pendingQueue.length} projected={summary.queueProjectedUsd} />
         )}
 
-        {/* ── active missions ──────────────────────────────────────────── */}
+        {/* ── bounties ────────────────────────────────────────────────── */}
         <section className="mb-8">
-          <SectionHeader label="Missions" count={activeMissions} />
+          <SectionHeader label="Bounties" count={activeMissions} />
           <Missions userId={userId} initialItems={pipelineItems} />
         </section>
 
