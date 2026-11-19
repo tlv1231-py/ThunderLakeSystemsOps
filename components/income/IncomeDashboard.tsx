@@ -390,7 +390,7 @@ function ScanContent({ opps, onDismiss, onQueue }: {
               <span className="text-sm text-emerald-400 tabular-nums shrink-0 font-medium">{usd(o.reward_usd)}</span>
             )}
             <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-              {o.status === "discovered" && (
+              {["discovered", "queued"].includes(o.status) && (
                 <button onClick={() => onQueue(o.id)}
                   className="text-xs text-zinc-500 hover:text-white border border-zinc-800 hover:border-zinc-500 px-2 py-0.5 transition-colors">queue</button>
               )}
