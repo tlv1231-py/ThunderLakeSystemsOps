@@ -174,8 +174,8 @@ for (const item of queuedItems) {
       run(`git remote set-url origin https://${GITHUB_TOKEN}@github.com/${forkRepo}.git`, { cwd: cloneDir });
     }
 
-    // Set upstream to original repo
-    run(`git remote add upstream https://github.com/${ghRepo}.git`, { cwd: cloneDir });
+    // gh repo clone sets upstream automatically when cloning a fork — skip if already set
+    try { run(`git remote add upstream https://github.com/${ghRepo}.git`, { cwd: cloneDir }); } catch {}
 
     // ── 4. Create branch ──────────────────────────────────────────────────────
     await progress(workId, 30, "Creating fix branch…");
