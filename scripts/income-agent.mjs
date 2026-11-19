@@ -125,6 +125,19 @@ for (const item of queuedItems) {
       continue;
     }
 
+    // ── 1b. Verify repo has content ───────────────────────────────────────────
+    await progress(workId, 8, "Checking repo has commits…");
+    try {
+      const repoMeta = JSON.parse(run(`gh api repos/${ghRepo} --jq '{size:.size}'`));
+      if (!repoMeta.size || repoMeta.size === 0) {
+        await progress(workId, 0, "Repo is empty — no code to fix");
+        await db.from("income_work_queue").update({ status: "failed" }).eq("id", workId);
+        await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
+        await log(userId, "agent_skip", `Empty repo: ${ghRepo}`, "warning");
+        continue;
+      }
+    } catch {}
+
     // ── 2. Fork repo ──────────────────────────────────────────────────────────
     await progress(workId, 10, `Forking ${ghRepo}…`);
 
