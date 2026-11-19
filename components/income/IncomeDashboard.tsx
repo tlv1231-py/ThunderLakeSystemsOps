@@ -226,6 +226,28 @@ function MissionCard({ item, fresh }: { item: any; fresh: boolean }) {
   );
 }
 
+// ── 8-bit new-bounty chime ────────────────────────────────────────────────────
+
+function playBountyChime() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const notes = [523.25, 659.25, 783.99, 1046.50]; // C5 E5 G5 C6
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "square";
+      osc.frequency.value = freq;
+      const t = ctx.currentTime + i * 0.09;
+      gain.gain.setValueAtTime(0.08, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+      osc.start(t);
+      osc.stop(t + 0.12);
+    });
+  } catch {}
+}
+
 // ── realtime missions ─────────────────────────────────────────────────────────
 
 function Missions({ initialItems, userId }: { initialItems: any[]; userId: string }) {
@@ -242,6 +264,7 @@ function Missions({ initialItems, userId }: { initialItems: any[]; userId: strin
           setItems(prev => [p.new, ...prev]);
           setFresh(prev => new Set([...prev, p.new.id]));
           setTimeout(() => setFresh(prev => { const n = new Set(prev); n.delete(p.new.id); return n; }), 1500);
+          if (p.new.status === "pending") playBountyChime();
         } else if (p.eventType === "UPDATE") {
           setItems(prev => prev.map(i => i.id === p.new.id ? { ...i, ...p.new } : i));
         } else if (p.eventType === "DELETE") {
@@ -573,16 +596,16 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
           <AgentCTA count={pendingQueue.length} projected={summary.queueProjectedUsd} />
         )}
 
-        {/* ── bounties ────────────────────────────────────────────────── */}
+        {/* ── pipeline ────────────────────────────────────────────────── */}
         <section className="mb-8">
-          <SectionHeader label="Bounties" count={activeMissions} />
+          <SectionHeader label="Pipeline" count={activeMissions} />
           <Missions userId={userId} initialItems={pipelineItems} />
         </section>
 
-        {/* ── queue ───────────────────────────────────────────────────── */}
+        {/* ── staged ──────────────────────────────────────────────────── */}
         {pendingQueue.length > 0 && (
           <section className="mb-8">
-            <SectionHeader label="Queue" count={pendingQueue.length} />
+            <SectionHeader label="Staged" count={pendingQueue.length} />
             <QueueList items={pendingQueue} />
           </section>
         )}
