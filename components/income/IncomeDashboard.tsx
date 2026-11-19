@@ -121,7 +121,7 @@ const S_LABEL: Record<string, string> = {
 
 const S_LABEL_CLS: Record<string, string> = {
   pending:     "text-zinc-500",
-  in_progress: "text-white slow-fade",
+  in_progress: "text-teal-400 slow-fade",
   review:      "text-amber-400",
   submitted:   "text-sky-400",
   done:        "text-emerald-400 green-glow",
@@ -171,6 +171,7 @@ function MissionCard({ item, fresh }: { item: any; fresh: boolean }) {
 
   const st: string = item.status ?? "pending";
   const pct = item.progress_pct ?? 0;
+  const score: number | null = item.income_opportunities?.score ?? extractScore(item.progress_note);
 
   return (
     <div className={`border-l-2 ${S_BORDER_CLS[st] ?? "border-l-zinc-800"} pl-4 py-3 group transition-all duration-200 hover:bg-zinc-950 ${fresh ? "fade-up" : ""}`}>
@@ -216,11 +217,16 @@ function MissionCard({ item, fresh }: { item: any; fresh: boolean }) {
           )}
         </div>
 
-        {item.expected_usd > 0 && (
-          <span className={`text-sm font-medium tabular-nums shrink-0 ${st === "done" ? "text-emerald-300" : "text-white"}`}>
-            {usd(item.expected_usd)}
-          </span>
-        )}
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          {item.expected_usd > 0 && (
+            <span className="text-sm font-medium tabular-nums text-emerald-400">
+              {usd(item.expected_usd)}
+            </span>
+          )}
+          {score != null && (
+            <span className={`text-xs font-mono tabular-nums ${scoreColor(score)}`}>{score}</span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -515,7 +521,10 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   const [tab, setTab] = useState<Tab>("scan");
   const [discovering, setDiscovering] = useState(false);
   const [discoverResult, setDiscoverResult] = useState<string | null>(null);
+  const [stagedCollapsed, setStagedCollapsed] = useState(true);
   const [, startT] = useTransition();
+
+  useEffect(() => { window.scrollTo(0, 0); }, []);
 
   const pendingQueue    = summary.workQueue.filter(w => w.status === "pending");
   const submittedCount  = pipelineItems.filter(w => w.status === "submitted").length;
@@ -600,8 +609,17 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
         {/* ── staged ──────────────────────────────────────────────────── */}
         {pendingQueue.length > 0 && (
           <section className="mb-8">
-            <SectionHeader label="Staged" count={pendingQueue.length} />
-            <QueueList items={pendingQueue} />
+            <div className="flex items-center justify-between mb-3">
+              <button
+                onClick={() => setStagedCollapsed(c => !c)}
+                className="flex items-center gap-2 text-xs text-zinc-500 uppercase tracking-widest hover:text-zinc-400 transition-colors"
+              >
+                staged
+                <span className="text-zinc-600 font-normal normal-case tracking-normal">[{pendingQueue.length}]</span>
+                <span className="text-zinc-700 text-[10px]">{stagedCollapsed ? "▸" : "▾"}</span>
+              </button>
+            </div>
+            {!stagedCollapsed && <QueueList items={pendingQueue} />}
           </section>
         )}
 

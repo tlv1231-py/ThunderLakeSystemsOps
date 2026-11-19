@@ -48,7 +48,7 @@ export default async function IncomePage() {
       .order("created_at", { ascending: false }).limit(50),
     db.from("income_assets").select("*").eq("user_id", user.id)
       .order("created_at", { ascending: false }).limit(50),
-    db.from("income_work_queue").select("*").eq("user_id", user.id)
+    db.from("income_work_queue").select("*, income_opportunities(score, source)").eq("user_id", user.id)
       .order("priority").order("created_at", { ascending: false }).limit(50),
     // Historical outcomes for win rate by source
     db.from("income_opportunities").select("source, status").eq("user_id", user.id)
