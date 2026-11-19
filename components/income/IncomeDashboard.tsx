@@ -85,6 +85,7 @@ function ScoreBar({ score }: { score: number }) {
   const empty  = 12 - filled;
   return (
     <div className="flex items-center gap-1.5">
+      <span className="text-[9px] text-[#004d14] uppercase tracking-widest">SCORE:</span>
       <span className="text-[10px] tabular-nums" style={{ color }}>
         {"▓".repeat(filled)}{"░".repeat(empty)}
       </span>
@@ -105,8 +106,13 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   const [showLogEarning, setShowLogEarning] = useState(false);
   const [oppFilter, setOppFilter] = useState<string>("all");
 
-  const activePipeline = pipelineItems.filter((w: any) => !["done","failed","cancelled"].includes(w.status)).length;
-  const pendingQueue   = summary.workQueue.filter(w => w.status === "pending").length;
+  const activePipeline  = pipelineItems.filter((w: any) => !["done","failed","cancelled"].includes(w.status)).length;
+  const pendingQueue    = summary.workQueue.filter(w => w.status === "pending").length;
+  const submittedCount  = pipelineItems.filter((w: any) => w.status === "submitted").length;
+  const inProgressCount = pipelineItems.filter((w: any) => w.status === "in_progress").length;
+  const doneCount       = pipelineItems.filter((w: any) => w.status === "done").length;
+  const paidCount       = allEarnings.filter(e => e.status === "collected").length;
+  const allTimeCollected = allEarnings.filter(e => e.status === "collected").reduce((s, e) => s + e.amount_usd, 0);
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "overview",      label: "OVERVIEW" },
@@ -260,54 +266,60 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
             accent={summary.weeklyProgress >= 1 ? "green" : "default"}
           />
           <CyberKpi
-            label="30D_COLLECTED"
-            value={formatCurrency(summary.collectedLast30Days)}
-            sub={summary.daysSinceLastPayment != null ? `${summary.daysSinceLastPayment}d since last pmt` : "No payments yet"}
+            label="ALL_TIME"
+            value={formatCurrency(allTimeCollected)}
+            sub={`${paidCount} payment${paidCount !== 1 ? "s" : ""} confirmed`}
+            accent={allTimeCollected > 0 ? "green" : "default"}
           />
           <CyberKpi
-            label="PENDING_PAYOUTS"
-            value={formatCurrency(summary.pendingTotal)}
-            sub={`${allEarnings.filter(e => e.status === "pending").length} items`}
-            accent={summary.pendingTotal > 0 ? "amber" : "default"}
+            label="TOTAL_QUEUED"
+            value={String(pendingQueue)}
+            sub={pendingQueue > 0 ? "run agent to process" : "queue empty"}
+            accent={pendingQueue > 0 ? "amber" : "default"}
           />
           <CyberKpi
-            label="HOURLY_RATE_EFF"
-            value={summary.effectiveHourly ? `${formatCurrency(summary.effectiveHourly)}/hr` : "——"}
-            sub={`${summary.hoursInvested.toFixed(1)}h invested`}
+            label="SUBMITTED_PRS"
+            value={String(submittedCount)}
+            sub={submittedCount > 0 ? `+${inProgressCount} in_progress` : `${inProgressCount} in_progress`}
+            accent={submittedCount > 0 ? "green" : "default"}
           />
         </div>
 
-        {/* ── Target progress ──────────────────────────────────────────────── */}
+        {/* ── Pipeline funnel ──────────────────────────────────────────────── */}
         <div className="border border-[#00ff41]/20 bg-[#030603] px-5 py-4 mb-4">
-          <div className="flex items-center justify-between flex-wrap gap-6">
-            <div>
-              <p className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em] mb-2">WEEKLY_TARGET_PROGRESS</p>
-              <CyberBar value={summary.collectedThisWeek} max={summary.weeklyTarget} />
-              <p className="text-[10px] text-[#004d14] mt-1">
-                {formatCurrency(summary.collectedThisWeek)} / {formatCurrency(summary.weeklyTarget)}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-6">
-              {(["bounty", "asset", "product", "content"] as const).map(eng => (
-                <div key={eng}>
-                  <p className="text-[9px] text-[#004d14] uppercase tracking-[0.15em] mb-1">ENG_{eng.toUpperCase()}</p>
-                  <p className="text-sm font-bold tabular-nums text-[#00ff41]">
-                    {formatCurrency(summary.byEngine[eng]?.collected ?? 0)}
+          <p className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em] mb-3">PIPELINE_FUNNEL</p>
+          <div className="flex items-stretch gap-0 overflow-x-auto">
+            {([
+              { label: "SCAN",      value: summary.activeOpportunities, color: "#00e5ff", desc: "discovered" },
+              { label: "QUEUE",     value: pendingQueue,                 color: "#00e5ff", desc: "ready" },
+              { label: "WORKING",   value: inProgressCount,             color: "#ffb800", desc: "in_progress" },
+              { label: "SUBMITTED", value: submittedCount,              color: "#ff8c00", desc: "PRs open" },
+              { label: "MERGED",    value: doneCount,                   color: "#00ff41", desc: "accepted" },
+              { label: "PAID",      value: paidCount,                   color: "#00ff41", desc: "confirmed" },
+            ] as const).map((stage, i, arr) => (
+              <div key={stage.label} className="flex items-stretch min-w-0">
+                <div className="flex flex-col items-center px-5 py-2 min-w-[90px]">
+                  <p className="text-[9px] uppercase tracking-[0.15em] mb-1" style={{ color: stage.value > 0 ? stage.color : "#004d14" }}>
+                    {stage.label}
                   </p>
-                  {(summary.byEngine[eng]?.pending ?? 0) > 0 && (
-                    <p className="text-[10px] text-[#ffb800] tabular-nums">
-                      +{formatCurrency(summary.byEngine[eng].pending)} pend
-                    </p>
-                  )}
+                  <p className="text-2xl font-bold tabular-nums" style={{ color: stage.value > 0 ? stage.color : "#1a4d1a" }}>
+                    {stage.value}
+                  </p>
+                  <p className="text-[9px] text-[#004d14] mt-0.5 uppercase tracking-wider">{stage.desc}</p>
                 </div>
-              ))}
-            </div>
-            <div>
-              <p className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em] mb-1">GAP_TO_TARGET</p>
-              <p className="text-2xl font-bold text-[#00ff41] tabular-nums">
-                {formatCurrency(Math.max(0, summary.weeklyTarget - summary.collectedThisWeek))}
-              </p>
-              <p className="text-[9px] text-[#004d14] mt-0.5 uppercase tracking-widest">needed this week</p>
+                {i < arr.length - 1 && (
+                  <div className="flex items-center px-1 text-[#007a1f] text-sm self-center">▶</div>
+                )}
+              </div>
+            ))}
+            <div className="ml-auto flex items-center pl-6 border-l border-[#00ff41]/20">
+              <div>
+                <p className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em] mb-1">WEEK_PROGRESS</p>
+                <CyberBar value={summary.collectedThisWeek} max={summary.weeklyTarget} />
+                <p className="text-[10px] text-[#004d14] mt-1 tabular-nums">
+                  {formatCurrency(summary.collectedThisWeek)} / {formatCurrency(summary.weeklyTarget)}
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -385,98 +397,113 @@ function CyberKpi({
 // ── Overview tab ──────────────────────────────────────────────────────────────
 
 function OverviewTab({ summary, onTabChange }: { summary: IncomeSummary; onTabChange: (t: Tab) => void }) {
+  const activePipelineItems = summary.workQueue.filter(w => !["done","cancelled","failed"].includes(w.status));
+  const queueReady          = summary.workQueue.filter(w => w.status === "pending");
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      {/* Top opportunities */}
-      <div className="border border-[#00ff41]/20 bg-[#030603]">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-[#00ff41]/20">
-          <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em]">TOP_OPPORTUNITIES</span>
-          <button onClick={() => onTabChange("opportunities")} className="text-[9px] text-[#007a1f] hover:text-[#00ff41] uppercase tracking-widest">[VIEW_ALL →]</button>
+    <div className="space-y-4">
+      {/* Row 1: Active pipeline (full width) */}
+      <div className="border border-[#ffb800]/30 bg-[#030603]">
+        <div className="flex items-center justify-between px-4 py-2 border-b border-[#ffb800]/20">
+          <span className="text-[9px] text-[#ffb800] uppercase tracking-[0.2em]">⚙ ACTIVE_PIPELINE</span>
+          <button onClick={() => onTabChange("pipeline")} className="text-[9px] text-[#007a1f] hover:text-[#00ff41] uppercase tracking-widest">[VIEW_ALL →]</button>
         </div>
-        <div className="divide-y divide-[#00ff41]/10">
-          {summary.topOpportunities.slice(0, 6).map(opp => (
-            <OppRow key={opp.id} opp={opp} compact />
-          ))}
-          {summary.topOpportunities.length === 0 && (
-            <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; No opportunities — run scan to find bounties</p>
-          )}
+        {activePipelineItems.length === 0 ? (
+          <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; No active work — select opportunities and run agent to begin</p>
+        ) : (
+          <div className="divide-y divide-[#ffb800]/10">
+            {activePipelineItems.slice(0, 5).map(w => (
+              <div key={w.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] text-[#00cc33] truncate">{w.title}</p>
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    <span className="text-[9px] text-[#004d14] uppercase tracking-wider">{w.engine}</span>
+                    {(w as any).progress_note && (
+                      <span className="text-[9px] text-[#007a1f] truncate max-w-[200px]">{(w as any).progress_note}</span>
+                    )}
+                    {(w as any).pr_url && (
+                      <a href={(w as any).pr_url} target="_blank" rel="noopener noreferrer"
+                        className="text-[9px] text-[#00e5ff] hover:underline truncate max-w-[200px]">
+                        PR → {(w as any).pr_url.replace("https://github.com/","gh/")}
+                      </a>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <CyberBadge label={w.status} className={STATUS_CYBER[w.status] ?? "text-[#004d14] border-[#004d14]/40"} />
+                  {w.expected_usd && <span className="text-[11px] tabular-nums text-[#00ff41] font-bold">{formatCurrency(w.expected_usd)}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Row 2: Queue ready + Top picks */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Queue ready to work */}
+        <div className="border border-[#00e5ff]/30 bg-[#030603]">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-[#00e5ff]/20">
+            <span className="text-[9px] text-[#00e5ff] uppercase tracking-[0.2em]">⬡ QUEUE_READY</span>
+            <button onClick={() => onTabChange("queue")} className="text-[9px] text-[#007a1f] hover:text-[#00ff41] uppercase tracking-widest">[RUN_AGENT →]</button>
+          </div>
+          <div className="divide-y divide-[#00e5ff]/10">
+            {queueReady.length === 0 ? (
+              <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; No queued items — scan for opportunities</p>
+            ) : (
+              queueReady.slice(0, 5).map(w => (
+                <div key={w.id} className="flex items-center justify-between gap-2 px-4 py-2.5">
+                  <p className="text-[11px] text-[#00cc33] truncate flex-1">{w.title}</p>
+                  {w.expected_usd && <span className="text-[11px] tabular-nums text-[#00e5ff] font-bold shrink-0">{formatCurrency(w.expected_usd)}</span>}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Top opportunities pick list */}
+        <div className="border border-[#00ff41]/20 bg-[#030603]">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-[#00ff41]/20">
+            <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em]">TOP_PICKS</span>
+            <button onClick={() => onTabChange("opportunities")} className="text-[9px] text-[#007a1f] hover:text-[#00ff41] uppercase tracking-widest">[VIEW_ALL →]</button>
+          </div>
+          <div className="divide-y divide-[#00ff41]/10">
+            {summary.topOpportunities.slice(0, 5).map(opp => (
+              <OppRow key={opp.id} opp={opp} compact />
+            ))}
+            {summary.topOpportunities.length === 0 && (
+              <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; No opportunities — run scan to find bounties</p>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Work queue */}
+      {/* Row 3: Recent earnings */}
       <div className="border border-[#00ff41]/20 bg-[#030603]">
         <div className="flex items-center justify-between px-4 py-2 border-b border-[#00ff41]/20">
-          <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em]">ACTIVE_WORK</span>
-          <button onClick={() => onTabChange("queue")} className="text-[9px] text-[#007a1f] hover:text-[#00ff41] uppercase tracking-widest">[VIEW_ALL →]</button>
+          <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em]">EARNINGS_LEDGER</span>
+          <button onClick={() => onTabChange("ledger")} className="text-[9px] text-[#007a1f] hover:text-[#00ff41] uppercase tracking-widest">[FULL_LEDGER →]</button>
         </div>
-        <div className="divide-y divide-[#00ff41]/10">
-          {summary.workQueue.filter(w => w.status !== "done" && w.status !== "cancelled").slice(0, 5).map(w => (
-            <div key={w.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-              <div className="min-w-0">
-                <p className="text-[11px] text-[#00cc33] truncate">{w.title}</p>
-                <p className="text-[9px] text-[#004d14] uppercase tracking-wider">{w.engine} · {w.hours_invested.toFixed(1)}h</p>
+        {summary.recentEarnings.length === 0 ? (
+          <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; No earnings logged yet</p>
+        ) : (
+          <div className="divide-y divide-[#00ff41]/10">
+            {summary.recentEarnings.slice(0, 4).map(e => (
+              <div key={e.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <div>
+                  <p className="text-[11px] text-[#00cc33]">{e.description}</p>
+                  <p className="text-[9px] text-[#004d14] uppercase tracking-wider">{e.source} · {e.earned_date}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <CyberBadge label={e.status} className={STATUS_CYBER[e.status] ?? ""} />
+                  <span className={`text-sm font-bold tabular-nums ${e.status === "collected" ? "text-[#00ff41]" : "text-[#ffb800]"}`}>
+                    {formatCurrency(e.amount_usd)}
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <CyberBadge label={w.status} className={STATUS_CYBER[w.status] ?? "text-[#004d14] border-[#004d14]/40"} />
-                {w.expected_usd && <span className="text-[11px] tabular-nums text-[#00ff41]">{formatCurrency(w.expected_usd)}</span>}
-              </div>
-            </div>
-          ))}
-          {summary.workQueue.length === 0 && (
-            <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; Queue empty — select an opportunity to begin</p>
-          )}
-        </div>
-      </div>
-
-      {/* Recent earnings */}
-      <div className="border border-[#00ff41]/20 bg-[#030603]">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-[#00ff41]/20">
-          <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em]">RECENT_EARNINGS</span>
-          <button onClick={() => onTabChange("ledger")} className="text-[9px] text-[#007a1f] hover:text-[#00ff41] uppercase tracking-widest">[LEDGER →]</button>
-        </div>
-        <div className="divide-y divide-[#00ff41]/10">
-          {summary.recentEarnings.slice(0, 6).map(e => (
-            <div key={e.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-              <div>
-                <p className="text-[11px] text-[#00cc33]">{e.description}</p>
-                <p className="text-[9px] text-[#004d14] uppercase tracking-wider">{e.source} · {e.earned_date}</p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <CyberBadge label={e.status} className={STATUS_CYBER[e.status] ?? ""} />
-                <span className={`text-sm font-bold tabular-nums ${e.status === "collected" ? "text-[#00ff41]" : "text-[#ffb800]"}`}>
-                  {formatCurrency(e.amount_usd)}
-                </span>
-              </div>
-            </div>
-          ))}
-          {summary.recentEarnings.length === 0 && (
-            <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; No earnings logged yet</p>
-          )}
-        </div>
-      </div>
-
-      {/* Activity preview */}
-      <div className="border border-[#00ff41]/20 bg-[#030603]">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-[#00ff41]/20">
-          <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em]">SYS_ACTIVITY</span>
-          <button onClick={() => onTabChange("log")} className="text-[9px] text-[#007a1f] hover:text-[#00ff41] uppercase tracking-widest">[FULL_LOG →]</button>
-        </div>
-        <div className="px-4 py-2 space-y-px">
-          {summary.recentActivity.slice(0, 8).map(a => (
-            <div key={a.id} className="flex items-baseline gap-2 py-0.5 text-[10px]">
-              <span className="text-[#2a4d2a] shrink-0 tabular-nums w-[44px]">
-                {new Date(a.created_at).toLocaleTimeString("en-US", { hour:"2-digit", minute:"2-digit", hour12:false })}
-              </span>
-              <span className={`font-bold uppercase shrink-0 w-[52px] ${
-                a.status === "error" ? "text-[#ff0040]" : a.status === "warning" ? "text-[#ffb800]" : "text-[#004d14]"
-              }`}>{(a.engine ?? "SYS").slice(0,6)}</span>
-              <span className="text-[#008f21] truncate">{a.detail ?? a.action}</span>
-            </div>
-          ))}
-          {summary.recentActivity.length === 0 && (
-            <p className="text-[10px] text-[#004d14] py-3">&gt; No activity yet</p>
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -578,7 +605,7 @@ function OppRow({ opp, compact = false }: { opp: Opportunity; compact?: boolean 
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
           {opp.reward_usd != null && (
-            <span className="text-lg font-bold tabular-nums text-[#00ff41] shadow-[0_0_8px_rgba(0,255,65,0.3)]">
+            <span className={`font-bold tabular-nums text-[#00ff41] shadow-[0_0_8px_rgba(0,255,65,0.3)] ${compact ? "text-sm" : "text-lg"}`}>
               {formatCurrency(opp.reward_usd)}
             </span>
           )}
