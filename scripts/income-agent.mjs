@@ -33,6 +33,12 @@ const env = Object.fromEntries(
     .map(l => { const i = l.indexOf("="); return [l.slice(0, i).trim(), l.slice(i + 1).trim().replace(/^["']|["']$/g, "")]; })
 );
 
+// Repos/patterns known to be fake bounty aggregators or scam listings
+const REPO_BLOCKLIST = [
+  "bounty-plaza", "bounty-board", "bounty-list", "bounties-list",
+  "crypto-bounty", "web3-bounty", "defi-bounty",
+];
+
 const SUPABASE_URL      = env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY      = env.SUPABASE_SERVICE_ROLE_KEY;
 const GITHUB_TOKEN      = env.GITHUB_TOKEN ?? "";
@@ -86,6 +92,15 @@ for (const item of queuedItems) {
   const opp = item.income_opportunities;
   if (!opp) {
     console.log(`⚠  Work item ${item.id} has no linked opportunity — skipping`);
+    continue;
+  }
+
+  // Skip fake bounty aggregator repos
+  const repoLower = (opp.repo_url ?? opp.url ?? "").toLowerCase();
+  if (REPO_BLOCKLIST.some(p => repoLower.includes(p))) {
+    console.log(`  🚫  Blocked repo pattern — skipping`);
+    await db.from("income_work_queue").update({ status: "failed", progress_note: "Blocked: fake bounty aggregator repo" }).eq("id", item.id);
+    await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
     continue;
   }
 
@@ -378,18 +393,7 @@ A clean UNCERTAIN is better than a bad PR.
       status: prUrl ? "submitted" : "in_progress",
     }).eq("id", opp.id);
 
-    if (prUrl) {
-      await db.from("income_approvals").insert({
-        title:       `PR submitted: ${issueTitle.slice(0, 80)}`,
-        description: `A pull request was automatically submitted for the bounty.\n\n**PR:** ${prUrl}\n**Reward:** ${formatMoney(opp.reward_usd)}\n\nMark done here once it's merged and you've received payment.`,
-        action_type: "claim_bounty",
-        action_url:  prUrl,
-        status:      "pending",
-        priority:    1,
-        opportunity_id: opp.id,
-        user_id:     userId,
-      });
-    }
+    // No approval record — pipeline is fully autonomous. Monitor the board directly.
 
     await log(userId, "agent_pr_opened", `${issueTitle} → ${prUrl || "no PR"}`, prUrl ? "ok" : "warning");
 

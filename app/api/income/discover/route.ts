@@ -66,8 +66,17 @@ export async function GET(req: Request) {
   let newCount  = 0;
   let skipCount = 0;
 
+  const REPO_BLOCKLIST = [
+    "bounty-plaza", "bounty-board", "bounty-list", "bounties-list",
+    "crypto-bounty", "web3-bounty", "defi-bounty",
+  ];
+
   for (const opp of opportunities) {
     if (!opp.external_id) continue;
+
+    // Drop known fake bounty aggregator repos before storing
+    const repoLower = (opp.repo_url ?? opp.url ?? "").toLowerCase();
+    if (REPO_BLOCKLIST.some(p => repoLower.includes(p))) { skipCount++; continue; }
 
     // Check if already dismissed or in-progress
     const { data: existing } = await db

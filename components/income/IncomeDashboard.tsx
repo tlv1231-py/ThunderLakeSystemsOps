@@ -414,7 +414,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
               <button onClick={() => onApprove(a.id)}
                 className="text-sm border border-emerald-800 text-emerald-400 hover:border-emerald-400 hover:text-emerald-300 px-3 py-1 transition-colors">approve</button>
               <button onClick={() => onReject(a.id)}
-                className="text-sm text-zinc-700 hover:text-zinc-400 px-2 py-1 transition-colors">reject</button>
+                className="text-sm border border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-white px-3 py-1 transition-colors">reject</button>
             </div>
           </div>
         </div>
