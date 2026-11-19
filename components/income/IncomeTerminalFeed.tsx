@@ -121,9 +121,17 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun }: Props) 
     const remaining = lastScan + SCAN_INTERVAL_MS - now;
     if (remaining <= 0) {
       const overdueSecs = Math.floor(Math.abs(remaining) / 1000);
-      const m = Math.floor(overdueSecs / 60);
-      const s = overdueSecs % 60;
-      return { label: `+${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")} OVERDUE`, overdue: true };
+      const totalMins = Math.floor(overdueSecs / 60);
+      let label: string;
+      if (totalMins >= 60) {
+        const h = Math.floor(totalMins / 60);
+        const m = totalMins % 60;
+        label = `+${h}h${String(m).padStart(2,"0")}m OVERDUE`;
+      } else {
+        const s = overdueSecs % 60;
+        label = `+${String(totalMins).padStart(2,"0")}:${String(s).padStart(2,"0")} OVERDUE`;
+      }
+      return { label, overdue: true };
     }
     const m = Math.floor(remaining / 60000);
     const s = Math.floor((remaining % 60000) / 1000);
