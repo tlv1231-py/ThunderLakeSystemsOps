@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { discoverAllOpportunities } from "@/lib/income/discovery";
 import { scoreOpportunity } from "@/lib/income/scoring";
 
@@ -25,9 +26,17 @@ export async function GET(req: Request) {
 
   const db = createAdminClient() as any;
 
-  // Find the user to log under (the owner)
-  const { data: users } = await db.auth.admin.listUsers({ perPage: 1 });
-  const userId = users?.users?.[0]?.id ?? null;
+  // Try session first (browser-triggered), fall back to admin list (cron)
+  let userId: string | null = null;
+  try {
+    const userClient = await createClient();
+    const { data: { user } } = await userClient.auth.getUser();
+    userId = user?.id ?? null;
+  } catch {}
+  if (!userId) {
+    const { data: users } = await db.auth.admin.listUsers({ perPage: 1 });
+    userId = users?.users?.[0]?.id ?? null;
+  }
 
   const startMs = Date.now();
 
