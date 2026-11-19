@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/utils";
 import {
@@ -348,13 +348,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
               </div>
             ))}
             <div className="ml-auto flex items-center pl-6 border-l border-[#00ff41]/20">
-              <div>
-                <p className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em] mb-1">WEEK_PROGRESS</p>
-                <CyberBar value={summary.collectedThisWeek} max={summary.weeklyTarget} />
-                <p className="text-[10px] text-[#004d14] mt-1 tabular-nums">
-                  {formatCurrency(summary.collectedThisWeek)} / {formatCurrency(summary.weeklyTarget)}
-                </p>
-              </div>
+              <NextScanCountdown lastDiscoveryRun={summary.lastDiscoveryRun} />
             </div>
           </div>
         </div>
@@ -403,6 +397,50 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Next scan countdown ───────────────────────────────────────────────────────
+
+const SCAN_INTERVAL_MS = 4 * 60 * 60 * 1000;
+
+function NextScanCountdown({ lastDiscoveryRun }: { lastDiscoveryRun: string | null }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  if (!lastDiscoveryRun) {
+    return (
+      <div className="text-center min-w-[120px]">
+        <p className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em] mb-1">NEXT_SCAN</p>
+        <p className="text-2xl font-bold text-[#ffb800] tabular-nums animate-pulse">——</p>
+        <p className="text-[9px] text-[#004d14] mt-0.5 uppercase tracking-widest">never scanned</p>
+      </div>
+    );
+  }
+
+  const remaining = new Date(lastDiscoveryRun).getTime() + SCAN_INTERVAL_MS - now;
+  const overdue = remaining <= 0;
+  const abs = Math.abs(remaining);
+  const h = Math.floor(abs / 3600000);
+  const m = Math.floor((abs % 3600000) / 60000);
+  const s = Math.floor((abs % 60000) / 1000);
+  const display = h > 0
+    ? `${overdue ? "+" : ""}${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`
+    : `${overdue ? "+" : ""}${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+
+  return (
+    <div className="text-center min-w-[140px]">
+      <p className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em] mb-1">NEXT_SCAN</p>
+      <p className={`text-3xl font-bold tabular-nums tracking-widest ${overdue ? "text-[#ffb800] animate-pulse" : "text-[#00ff41]"}`}>
+        {display}
+      </p>
+      <p className="text-[9px] text-[#004d14] mt-0.5 uppercase tracking-widest">
+        {overdue ? "overdue" : "until next crawl"}
+      </p>
     </div>
   );
 }
