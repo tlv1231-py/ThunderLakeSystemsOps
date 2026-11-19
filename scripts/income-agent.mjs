@@ -304,7 +304,7 @@ A clean UNCERTAIN is better than a bad PR.
     let claudeOutput = "";
     try {
       claudeOutput = run(
-        `claude --dangerouslySkipPermissions --print "${claudePrompt.replace(/"/g, '\\"')}"`,
+        `claude --dangerously-skip-permissions --print "${claudePrompt.replace(/"/g, '\\"')}"`,
         { cwd: cloneDir, timeout: 600_000 }
       );
     } catch (e) {
@@ -316,9 +316,10 @@ A clean UNCERTAIN is better than a bad PR.
       agent_log: claudeOutput.slice(-4000),
     }).eq("id", workId);
 
-    // Check if Claude made changes (git status --porcelain works even on empty-HEAD repos)
+    // Check if Claude made real changes — exclude BOUNTY_TASK.md which we wrote ourselves
     const diffStat = run("git status --porcelain", { cwd: cloneDir });
-    const hasChanges = diffStat.trim().length > 0;
+    const realChanges = diffStat.split("\n").filter(l => l.trim() && !l.includes("BOUNTY_TASK.md")).join("\n");
+    const hasChanges = realChanges.trim().length > 0;
 
     // Check for summary
     const summaryPath = join(cloneDir, "AGENT_SUMMARY.md");
