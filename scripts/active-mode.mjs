@@ -37,6 +37,7 @@ let lastDiscovery    = 0;
 let totalNewBounties = 0;
 let totalPRs         = 0;
 let cycleCount       = 0;
+let activeModeOn     = false;
 
 function ts() { return new Date().toLocaleTimeString("en-US", { hour:"2-digit", minute:"2-digit", second:"2-digit" }); }
 function log(msg) { console.log(`[${ts()}] ${msg}`); }
@@ -119,26 +120,61 @@ async function tick() {
   }
 }
 
+// ── Watch Supabase for active mode toggle ────────────────────────────────────
+async function watchActiveModeFlag() {
+  // Check current state from DB
+  const { data } = await db.from("income_activity_log")
+    .select("status").eq("action", "active_mode")
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  activeModeOn = data?.status === "on";
+
+  // Subscribe to realtime changes
+  db.channel("active_mode_watch")
+    .on("postgres_changes", {
+      event: "INSERT", schema: "public", table: "income_activity_log",
+    }, (payload) => {
+      if (payload.new?.action === "active_mode") {
+        const wasOn = activeModeOn;
+        activeModeOn = payload.new.status === "on";
+        if (activeModeOn && !wasOn) {
+          hr();
+          log("⚡  Active Mode ON — starting loop");
+          lastDiscovery = 0; // trigger discovery immediately
+        } else if (!activeModeOn && wasOn) {
+          hr();
+          log("⏸   Active Mode OFF — pausing");
+        }
+      }
+    })
+    .subscribe();
+}
+
 async function main() {
   console.clear();
   hr();
-  console.log("⚡  TLS ACTIVE MODE");
-  console.log(`    Discovery: every 15 min`);
-  console.log(`    Agent:     on new items (5 min cooldown)`);
-  console.log(`    Stop:      Ctrl+C`);
+  console.log("⚡  TLS INCOME AGENT — background listener");
+  console.log(`    Watching for Active Mode signal from TLS Ops dashboard…`);
+  console.log(`    Stop: Ctrl+C`);
   hr();
 
-  // Run immediately on start
-  lastDiscovery = 0;
-  await tick();
+  await watchActiveModeFlag();
 
-  // Then loop every 60 seconds (checks whether intervals have elapsed)
-  const interval = setInterval(tick, 60_000);
+  if (activeModeOn) {
+    log("⚡  Active Mode already ON — starting immediately");
+    lastDiscovery = 0;
+  } else {
+    log("⏸   Active Mode OFF — waiting for dashboard signal");
+  }
+
+  // Check every 60 seconds; only runs discovery+agent when active mode is on
+  const interval = setInterval(async () => {
+    if (activeModeOn) await tick();
+  }, 60_000);
 
   process.on("SIGINT", () => {
     clearInterval(interval);
     hr();
-    log(`🛑  Active Mode stopped — ${totalNewBounties} new bounties found, ~${totalPRs} PRs submitted this session`);
+    log(`🛑  Stopped — ${totalNewBounties} new bounties found, ~${totalPRs} PRs this session`);
     process.exit(0);
   });
 }
