@@ -262,8 +262,8 @@ function QueueList({ items }: { items: any[] }) {
 
 function Dot() { return <span className="text-zinc-800 text-lg select-none">·</span>; }
 
-function HeaderStats({ summary, winRate, allTimeUsd }: {
-  summary: IncomeSummary; winRate: number; allTimeUsd: number;
+function HeaderStats({ summary, winRate, allTimeUsd, openPRs }: {
+  summary: IncomeSummary; winRate: number; allTimeUsd: number; openPRs: number;
 }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
@@ -285,6 +285,11 @@ function HeaderStats({ summary, winRate, allTimeUsd }: {
           {summary.workQueue.filter(w => !["done","failed","cancelled"].includes(w.status)).length}
         </span>
         <span className="text-sm text-zinc-500 ml-1">active</span>
+      </div>
+      <Dot />
+      <div>
+        <span className={`text-lg font-semibold tabular-nums ${openPRs > 0 ? "text-sky-400" : "text-zinc-500"}`}>{openPRs}</span>
+        <span className="text-sm text-zinc-500 ml-1">open PRs</span>
       </div>
       <Dot />
       <div>
@@ -515,7 +520,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
             <h1 className="text-base font-semibold text-white tracking-wide">
               Bounty Engine<span className="cursor ml-0.5 text-zinc-600">_</span>
             </h1>
-            <HeaderStats summary={summary} winRate={winRate} allTimeUsd={allTimeUsd} />
+            <HeaderStats summary={summary} winRate={winRate} allTimeUsd={allTimeUsd} openPRs={pipelineItems.filter(w => w.status === "submitted").length} />
           </div>
           <div className="flex items-center gap-3 shrink-0 mt-1">
             {discoverResult && (
