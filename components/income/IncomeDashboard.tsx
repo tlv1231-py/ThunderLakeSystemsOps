@@ -106,12 +106,13 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   const [oppFilter, setOppFilter] = useState<string>("all");
 
   const activePipeline = pipelineItems.filter((w: any) => !["done","failed","cancelled"].includes(w.status)).length;
+  const pendingQueue   = summary.workQueue.filter(w => w.status === "pending").length;
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "overview",      label: "OVERVIEW" },
     { id: "opportunities", label: "SCAN",     count: summary.activeOpportunities },
     { id: "pipeline",      label: "PIPELINE", count: activePipeline || undefined },
-    { id: "queue",         label: "QUEUE",    count: summary.workQueue.filter(w => w.status !== "done").length },
+    { id: "queue",         label: "QUEUE",    count: pendingQueue || undefined },
     { id: "assets",        label: "ASSETS",   count: allAssets.length },
     { id: "ledger",        label: "LEDGER",   count: allEarnings.length },
     { id: "approvals",     label: "APPROVE",  count: summary.pendingApprovals || undefined },
@@ -217,6 +218,24 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
             </div>
           </div>
         </div>
+
+        {/* ── Agent queue alert ───────────────────────────────────────────── */}
+        {pendingQueue > 0 && (
+          <div
+            className="mb-3 flex items-center justify-between px-4 py-3 border border-[#00ff41]/60 bg-[#00ff41]/5 cursor-pointer hover:bg-[#00ff41]/10 transition-colors"
+            onClick={() => setTab("queue")}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-[#00ff41] text-lg font-bold tabular-nums animate-pulse">{pendingQueue}</span>
+              <span className="text-[11px] text-[#00ff41] font-bold uppercase tracking-widest">
+                BOUNTIES_QUEUED — run agent to process
+              </span>
+            </div>
+            <code className="text-[10px] text-[#007a1f] border border-[#007a1f]/40 px-2 py-1 select-all">
+              node scripts/income-agent.mjs
+            </code>
+          </div>
+        )}
 
         {/* ── Approval banner ─────────────────────────────────────────────── */}
         {summary.pendingApprovals > 0 && (
