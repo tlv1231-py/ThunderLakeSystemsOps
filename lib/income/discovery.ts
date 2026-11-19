@@ -1,0 +1,198 @@
+import type { DiscoveredOpportunity } from "./types";
+
+const UA = "ThunderLakeSystems/1.0 (ops@thunderlakesystems.com)";
+const TIMEOUT = 12_000;
+
+// ── GitHub — search for bounty-labelled issues ────────────────────────────────
+export async function fetchGitHubBounties(): Promise<DiscoveredOpportunity[]> {
+  const queries = [
+    "label:bounty+is:open+is:issue",
+    "label:funded+is:open+is:issue",
+    "label:%22Bounty+Hunter%22+is:open+is:issue",
+  ];
+  const token = process.env.GITHUB_TOKEN;
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": UA,
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const seen = new Set<string>();
+  const results: DiscoveredOpportunity[] = [];
+
+  for (const q of queries) {
+    try {
+      const url = `https://api.github.com/search/issues?q=${q}&sort=updated&order=desc&per_page=40`;
+      const res = await fetch(url, { headers, signal: AbortSignal.timeout(TIMEOUT) });
+      if (!res.ok) continue;
+      const data = await res.json() as { items?: any[] };
+
+      for (const item of data.items ?? []) {
+        const extId = `github:${item.node_id}`;
+        if (seen.has(extId)) continue;
+        seen.add(extId);
+
+        const reward = extractReward(item.title + " " + (item.body ?? ""));
+        const language = item.repository_url
+          ? await fetchRepoLanguage(item.repository_url, headers)
+          : null;
+
+        results.push({
+          source: "github",
+          external_id: extId,
+          title: item.title,
+          description: (item.body ?? "").slice(0, 1000),
+          url: item.html_url,
+          repo_url: item.repository_url?.replace("https://api.github.com/repos/", "https://github.com/") ?? null,
+          reward_usd: reward,
+          reward_raw: reward ? `$${reward}` : null,
+          currency: "USD",
+          language,
+          difficulty: null,
+          estimated_hours: null,
+          tags: (item.labels ?? []).map((l: any) => l.name as string),
+          metadata: {
+            number: item.number,
+            repo: item.repository_url,
+            comments: item.comments,
+            reactions: item.reactions?.total_count ?? 0,
+          },
+          open_prs: 0,
+          deadline: null,
+        });
+      }
+    } catch { /* non-fatal — partial results are fine */ }
+  }
+
+  return results;
+}
+
+async function fetchRepoLanguage(
+  apiUrl: string,
+  headers: Record<string, string>,
+): Promise<string | null> {
+  try {
+    const res = await fetch(apiUrl, { headers, signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.language ?? null;
+  } catch { return null; }
+}
+
+// ── Algora.io — public bounty feed ────────────────────────────────────────────
+export async function fetchAlgoraBounties(): Promise<DiscoveredOpportunity[]> {
+  try {
+    const res = await fetch(
+      "https://console.algora.io/api/bounties?page=0&pageSize=50&status=OPEN",
+      {
+        headers: { "User-Agent": UA, Accept: "application/json" },
+        signal: AbortSignal.timeout(TIMEOUT),
+      },
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+
+    const items: any[] = Array.isArray(data) ? data : (data.items ?? data.bounties ?? data.data ?? []);
+    return items.map((b: any): DiscoveredOpportunity => ({
+      source: "algora",
+      external_id: String(b.id ?? b.bountyId ?? b.number ?? ""),
+      title: b.title ?? b.issue?.title ?? "Untitled",
+      description: (b.body ?? b.issue?.body ?? b.description ?? "").slice(0, 1000),
+      url: b.url ?? b.htmlUrl ?? b.issue?.url ?? `https://console.algora.io/bounties/${b.id}`,
+      repo_url: b.repoUrl ?? b.issue?.repoUrl ?? null,
+      reward_usd: parseFloat(b.amount ?? b.reward ?? "0") || null,
+      reward_raw: b.amountFormatted ?? (b.amount ? `$${b.amount}` : null),
+      currency: b.currency ?? "USD",
+      language: b.language ?? b.repo?.language ?? null,
+      difficulty: null,
+      estimated_hours: null,
+      tags: (b.labels ?? b.tags ?? []).map((t: any) => typeof t === "string" ? t : t.name),
+      metadata: { org: b.org ?? b.orgName, repo: b.repo ?? b.repoName },
+      open_prs: b.pullRequestCount ?? b.openPRs ?? 0,
+      deadline: b.deadline ?? null,
+    }));
+  } catch { return []; }
+}
+
+// ── IssueHunt — public REST API ───────────────────────────────────────────────
+export async function fetchIssueHuntBounties(): Promise<DiscoveredOpportunity[]> {
+  try {
+    const res = await fetch(
+      "https://issuehunt.io/api/v1/issues?page=1&per_page=50&sort=funded_at&state=open",
+      {
+        headers: { "User-Agent": UA, Accept: "application/json" },
+        signal: AbortSignal.timeout(TIMEOUT),
+      },
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    const items: any[] = Array.isArray(data) ? data : (data.issues ?? data.data ?? []);
+
+    return items.map((b: any): DiscoveredOpportunity => ({
+      source: "issuehunt",
+      external_id: String(b.id ?? b.issue_id ?? ""),
+      title: b.title ?? "Untitled",
+      description: (b.body ?? b.description ?? "").slice(0, 1000),
+      url: b.html_url ?? `https://issuehunt.io/r/${b.full_name}/${b.number}`,
+      repo_url: b.repo_url ?? null,
+      reward_usd: parseFloat(b.funded_by_sum ?? b.amount ?? "0") || null,
+      reward_raw: b.funded_by_sum ? `$${b.funded_by_sum}` : null,
+      currency: "USD",
+      language: b.language ?? null,
+      difficulty: null,
+      estimated_hours: null,
+      tags: (b.labels ?? []).map((l: any) => typeof l === "string" ? l : l.name),
+      metadata: { repo: b.full_name, number: b.number },
+      open_prs: b.prs_count ?? 0,
+      deadline: b.paid_at ?? null,
+    }));
+  } catch { return []; }
+}
+
+// ── Run all sources and deduplicate ──────────────────────────────────────────
+export async function discoverAllOpportunities(): Promise<{
+  opportunities: DiscoveredOpportunity[];
+  log: { source: string; count: number; error?: string }[];
+}> {
+  const log: { source: string; count: number; error?: string }[] = [];
+
+  const [github, algora, issuehunt] = await Promise.allSettled([
+    fetchGitHubBounties(),
+    fetchAlgoraBounties(),
+    fetchIssueHuntBounties(),
+  ]);
+
+  const all: DiscoveredOpportunity[] = [];
+
+  for (const [name, result] of [
+    ["github", github], ["algora", algora], ["issuehunt", issuehunt],
+  ] as [string, PromiseSettledResult<DiscoveredOpportunity[]>][]) {
+    if (result.status === "fulfilled") {
+      all.push(...result.value);
+      log.push({ source: name, count: result.value.length });
+    } else {
+      log.push({ source: name, count: 0, error: String(result.reason) });
+    }
+  }
+
+  // Deduplicate by external_id within each source
+  const seen = new Set<string>();
+  const deduped = all.filter(o => {
+    const key = `${o.source}:${o.external_id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return { opportunities: deduped, log };
+}
+
+// ── Utility: extract dollar amount from free-form text ───────────────────────
+function extractReward(text: string): number | null {
+  const m = text.match(/\$\s*([\d,]+(?:\.\d+)?)\s*(?:USD|usd)?/);
+  if (m) return parseFloat(m[1].replace(/,/g, ""));
+  const m2 = text.match(/(?:reward|bounty|prize)[:\s]+(\d+(?:\.\d+)?)\s*(?:USD|\$|dollars)/i);
+  if (m2) return parseFloat(m2[1]);
+  return null;
+}
