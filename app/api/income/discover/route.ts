@@ -44,7 +44,7 @@ export async function GET(req: Request) {
   await db.from("income_activity_log").insert({
     engine:  "bounty",
     action:  "scan_start",
-    detail:  "Discovery scan starting — querying algora, issuehunt, github",
+    detail:  "Discovery scan starting — querying algora, issuehunt, opire, github",
     status:  "ok",
     user_id: userId,
   });

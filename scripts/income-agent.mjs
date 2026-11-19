@@ -89,6 +89,13 @@ for (const item of queuedItems) {
     continue;
   }
 
+  // Skip items with no monetary reward — not worth agent time
+  if (!opp.reward_usd || opp.reward_usd <= 0) {
+    console.log(`  ⚠  No reward attached — skipping`);
+    await db.from("income_work_queue").update({ status: "failed", progress_note: "No reward_usd — skipped" }).eq("id", item.id);
+    continue;
+  }
+
   const userId     = item.user_id;
   const workId     = item.id;
   const repoUrl    = opp.repo_url ?? opp.url?.replace(/\/issues\/\d+$/, "") ?? null;
@@ -206,30 +213,70 @@ for (const item of queuedItems) {
     // ── 6. Write task brief ───────────────────────────────────────────────────
     await progress(workId, 40, "Preparing task brief for Claude…");
 
-    const brief = `# Bounty Fix Task
+    const brief = `# Bounty Fix
+
+**Reward:** ${formatMoney(opp.reward_usd)}
+**Issue:** ${issueUrl}
+**Repo:** https://github.com/${ghRepo}
+
+---
 
 ## Issue
-**Title:** ${issueTitle}
-**URL:** ${issueUrl}
-**Reward:** ${formatMoney(opp.reward_usd)}
 
-## Description
+${issueTitle}
+
 ${fullIssueBody}
 
-## Instructions
-1. Read the issue carefully and understand exactly what needs to be fixed.
-2. Find the relevant files using grep/glob tools.
-3. Implement the minimal correct fix — do not refactor unrelated code.
-4. Run any existing tests to verify correctness: look for test scripts in package.json, Makefile, or similar.
-5. If tests fail, fix them or update them if the behavior change is intentional.
-6. Commit all changes with message: "fix: ${issueTitle.slice(0, 72)}"
-7. Do NOT create the PR — the agent script handles that.
-8. When done, write a one-paragraph summary of what you changed to AGENT_SUMMARY.md.
+---
 
-## Important
-- Stay focused on the specific issue, nothing else.
-- If the fix is unclear or requires significant architectural decisions, write your uncertainty to AGENT_SUMMARY.md and stop.
-- Do not modify unrelated files.
+## Process
+
+### 1. Orient yourself first
+Before touching any code:
+- Read the README and any relevant docs
+- Run: find . -type f | grep -v node_modules | grep -v .git | grep -v dist | head -60
+- Grep for the key terms from the issue title to find the relevant files
+- Read the files around the bug — understand what's currently happening
+
+### 2. Find and read the tests
+- Look for test files near the relevant code (*.test.ts, *.spec.js, __tests__, etc.)
+- Read them — they tell you what behavior is expected
+- Understand what a passing fix looks like before writing a line
+
+### 3. Implement the fix
+- Make the MINIMAL change that fixes the issue — nothing more
+- Do not refactor, rename, reorganize, or clean up unrelated code
+- Do not add dependencies unless the issue explicitly requires it
+- Do not modify config files (package.json, tsconfig.json, etc.) unless that IS the fix
+- One logical change, one commit
+
+### 4. Verify
+- Run the test suite: check package.json scripts for "test", "lint", "typecheck"
+  Common commands: npm test, yarn test, pnpm test, pytest, go test ./..., cargo test
+- If TypeScript is present: npx tsc --noEmit
+- Fix any test failures your change caused — if a test was wrong before, update it
+
+### 5. Commit and document
+- git add -A
+- git commit -m "fix: ${issueTitle.slice(0, 72).replace(/`/g, "'")}"
+- Write AGENT_SUMMARY.md with:
+  - Root cause: what was wrong and why
+  - Fix: what you changed and the reasoning
+  - Verification: how to confirm it works
+  - Concerns: anything a reviewer should know
+
+---
+
+## Stop conditions
+
+If ANY of these are true, write "UNCERTAIN: [reason]" at the top of AGENT_SUMMARY.md, make NO code changes, and stop:
+- The fix requires changing more than ~5 files
+- You cannot determine what the correct behavior should be
+- The issue requires a database migration, API key, or external service
+- You find 3+ open PRs already attempting this fix (high competition)
+- The repo is not in a language/framework you can reason about confidently
+
+A clean UNCERTAIN is better than a bad PR.
 `;
 
     writeFileSync(join(cloneDir, "BOUNTY_TASK.md"), brief);
@@ -237,13 +284,13 @@ ${fullIssueBody}
     // ── 7. Run Claude Code ────────────────────────────────────────────────────
     await progress(workId, 50, "Running Claude Code on the fix…");
 
-    const claudePrompt = `Read BOUNTY_TASK.md and complete the task described in it. Work in this repository.`;
+    const claudePrompt = `Read BOUNTY_TASK.md carefully, then complete the fix. Follow the process in the file step by step. Do not skip orientation or verification. Write AGENT_SUMMARY.md when done.`;
 
     let claudeOutput = "";
     try {
       claudeOutput = run(
-        `claude --allowedTools "Edit,Write,Read,Bash,Glob,Grep,MultiEdit" --print "${claudePrompt.replace(/"/g, '\\"')}"`,
-        { cwd: cloneDir, timeout: 300_000 }
+        `claude --dangerouslySkipPermissions --print "${claudePrompt.replace(/"/g, '\\"')}"`,
+        { cwd: cloneDir, timeout: 600_000 }
       );
     } catch (e) {
       claudeOutput = String(e);
@@ -286,7 +333,22 @@ ${fullIssueBody}
     // ── 10. Open PR ───────────────────────────────────────────────────────────
     await progress(workId, 92, "Opening pull request…");
 
-    const prBody = `## Summary\n\n${summary}\n\n## Bounty\n\nFixes ${issueUrl}\n\nReward: ${formatMoney(opp.reward_usd)}\n\n---\n*Automated fix by TLS Income Agent*`;
+    const prBody = [
+      "## Summary",
+      "",
+      summary || "See changes.",
+      "",
+      "## Changes",
+      "",
+      summary
+        .split("\n")
+        .filter(l => l.trim())
+        .slice(0, 4)
+        .map(l => `- ${l.replace(/^[-*•]\s*/, "")}`)
+        .join("\n"),
+      "",
+      `Closes #${issueNum}`,
+    ].join("\n");
 
     let prUrl  = "";
     let prNum  = null;

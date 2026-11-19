@@ -6,9 +6,17 @@ const TIMEOUT = 12_000;
 // ── GitHub — search for bounty-labelled issues ────────────────────────────────
 export async function fetchGitHubBounties(): Promise<DiscoveredOpportunity[]> {
   const queries = [
+    // Label-based
     "label:bounty+is:open+is:issue",
     "label:funded+is:open+is:issue",
     "label:%22Bounty+Hunter%22+is:open+is:issue",
+    "label:opire+is:open+is:issue",
+    // Opire-funded issues (mention opire in body)
+    "opire+in:body+is:open+is:issue",
+    // Dollar amount in title — usually explicit bounty posts
+    "%22%24%22+bounty+in:title+is:open+is:issue",
+    // Algora cross-posts on GitHub
+    "algora+bounty+in:body+is:open+is:issue",
   ];
   const token = process.env.GITHUB_TOKEN;
   const headers: Record<string, string> = {
@@ -150,6 +158,49 @@ export async function fetchIssueHuntBounties(): Promise<DiscoveredOpportunity[]>
   } catch { return []; }
 }
 
+// ── Opire — dedicated bounty platform (payment guaranteed on merge) ───────────
+export async function fetchOpireBounties(): Promise<DiscoveredOpportunity[]> {
+  try {
+    // Opire's public reward listing — their API serves funded issues
+    const res = await fetch(
+      "https://api.opire.dev/v1/rewards?status=created&per_page=50",
+      {
+        headers: { "User-Agent": UA, Accept: "application/json" },
+        signal: AbortSignal.timeout(TIMEOUT),
+      },
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    const items: any[] = Array.isArray(data) ? data
+      : (data.rewards ?? data.items ?? data.data ?? []);
+
+    return items
+      .filter((r: any) => r.issue_url || r.issueUrl)
+      .map((r: any): DiscoveredOpportunity => {
+        const issueUrl: string = r.issue_url ?? r.issueUrl ?? "";
+        const amount = parseFloat(r.amount ?? r.total_amount ?? r.price ?? "0") || null;
+        return {
+          source:          "opire",
+          external_id:     String(r.id ?? r._id ?? issueUrl),
+          title:           r.issue?.title ?? r.title ?? issueUrl,
+          description:     (r.issue?.body ?? r.description ?? "").slice(0, 1000),
+          url:             issueUrl,
+          repo_url:        issueUrl.replace(/\/issues\/\d+$/, "") ?? null,
+          reward_usd:      amount,
+          reward_raw:      amount ? `$${amount}` : null,
+          currency:        "USD",
+          language:        r.issue?.language ?? null,
+          difficulty:      null,
+          estimated_hours: null,
+          tags:            [],
+          metadata:        { opire_id: r.id },
+          open_prs:        r.trying_count ?? 0,
+          deadline:        null,
+        };
+      });
+  } catch { return []; }
+}
+
 // ── Run all sources and deduplicate ──────────────────────────────────────────
 type SourceCompleteCallback = (source: string, count: number, error?: string) => Promise<void>;
 
@@ -166,6 +217,7 @@ export async function discoverAllOpportunities(opts?: {
   const sources: [string, () => Promise<DiscoveredOpportunity[]>][] = [
     ["algora",    fetchAlgoraBounties],
     ["issuehunt", fetchIssueHuntBounties],
+    ["opire",     fetchOpireBounties],
     ["github",    fetchGitHubBounties],
   ];
 

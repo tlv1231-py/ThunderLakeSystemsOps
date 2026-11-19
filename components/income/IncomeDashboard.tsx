@@ -27,6 +27,7 @@ interface Props {
 const SOURCE_CYBER: Record<string, string> = {
   algora:    "text-[#00e5ff] border-[#00e5ff]/40",
   issuehunt: "text-[#00ff41] border-[#00ff41]/40",
+  opire:     "text-[#ff8c00] border-[#ff8c00]/40",
   github:    "text-[#aa77ff] border-[#aa77ff]/40",
   manual:    "text-[#007a1f] border-[#007a1f]/40",
 };
@@ -106,13 +107,16 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   const [showLogEarning, setShowLogEarning] = useState(false);
   const [oppFilter, setOppFilter] = useState<string>("all");
 
-  const activePipeline  = pipelineItems.filter((w: any) => !["done","failed","cancelled"].includes(w.status)).length;
-  const pendingQueue    = summary.workQueue.filter(w => w.status === "pending").length;
-  const submittedCount  = pipelineItems.filter((w: any) => w.status === "submitted").length;
-  const inProgressCount = pipelineItems.filter((w: any) => w.status === "in_progress").length;
-  const doneCount       = pipelineItems.filter((w: any) => w.status === "done").length;
-  const paidCount       = allEarnings.filter(e => e.status === "collected").length;
+  const activePipeline   = pipelineItems.filter((w: any) => !["done","failed","cancelled"].includes(w.status)).length;
+  const pendingQueue     = summary.workQueue.filter(w => w.status === "pending").length;
+  const submittedCount   = pipelineItems.filter((w: any) => w.status === "submitted").length;
+  const inProgressCount  = pipelineItems.filter((w: any) => w.status === "in_progress").length;
+  const doneCount        = pipelineItems.filter((w: any) => w.status === "done").length;
+  const paidCount        = allEarnings.filter(e => e.status === "collected").length;
   const allTimeCollected = allEarnings.filter(e => e.status === "collected").reduce((s, e) => s + e.amount_usd, 0);
+  const totalAttempted   = submittedCount + doneCount + paidCount;
+  const totalWon         = doneCount + paidCount;
+  const winRate          = totalAttempted > 0 ? Math.round((totalWon / totalAttempted) * 100) : 0;
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "overview",      label: "OVERVIEW" },
@@ -246,11 +250,11 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
                   DISCOVERY_SCAN ACTIVE
                 </span>
                 <span className="text-[10px] text-[#00e5ff]/60 uppercase tracking-wider">
-                  — querying algora · issuehunt · github
+                  — querying algora · issuehunt · opire · github
                 </span>
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                {["ALGORA", "ISSUEHUNT", "GITHUB"].map(src => (
+                {["ALGORA", "ISSUEHUNT", "OPIRE", "GITHUB"].map(src => (
                   <span key={src} className="text-[9px] border border-[#00e5ff]/30 text-[#00e5ff]/50 px-1.5 py-0.5 uppercase tracking-wider animate-pulse">
                     {src}
                   </span>
@@ -292,7 +296,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
         )}
 
         {/* ── KPI tiles ───────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 mb-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5 mb-4">
           <CyberKpi
             label="THIS_WEEK"
             value={formatCurrency(summary.collectedThisWeek)}
@@ -317,6 +321,13 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
             value={String(submittedCount)}
             sub={submittedCount > 0 ? `+${inProgressCount} in_progress` : `${inProgressCount} in_progress`}
             accent={submittedCount > 0 ? "green" : "default"}
+          />
+          <CyberKpi
+            label="WIN_RATE"
+            value={`${winRate}%`}
+            sub={totalAttempted > 0 ? `${totalWon}/${totalAttempted} merged` : "no PRs submitted yet"}
+            progress={totalAttempted > 0 ? winRate / 100 : undefined}
+            accent={winRate >= 50 ? "green" : winRate > 0 ? "amber" : "default"}
           />
         </div>
 
@@ -652,7 +663,7 @@ function OpportunitiesTab({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
-        {["all", "high", "cash", "easy", "algora", "issuehunt", "github", "queued"].map(f => (
+        {["all", "high", "cash", "easy", "algora", "issuehunt", "opire", "github", "queued"].map(f => (
           <button
             key={f}
             onClick={() => onFilterChange(f)}
