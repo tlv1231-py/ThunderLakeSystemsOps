@@ -363,10 +363,9 @@ function HeaderStats({ summary, winRate, allTimeUsd, openPRs }: {
 
 // ── detail tabs ───────────────────────────────────────────────────────────────
 
-function ScanContent({ opps, onDismiss, onQueue }: {
+function ScanContent({ opps, onDismiss }: {
   opps: Opportunity[];
   onDismiss(id: string): void;
-  onQueue(id: string): void;
 }) {
   const [filter, setFilter] = useState<"all" | "discovered" | "queued">("all");
   const list = filter === "all" ? opps : opps.filter(o => o.status === filter);
@@ -389,11 +388,7 @@ function ScanContent({ opps, onDismiss, onQueue }: {
             {o.reward_usd && o.reward_usd > 0 && (
               <span className="text-sm text-emerald-400 tabular-nums shrink-0 font-medium">{usd(o.reward_usd)}</span>
             )}
-            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-              {["discovered", "queued"].includes(o.status) && (
-                <button onClick={() => onQueue(o.id)}
-                  className="text-xs text-zinc-500 hover:text-white border border-zinc-800 hover:border-zinc-500 px-2 py-0.5 transition-colors">queue</button>
-              )}
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
               <button onClick={() => onDismiss(o.id)}
                 className="text-xs text-zinc-700 hover:text-zinc-400 transition-colors px-1">✕</button>
             </div>
@@ -631,7 +626,6 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
             <ScanContent
               opps={summary.topOpportunities as Opportunity[]}
               onDismiss={id => startT(() => dismissOpportunity(id).then(() => router.refresh()))}
-              onQueue={id  => startT(() => markOpportunityInProgress(id).then(() => router.refresh()))}
             />
           )}
           {tab === "ledger"    && <LedgerContent earnings={allEarnings} />}
