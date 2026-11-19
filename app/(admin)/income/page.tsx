@@ -32,6 +32,7 @@ export default async function IncomePage() {
     { data: approvals },
     { data: activity },
     { data: assets },
+    { data: pipelineItems },
   ] = await Promise.all([
     db.from("income_earnings").select("*").eq("user_id", user.id)
       .order("earned_date", { ascending: false }).limit(200),
@@ -46,6 +47,8 @@ export default async function IncomePage() {
       .order("created_at", { ascending: false }).limit(50),
     db.from("income_assets").select("*").eq("user_id", user.id)
       .order("created_at", { ascending: false }).limit(50),
+    db.from("income_work_queue").select("*").eq("user_id", user.id)
+      .order("priority").order("created_at", { ascending: false }).limit(50),
   ]);
 
   const earningsList  = earnings ?? [];
@@ -107,6 +110,8 @@ export default async function IncomePage() {
       summary={summary}
       allEarnings={earningsList}
       allAssets={assets ?? []}
+      userId={user.id}
+      pipelineItems={pipelineItems ?? []}
     />
   );
 }

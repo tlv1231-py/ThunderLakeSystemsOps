@@ -9,13 +9,16 @@ import {
   createAsset,
 } from "@/app/(admin)/income/actions";
 import type { IncomeSummary, Opportunity, Asset, Earning, WorkItem, Approval, ActivityEntry } from "@/lib/income/types";
+import { IncomePipeline } from "@/components/income/IncomePipeline";
 
-type Tab = "overview" | "opportunities" | "queue" | "assets" | "ledger" | "approvals" | "log";
+type Tab = "overview" | "opportunities" | "pipeline" | "queue" | "assets" | "ledger" | "approvals" | "log";
 
 interface Props {
   summary: IncomeSummary;
   allEarnings: Earning[];
   allAssets: Asset[];
+  userId: string;
+  pipelineItems: any[];
 }
 
 // ── Color helpers ─────────────────────────────────────────────────────────────
@@ -106,7 +109,7 @@ function ProgressRing({ value, target, label }: { value: number; target: number;
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function IncomeDashboard({ summary, allEarnings, allAssets }: Props) {
+export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipelineItems }: Props) {
   const router = useRouter();
   const [tab, setTab]   = useState<Tab>("overview");
   const [pending, startTransition] = useTransition();
@@ -115,9 +118,12 @@ export function IncomeDashboard({ summary, allEarnings, allAssets }: Props) {
   const [showLogEarning, setShowLogEarning] = useState(false);
   const [oppFilter, setOppFilter] = useState<string>("all");
 
+  const activePipeline = pipelineItems.filter((w: any) => !["done","failed","cancelled"].includes(w.status)).length;
+
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "overview",      label: "Overview" },
     { id: "opportunities", label: "Opportunities", count: summary.activeOpportunities },
+    { id: "pipeline",      label: "Pipeline",      count: activePipeline || undefined },
     { id: "queue",         label: "Work Queue",    count: summary.workQueue.filter(w => w.status !== "done").length },
     { id: "assets",        label: "Assets",        count: allAssets.length },
     { id: "ledger",        label: "Ledger",        count: allEarnings.length },
@@ -163,6 +169,12 @@ export function IncomeDashboard({ summary, allEarnings, allAssets }: Props) {
               {discoverResult}
             </span>
           )}
+          <a
+            href="/income/select"
+            className="px-3 py-1.5 text-xs font-bold rounded-lg border border-amber-700 text-amber-400 hover:bg-amber-900/30 transition-colors"
+          >
+            ▶ SELECT BOUNTIES
+          </a>
           <button
             onClick={handleDiscover}
             disabled={discovering}
@@ -261,6 +273,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets }: Props) {
       {/* ── Tab content ─────────────────────────────────────────────────── */}
       {tab === "overview"      && <OverviewTab summary={summary} onTabChange={setTab} />}
       {tab === "opportunities" && <OpportunitiesTab opps={summary.topOpportunities} filter={oppFilter} onFilterChange={setOppFilter} />}
+      {tab === "pipeline"      && <IncomePipeline initialItems={pipelineItems} userId={userId} />}
       {tab === "queue"         && <WorkQueueTab queue={summary.workQueue} />}
       {tab === "assets"        && <AssetsTab assets={allAssets} />}
       {tab === "ledger"        && <LedgerTab earnings={allEarnings} />}
