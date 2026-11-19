@@ -347,8 +347,8 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
                 )}
               </div>
             ))}
-            <div className="ml-auto flex items-center pl-6 border-l border-[#00ff41]/20">
-              <NextScanCountdown lastDiscoveryRun={summary.lastDiscoveryRun} />
+            <div className="ml-auto flex items-center">
+              <CooldownPanel />
             </div>
           </div>
         </div>
@@ -403,47 +403,93 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
 
 // ── Next scan countdown ───────────────────────────────────────────────────────
 
-// Cron fires every hour on the hour UTC
-const CRON_SLOTS_UTC = Array.from({ length: 24 }, (_, i) => i);
+// ── Cooldown timers ───────────────────────────────────────────────────────────
 
-function nextCronSlot(now: number): number {
+function nextSlotFromHours(slots: number[], now: number): number {
   const d = new Date(now);
   const h = d.getUTCHours();
-  const nextHour = CRON_SLOTS_UTC.find(s => s > h);
+  const nextH = slots.find(s => s > h);
   const next = new Date(d);
   next.setUTCMinutes(0, 0, 0);
-  if (nextHour !== undefined) {
-    next.setUTCHours(nextHour);
+  if (nextH !== undefined) {
+    next.setUTCHours(nextH);
   } else {
     next.setUTCDate(next.getUTCDate() + 1);
-    next.setUTCHours(CRON_SLOTS_UTC[0]);
+    next.setUTCHours(slots[0]);
   }
   return next.getTime();
 }
 
-function NextScanCountdown({ lastDiscoveryRun }: { lastDiscoveryRun: string | null }) {
+const DISCOVER_SLOTS  = Array.from({ length: 24 }, (_, i) => i);       // every hour
+const CHECK_PR_SLOTS  = Array.from({ length: 12 }, (_, i) => i * 2 + 1); // odd hours
+
+type CooldownDef = {
+  label: string;
+  icon: string;
+  slots: number[];
+  intervalMs: number;
+  color: string;
+  glowColor: string;
+};
+
+const COOLDOWNS: CooldownDef[] = [
+  { label: "DISCOVER",  icon: "⚡", slots: DISCOVER_SLOTS,  intervalMs: 3600000,  color: "#00e5ff", glowColor: "rgba(0,229,255,0.25)" },
+  { label: "CHECK_PRS", icon: "⚙", slots: CHECK_PR_SLOTS,  intervalMs: 7200000,  color: "#ffb800", glowColor: "rgba(255,184,0,0.25)" },
+];
+
+function CooldownBar({ def, now }: { def: CooldownDef; now: number }) {
+  const nextSlot  = nextSlotFromHours(def.slots, now);
+  const remaining = nextSlot - now;
+  const elapsed   = def.intervalMs - remaining;
+  const pct       = Math.min(1, Math.max(0, elapsed / def.intervalMs));
+  const filled    = Math.round(pct * 16);
+  const empty     = 16 - filled;
+  const nearFull  = pct >= 0.85;
+
+  const h = Math.floor(remaining / 3600000);
+  const m = Math.floor((remaining % 3600000) / 60000);
+  const s = Math.floor((remaining % 60000) / 1000);
+  const countdown = h > 0
+    ? `${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`
+    : `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+
+  return (
+    <div className="flex flex-col gap-1 min-w-[130px]">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[9px] uppercase tracking-[0.15em] font-bold" style={{ color: def.color }}>
+          {def.icon} {def.label}
+        </span>
+        <span className="text-[9px] text-[#004d14]">{h > 0 ? `${h}h` : "1h"} cd</span>
+      </div>
+      {/* Bar */}
+      <div
+        className={`text-[11px] tabular-nums font-mono tracking-[-0.05em] ${nearFull ? "animate-pulse" : ""}`}
+        style={{ color: def.color, textShadow: nearFull ? `0 0 8px ${def.glowColor}` : undefined }}
+      >
+        {"▓".repeat(filled)}{"░".repeat(empty)}
+      </div>
+      {/* Countdown */}
+      <p
+        className={`text-xl font-bold tabular-nums tracking-widest leading-none ${nearFull ? "animate-pulse" : ""}`}
+        style={{ color: def.color, textShadow: nearFull ? `0 0 12px ${def.glowColor}` : undefined }}
+      >
+        {countdown}
+      </p>
+      <p className="text-[9px] text-[#004d14] uppercase tracking-widest">until fire</p>
+    </div>
+  );
+}
+
+function CooldownPanel() {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  const remaining = nextCronSlot(now) - now;
-  const m = Math.floor(remaining / 60000);
-  const s = Math.floor((remaining % 60000) / 1000);
-  const display = `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
-
-  const lastScanStr = lastDiscoveryRun
-    ? new Date(lastDiscoveryRun).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })
-    : null;
-
   return (
-    <div className="text-center min-w-[120px]">
-      <p className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em] mb-1">NEXT_SCAN</p>
-      <p className="text-3xl font-bold tabular-nums tracking-widest text-[#00ff41]">{display}</p>
-      <p className="text-[9px] text-[#004d14] mt-0.5 uppercase tracking-widest">
-        {lastScanStr ? `last: ${lastScanStr}` : "never scanned"}
-      </p>
+    <div className="flex gap-5 pl-5 border-l border-[#00ff41]/20">
+      {COOLDOWNS.map(def => <CooldownBar key={def.label} def={def} now={now} />)}
     </div>
   );
 }
