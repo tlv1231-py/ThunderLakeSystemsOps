@@ -26,6 +26,9 @@ const ACTION_LABELS: Record<string, string> = {
   approval_approved:     "APPROVED_ ",
   earning_logged:        "EARN_LOG_ ",
   discover:              "DISCOVERY ",
+  pr_merged:             "██ MERGED ",
+  pr_closed:             "PR_CLOSED ",
+  pr_check_run:          "PR_CHECK  ",
 };
 
 function toTermLine(entry: ActivityEntry): TermLine {
@@ -35,7 +38,8 @@ function toTermLine(entry: ActivityEntry): TermLine {
   const engine = (entry.engine ?? "SYS").toUpperCase().slice(0, 6).padEnd(6);
 
   let color = "text-[#00cc33]";
-  if (entry.status === "error")                  color = "text-[#ff0040]";
+  if (entry.action === "pr_merged")              color = "text-[#00ff41]";   // brightest — money event
+  else if (entry.status === "error")             color = "text-[#ff0040]";
   else if (entry.status === "warning")           color = "text-[#ffb800]";
   else if (entry.action === "agent_pr_opened")   color = "text-[#00ff41]";
   else if (entry.action?.startsWith("discover")) color = "text-[#00e5ff]";

@@ -11,6 +11,10 @@
     {
       "path": "/api/income/discover",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/income/check-prs",
+      "schedule": "0 10 * * *"
     }
   ]
 }
