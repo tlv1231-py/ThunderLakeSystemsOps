@@ -126,6 +126,9 @@ export async function GET() {
     activeOpportunities: (opportunities ?? []).length,
     pendingApprovals:    (approvals ?? []).length,
     lastDiscoveryRun:    lastDiscovery?.created_at ?? null,
+    queueProjectedUsd:   (workQueue ?? []).filter((w: any) => w.status === "pending")
+      .reduce((s: number, w: any) => s + (Number(w.expected_usd) || 0), 0),
+    winRateBySource:     {},
     recentEarnings:      earningsList.slice(0, 10),
     topOpportunities:    (opportunities ?? []).slice(0, 10),
     workQueue:           workQueue ?? [],

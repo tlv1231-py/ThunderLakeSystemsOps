@@ -85,6 +85,9 @@ export interface WorkItem {
   requires_approval: boolean;
   approval_action: string | null;
   result: string | null;
+  pr_url: string | null;
+  progress_note: string | null;
+  progress_pct: number;
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
@@ -119,6 +122,12 @@ export interface ActivityEntry {
 
 // ── Dashboard summary (returned by /api/income/status) ──────────────────────
 
+export interface WinRateBySource {
+  submitted: number;
+  won: number;
+  rate: number; // 0–1
+}
+
 export interface IncomeSummary {
   collectedThisWeek: number;
   collectedThisMonth: number;
@@ -133,6 +142,8 @@ export interface IncomeSummary {
   activeOpportunities: number;
   pendingApprovals: number;
   lastDiscoveryRun: string | null;
+  queueProjectedUsd: number;
+  winRateBySource: Record<string, WinRateBySource>;
   recentEarnings: Earning[];
   topOpportunities: Opportunity[];
   workQueue: WorkItem[];

@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { IncomeDashboard } from "@/components/income/IncomeDashboard";
-import type { IncomeSummary, Opportunity, Asset } from "@/lib/income/types";
+import type { IncomeSummary, Opportunity, Asset, WinRateBySource } from "@/lib/income/types";
 
 export const metadata = { title: "TLS Income Operations" };
 
@@ -33,6 +33,7 @@ export default async function IncomePage() {
     { data: activity },
     { data: assets },
     { data: pipelineItems },
+    { data: outcomeOpps },
   ] = await Promise.all([
     db.from("income_earnings").select("*").eq("user_id", user.id)
       .order("earned_date", { ascending: false }).limit(200),
@@ -49,6 +50,9 @@ export default async function IncomePage() {
       .order("created_at", { ascending: false }).limit(50),
     db.from("income_work_queue").select("*").eq("user_id", user.id)
       .order("priority").order("created_at", { ascending: false }).limit(50),
+    // Historical outcomes for win rate by source
+    db.from("income_opportunities").select("source, status").eq("user_id", user.id)
+      .in("status", ["submitted", "accepted", "paid", "rejected", "done"]),
   ]);
 
   const earningsList  = earnings ?? [];
@@ -84,6 +88,25 @@ export default async function IncomePage() {
 
   const lastDiscovery = (activity ?? []).find((a: any) => a.action === "discovery_run");
 
+  // ── Win rate by source ─────────────────────────────────────────────────────
+  const winRateBySource: Record<string, WinRateBySource> = {};
+  for (const o of outcomeOpps ?? []) {
+    const src = o.source as string;
+    if (!winRateBySource[src]) winRateBySource[src] = { submitted: 0, won: 0, rate: 0 };
+    winRateBySource[src].submitted++;
+    if (["accepted", "paid", "done"].includes(o.status)) winRateBySource[src].won++;
+  }
+  for (const src of Object.keys(winRateBySource)) {
+    const s = winRateBySource[src];
+    s.rate = s.submitted > 0 ? s.won / s.submitted : 0;
+  }
+
+  // ── Queue projected earnings ───────────────────────────────────────────────
+  const pendingQueueItems = (workQueue ?? []).filter((w: any) => w.status === "pending");
+  const queueProjectedUsd = pendingQueueItems.reduce(
+    (sum: number, w: any) => sum + (Number(w.expected_usd) || 0), 0
+  );
+
   const summary: IncomeSummary = {
     collectedThisWeek:   collectedWeek,
     collectedThisMonth:  sumUsd(thisMonth),
@@ -98,6 +121,8 @@ export default async function IncomePage() {
     activeOpportunities: (opportunities ?? []).length,
     pendingApprovals:    (approvals ?? []).length,
     lastDiscoveryRun:    lastDiscovery?.created_at ?? null,
+    queueProjectedUsd,
+    winRateBySource,
     recentEarnings:      earningsList.slice(0, 20),
     topOpportunities:    (opportunities ?? []).slice(0, 50),
     workQueue:           allWork,

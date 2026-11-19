@@ -319,7 +319,16 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
           <CyberKpi
             label="WIN_RATE"
             value={`${winRate}%`}
-            sub={totalAttempted > 0 ? `${totalWon}/${totalAttempted} merged` : "no PRs submitted yet"}
+            sub={(() => {
+              const projected = summary.queueProjectedUsd * (winRate / 100);
+              if (totalAttempted > 0 && projected > 0)
+                return `${totalWon}/${totalAttempted} · $${Math.round(projected)} projected`;
+              if (totalAttempted > 0)
+                return `${totalWon}/${totalAttempted} merged`;
+              return summary.queueProjectedUsd > 0
+                ? `$${Math.round(summary.queueProjectedUsd)} queued potential`
+                : "no PRs submitted yet";
+            })()}
             progress={totalAttempted > 0 ? winRate / 100 : undefined}
             accent={winRate >= 50 ? "green" : winRate > 0 ? "amber" : "default"}
           />
@@ -524,6 +533,9 @@ function CyberKpi({
 // ── Overview tab ──────────────────────────────────────────────────────────────
 
 function OverviewTab({ summary, onTabChange }: { summary: IncomeSummary; onTabChange: (t: Tab) => void }) {
+  const sourceOrder = ["opire", "algora", "issuehunt", "github"];
+  const sourcesWithData = sourceOrder.filter(s => summary.winRateBySource[s]?.submitted > 0);
+  const allSources = [...sourcesWithData, ...Object.keys(summary.winRateBySource).filter(s => !sourceOrder.includes(s) && summary.winRateBySource[s]?.submitted > 0)];
   const activePipelineItems = summary.workQueue.filter(w => !["done","cancelled","failed"].includes(w.status));
   const queueReady          = summary.workQueue.filter(w => w.status === "pending");
 
@@ -605,32 +617,67 @@ function OverviewTab({ summary, onTabChange }: { summary: IncomeSummary; onTabCh
         </div>
       </div>
 
-      {/* Row 3: Recent earnings */}
-      <div className="border border-[#00ff41]/20 bg-[#030603]">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-[#00ff41]/20">
-          <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em]">EARNINGS_LEDGER</span>
-          <button onClick={() => onTabChange("ledger")} className="text-[9px] text-[#007a1f] hover:text-[#00ff41] uppercase tracking-widest">[FULL_LEDGER →]</button>
-        </div>
-        {summary.recentEarnings.length === 0 ? (
-          <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; No earnings logged yet</p>
-        ) : (
-          <div className="divide-y divide-[#00ff41]/10">
-            {summary.recentEarnings.slice(0, 4).map(e => (
-              <div key={e.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                <div>
-                  <p className="text-[11px] text-[#00cc33]">{e.description}</p>
-                  <p className="text-[9px] text-[#004d14] uppercase tracking-wider">{e.source} · {e.earned_date}</p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <CyberBadge label={e.status} className={STATUS_CYBER[e.status] ?? ""} />
-                  <span className={`text-sm font-bold tabular-nums ${e.status === "collected" ? "text-[#00ff41]" : "text-[#ffb800]"}`}>
-                    {formatCurrency(e.amount_usd)}
-                  </span>
-                </div>
-              </div>
-            ))}
+      {/* Row 3: Earnings + Source win rate (2-col) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Recent earnings */}
+        <div className="border border-[#00ff41]/20 bg-[#030603]">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-[#00ff41]/20">
+            <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em]">EARNINGS_LEDGER</span>
+            <button onClick={() => onTabChange("ledger")} className="text-[9px] text-[#007a1f] hover:text-[#00ff41] uppercase tracking-widest">[FULL_LEDGER →]</button>
           </div>
-        )}
+          {summary.recentEarnings.length === 0 ? (
+            <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; No earnings logged yet</p>
+          ) : (
+            <div className="divide-y divide-[#00ff41]/10">
+              {summary.recentEarnings.slice(0, 4).map(e => (
+                <div key={e.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <div>
+                    <p className="text-[11px] text-[#00cc33]">{e.description}</p>
+                    <p className="text-[9px] text-[#004d14] uppercase tracking-wider">{e.source} · {e.earned_date}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <CyberBadge label={e.status} className={STATUS_CYBER[e.status] ?? ""} />
+                    <span className={`text-sm font-bold tabular-nums ${e.status === "collected" ? "text-[#00ff41]" : "text-[#ffb800]"}`}>
+                      {formatCurrency(e.amount_usd)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Source win rate breakdown */}
+        <div className="border border-[#00ff41]/20 bg-[#030603]">
+          <div className="px-4 py-2 border-b border-[#00ff41]/20">
+            <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em]">WIN_RATE_BY_SOURCE</span>
+          </div>
+          {allSources.length === 0 ? (
+            <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; Collecting data — submit PRs to build win rate history</p>
+          ) : (
+            <div className="divide-y divide-[#00ff41]/10">
+              {allSources.map(src => {
+                const s = summary.winRateBySource[src];
+                const pct = Math.round(s.rate * 100);
+                const filled = Math.round(s.rate * 10);
+                const empty = 10 - filled;
+                const color = pct >= 50 ? "#00ff41" : pct > 0 ? "#ffb800" : "#1a4d1a";
+                return (
+                  <div key={src} className="flex items-center gap-3 px-4 py-2.5">
+                    <span className={`text-[9px] font-bold uppercase tracking-widest w-20 shrink-0 ${SOURCE_CYBER[src]?.split(" ")[0] ?? "text-[#007a1f]"}`}>
+                      {src}
+                    </span>
+                    <span className="text-[10px] tabular-nums font-mono" style={{ color }}>
+                      {"▓".repeat(filled)}{"░".repeat(empty)}
+                    </span>
+                    <span className="text-[10px] tabular-nums" style={{ color }}>{pct}%</span>
+                    <span className="text-[9px] text-[#004d14] ml-auto">{s.won}/{s.submitted}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
