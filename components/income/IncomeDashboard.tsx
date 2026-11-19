@@ -225,6 +225,41 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
           </div>
         </div>
 
+        {/* ── Scan active banner ──────────────────────────────────────────── */}
+        {discovering && (
+          <div className="mb-3 border border-[#00e5ff]/60 bg-[#00e5ff]/5 px-4 py-3 overflow-hidden relative">
+            {/* animated sweep line */}
+            <div
+              className="absolute inset-y-0 w-16 bg-gradient-to-r from-transparent via-[#00e5ff]/20 to-transparent animate-[scan_1.6s_ease-in-out_infinite]"
+              style={{ animation: "scan 1.6s ease-in-out infinite" }}
+            />
+            <style>{`
+              @keyframes scan {
+                0%   { left: -4rem; }
+                100% { left: 100%; }
+              }
+            `}</style>
+            <div className="relative flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <span className="inline-block w-2 h-2 rounded-full bg-[#00e5ff] animate-pulse" />
+                <span className="text-[11px] text-[#00e5ff] font-bold uppercase tracking-widest">
+                  DISCOVERY_SCAN ACTIVE
+                </span>
+                <span className="text-[10px] text-[#00e5ff]/60 uppercase tracking-wider">
+                  — querying algora · issuehunt · github
+                </span>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                {["ALGORA", "ISSUEHUNT", "GITHUB"].map(src => (
+                  <span key={src} className="text-[9px] border border-[#00e5ff]/30 text-[#00e5ff]/50 px-1.5 py-0.5 uppercase tracking-wider animate-pulse">
+                    {src}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Agent queue alert ───────────────────────────────────────────── */}
         {pendingQueue > 0 && (
           <div

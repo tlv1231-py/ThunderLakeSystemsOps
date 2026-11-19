@@ -15,6 +15,8 @@ type TermLine = {
 };
 
 const ACTION_LABELS: Record<string, string> = {
+  scan_start:            "SCAN_INIT ",
+  scan_source:           "SCAN_SRC  ",
   agent_pr_opened:       "PR_OPENED ",
   agent_error:           "AGENT_ERR ",
   agent_no_changes:      "NO_CHANGE ",
@@ -42,6 +44,8 @@ function toTermLine(entry: ActivityEntry): TermLine {
   else if (entry.status === "error")             color = "text-[#ff0040]";
   else if (entry.status === "warning")           color = "text-[#ffb800]";
   else if (entry.action === "agent_pr_opened")   color = "text-[#00ff41]";
+  else if (entry.action === "scan_start")        color = "text-[#00e5ff]";
+  else if (entry.action === "scan_source")       color = "text-[#00e5ff]";
   else if (entry.action?.startsWith("discover")) color = "text-[#00e5ff]";
   else if (entry.action === "active_mode")       color = "text-[#ffb800]";
   else if (entry.action === "opportunity_queued") color = "text-[#00e5ff]";

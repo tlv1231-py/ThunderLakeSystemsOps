@@ -151,30 +151,36 @@ export async function fetchIssueHuntBounties(): Promise<DiscoveredOpportunity[]>
 }
 
 // ── Run all sources and deduplicate ──────────────────────────────────────────
-export async function discoverAllOpportunities(): Promise<{
+type SourceCompleteCallback = (source: string, count: number, error?: string) => Promise<void>;
+
+export async function discoverAllOpportunities(opts?: {
+  onSourceComplete?: SourceCompleteCallback;
+}): Promise<{
   opportunities: DiscoveredOpportunity[];
   log: { source: string; count: number; error?: string }[];
 }> {
   const log: { source: string; count: number; error?: string }[] = [];
-
-  const [github, algora, issuehunt] = await Promise.allSettled([
-    fetchGitHubBounties(),
-    fetchAlgoraBounties(),
-    fetchIssueHuntBounties(),
-  ]);
-
   const all: DiscoveredOpportunity[] = [];
+  const cb = opts?.onSourceComplete;
 
-  for (const [name, result] of [
-    ["github", github], ["algora", algora], ["issuehunt", issuehunt],
-  ] as [string, PromiseSettledResult<DiscoveredOpportunity[]>][]) {
-    if (result.status === "fulfilled") {
-      all.push(...result.value);
-      log.push({ source: name, count: result.value.length });
-    } else {
-      log.push({ source: name, count: 0, error: String(result.reason) });
+  const sources: [string, () => Promise<DiscoveredOpportunity[]>][] = [
+    ["algora",    fetchAlgoraBounties],
+    ["issuehunt", fetchIssueHuntBounties],
+    ["github",    fetchGitHubBounties],
+  ];
+
+  await Promise.all(sources.map(async ([name, fetcher]) => {
+    try {
+      const results = await fetcher();
+      log.push({ source: name, count: results.length });
+      all.push(...results);
+      await cb?.(name, results.length);
+    } catch (e) {
+      const errMsg = String(e);
+      log.push({ source: name, count: 0, error: errMsg });
+      await cb?.(name, 0, errMsg);
     }
-  }
+  }));
 
   // Deduplicate by external_id within each source
   const seen = new Set<string>();

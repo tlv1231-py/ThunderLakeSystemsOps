@@ -40,8 +40,28 @@ export async function GET(req: Request) {
 
   const startMs = Date.now();
 
-  // ── Run discovery ──────────────────────────────────────────────────────────
-  const { opportunities, log } = await discoverAllOpportunities();
+  // ── Log scan start ─────────────────────────────────────────────────────────
+  await db.from("income_activity_log").insert({
+    engine:  "bounty",
+    action:  "scan_start",
+    detail:  "Discovery scan starting — querying algora, issuehunt, github",
+    status:  "ok",
+    user_id: userId,
+  });
+
+  // ── Run discovery (logs per-source as each completes) ──────────────────────
+  const { opportunities, log } = await discoverAllOpportunities({ onSourceComplete: async (source, count, err) => {
+    await db.from("income_activity_log").insert({
+      engine:  "bounty",
+      action:  "scan_source",
+      detail:  err
+        ? `${source.toUpperCase()}: error — ${err}`
+        : `${source.toUpperCase()}: found ${count} opportunit${count === 1 ? "y" : "ies"}`,
+      status:  err ? "warning" : "ok",
+      metadata: { source, count },
+      user_id:  userId,
+    });
+  }});
 
   let newCount  = 0;
   let skipCount = 0;
