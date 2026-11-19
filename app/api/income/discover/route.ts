@@ -116,8 +116,8 @@ export async function GET(req: Request) {
         .select("id").single();
       newCount++;
 
-      // Auto-queue every new opportunity that has a reward and isn't already crowded
-      if (opp.reward_usd && opp.reward_usd > 0 && (opp.open_prs ?? 0) < 5 && inserted && userId) {
+      // Auto-queue high-quality bounties with low competition (score >= 50, < 3 open PRs)
+      if (opp.reward_usd && opp.reward_usd > 0 && score >= 50 && (opp.open_prs ?? 0) < 3 && inserted && userId) {
         await db.from("income_opportunities").update({ status: "queued" }).eq("id", inserted.id);
         await db.from("income_work_queue").insert({
           engine:          "bounty",

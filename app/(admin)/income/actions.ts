@@ -224,6 +224,69 @@ export async function createAsset(formData: FormData) {
   revalidatePath("/income");
 }
 
+// ── Mark a merged bounty as paid ─────────────────────────────────────────────
+
+export async function markBountyPaid(workItemId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const db = supabase as any;
+
+  const { data: item } = await db.from("income_work_queue")
+    .select("*").eq("id", workItemId).eq("user_id", user.id).single();
+  if (!item) throw new Error("Work item not found");
+
+  const today = new Date().toISOString().split("T")[0];
+  const now   = new Date().toISOString();
+
+  // Find an existing pending earning for this opportunity, if any
+  if (item.opportunity_id) {
+    const { data: existing } = await db.from("income_earnings")
+      .select("id").eq("opportunity_id", item.opportunity_id)
+      .eq("user_id", user.id).eq("status", "pending").maybeSingle();
+    if (existing) {
+      await db.from("income_earnings")
+        .update({ status: "collected", collected_at: now }).eq("id", existing.id);
+    } else {
+      // No pending earning found — create one (IssueHunt / manual platforms)
+      await db.from("income_earnings").insert({
+        engine:         "bounty",
+        source:         item.metadata?.source ?? "github",
+        description:    item.title,
+        amount_usd:     item.expected_usd ?? 0,
+        status:         "collected",
+        earned_date:    today,
+        collected_at:   now,
+        reference:      item.pr_url ?? null,
+        evidence_url:   item.pr_url ?? null,
+        opportunity_id: item.opportunity_id ?? null,
+        user_id:        user.id,
+      });
+    }
+    // Mark opportunity paid
+    await db.from("income_opportunities")
+      .update({ status: "paid" }).eq("id", item.opportunity_id).eq("user_id", user.id);
+  }
+
+  // Dismiss any pending approvals referencing this PR
+  if (item.pr_url) {
+    await db.from("income_approvals")
+      .update({ status: "done", reviewed_at: now, notes: "Marked paid by user" })
+      .eq("user_id", user.id).eq("status", "pending")
+      .ilike("action_url", `%${item.pr_url}%`);
+  }
+
+  await db.from("income_activity_log").insert({
+    engine:  "bounty",
+    action:  "earning_logged",
+    detail:  `PAYMENT CONFIRMED: $${item.expected_usd ?? "?"} — ${item.title}`,
+    status:  "ok",
+    user_id: user.id,
+  });
+
+  revalidatePath("/income");
+}
+
 // ── Trigger discovery from dashboard ─────────────────────────────────────────
 
 export async function triggerDiscovery() {

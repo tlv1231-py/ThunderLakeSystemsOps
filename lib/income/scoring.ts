@@ -48,6 +48,15 @@ export function scoreOpportunity(opp: DiscoveredOpportunity): {
     score += 8;
   }
 
+  // ── Quick-win bonus (+12): single-file, verifiable, low-competition fixes ──
+  // Docs/typo/type fixes have near-100% win rate when they exist on bounty platforms.
+  const QUICK_WIN_SIGNALS = [
+    "typo", "typos", "dead link", "broken link", "documentation", "readme",
+    "missing type", "type error", "wrong type", "deprecat", "lint error",
+    "spelling", "grammar", "broken image", "404 link", "outdated doc",
+  ];
+  if (QUICK_WIN_SIGNALS.some(s => techText.includes(s))) score += 12;
+
   // ── Issue clarity bonus (+6) ──────────────────────────────────────────────
   // Issues with code blocks, reproduction steps, or error messages are more
   // actionable — Claude can fix what it can clearly see.
