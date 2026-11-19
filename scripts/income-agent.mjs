@@ -75,7 +75,7 @@ const { data: queuedItems, error: qErr } = await db
 
 if (qErr) { console.error("❌  DB error:", qErr.message); process.exit(1); }
 if (!queuedItems?.length) {
-  console.log("📭  Pipeline empty — select bounties from /income/select first.");
+  console.log("📭  Queue empty — run a discovery scan or wait for the hourly cron.");
   process.exit(0);
 }
 

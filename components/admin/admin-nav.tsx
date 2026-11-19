@@ -45,7 +45,7 @@ const NAV_ITEMS = [
 const OWNER_ITEMS = [
   { href: "/map",     label: "Live Map", icon: Map        },
   { href: "/monitor", label: "Monitor",  icon: Terminal   },
-  { href: "/income",  label: "Income",   icon: TrendingUp },
+  { href: "/income",  label: "Bounty Engine", icon: TrendingUp },
 ];
 
 const COLLAPSE_DEFAULT_SLUGS = ["mark", "didi", "kelsea"];

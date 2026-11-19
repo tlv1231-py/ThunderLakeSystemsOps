@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { IncomeDashboard } from "@/components/income/IncomeDashboard";
 import type { IncomeSummary, Opportunity, Asset, WinRateBySource } from "@/lib/income/types";
 
-export const metadata = { title: "TLS Income Operations" };
+export const metadata = { title: "Bounty Engine" };
 
 // Revalidate every 2 minutes
 export const revalidate = 120;

@@ -95,6 +95,23 @@ function ScoreBar({ score }: { score: number }) {
   );
 }
 
+// ── Compact inline KPI chip ───────────────────────────────────────────────────
+
+function KpiChip({
+  label, value, sub, accent = "default",
+}: {
+  label: string; value: string; sub?: string; accent?: "default" | "green" | "amber" | "red";
+}) {
+  const c = accent === "green" ? "#00ff41" : accent === "amber" ? "#ffb800" : accent === "red" ? "#ff0040" : "#00cc33";
+  return (
+    <div className="flex items-baseline gap-2 border border-[#00ff41]/15 bg-[#030603] px-3 py-2">
+      <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.18em] shrink-0">{label}</span>
+      <span className="text-base font-bold tabular-nums leading-none" style={{ color: c }}>{value}</span>
+      {sub && <span className="text-[9px] text-[#004d14] hidden sm:block">{sub}</span>}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipelineItems }: Props) {
@@ -104,7 +121,6 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   const [discovering, setDiscovering] = useState(false);
   const [discoverResult, setDiscoverResult] = useState<string | null>(null);
   const [activeMode, setActiveModeState] = useState(false);
-  const [showLogEarning, setShowLogEarning] = useState(false);
   const [oppFilter, setOppFilter] = useState<string>("all");
 
   const activePipeline   = pipelineItems.filter((w: any) => !["done","failed","cancelled"].includes(w.status)).length;
@@ -118,11 +134,11 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   const totalWon         = doneCount + paidCount;
   const winRate          = totalAttempted > 0 ? Math.round((totalWon / totalAttempted) * 100) : 0;
 
+  // Visible tabs — QUEUE & LOG accessible via CTA/links, not cluttering the bar
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "overview",      label: "OVERVIEW" },
     { id: "opportunities", label: "SCAN",     count: summary.activeOpportunities },
     { id: "pipeline",      label: "PIPELINE", count: activePipeline || undefined },
-    { id: "queue",         label: "QUEUE",    count: pendingQueue || undefined },
     { id: "assets",        label: "ASSETS",   count: allAssets.length },
     { id: "ledger",        label: "LEDGER",   count: allEarnings.length },
     { id: "approvals",     label: "APPROVE",  count: summary.pendingApprovals || undefined },
@@ -141,7 +157,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
       } else {
         setDiscoverResult("ERR: " + (data.error ?? "unknown"));
       }
-    } catch (e) {
+    } catch {
       setDiscoverResult("NET_ERROR");
     } finally {
       setDiscovering(false);
@@ -149,221 +165,187 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   }
 
   return (
-    <div className="relative bg-black text-[#00cc33] font-mono min-h-[calc(100vh-0px)] -mx-4 -mt-6 -mb-6 px-4 pt-6 pb-6">
+    <div className="relative bg-black text-[#00cc33] font-mono min-h-[calc(100vh-0px)] -mx-4 -mt-6 -mb-6 px-4 pt-5 pb-6">
       {/* Scanline overlay */}
       <div
         className="pointer-events-none fixed inset-0 z-50 opacity-[0.03]"
         style={{ background: "repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.5) 2px,rgba(0,0,0,0.5) 4px)" }}
       />
-
       {/* CRT glow */}
       <div
         className="pointer-events-none fixed inset-0 z-40 opacity-10"
         style={{ background: "radial-gradient(ellipse at 50% 30%, rgba(0,255,65,0.08) 0%, transparent 65%)" }}
       />
 
-      <div className="relative z-10 max-w-[1600px] mx-auto">
+      <div className="relative z-10 max-w-[1800px] mx-auto">
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
-        <div className="border border-[#00ff41]/30 bg-[#030603] px-4 py-3 mb-4">
-          <div className="flex items-start justify-between flex-wrap gap-3">
-            <div>
-              <div className="flex items-center gap-3">
-                <span className="text-[#00ff41] text-sm font-bold tracking-[0.15em] uppercase">⚡ TLS//INCOME_OPS</span>
-                <span className="text-[9px] text-[#007a1f] border border-[#007a1f]/50 px-1.5 py-0.5 tracking-widest select-all">
-                  BUILD[{process.env.NEXT_PUBLIC_BUILD_SHA ?? "dev"}]
-                </span>
-                <span className={`text-[9px] border px-1.5 py-0.5 tracking-widest uppercase ${
-                  activeMode ? "text-[#00ff41] border-[#00ff41]/50 animate-pulse" : "text-[#007a1f] border-[#007a1f]/30"
-                }`}>
-                  {activeMode ? "STATUS:ACTIVE" : "STATUS:IDLE"}
-                </span>
-              </div>
-              <div className="mt-1 text-[10px] text-[#007a1f] tracking-wider">
-                {summary.lastDiscoveryRun
-                  ? `LAST_SCAN: ${new Date(summary.lastDiscoveryRun).toLocaleString("en-US", { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" })}`
-                  : "LAST_SCAN: never"}
-                {"  ·  "}
-                {summary.activeOpportunities} OPPORTUNITIES_ACTIVE
-              </div>
+        <div className="flex items-center justify-between gap-3 mb-3 pb-3 border-b border-[#00ff41]/20">
+          <div>
+            <span className="text-[#00ff41] text-xs font-bold tracking-[0.2em] uppercase">⚡ BOUNTY ENGINE</span>
+            <div className="text-[9px] text-[#007a1f] mt-0.5 tracking-wider">
+              {summary.lastDiscoveryRun
+                ? `LAST_SCAN: ${new Date(summary.lastDiscoveryRun).toLocaleString("en-US", { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" })}`
+                : "LAST_SCAN: never"}
+              {"  ·  "}{summary.activeOpportunities} ACTIVE
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              {discoverResult && (
-                <span className={`text-[10px] font-mono border px-2 py-1 ${
-                  discoverResult.startsWith("ERR") || discoverResult.startsWith("NET")
-                    ? "text-[#ff0040] border-[#ff0040]/40"
-                    : "text-[#00ff41] border-[#00ff41]/40"
-                }`}>
-                  {discoverResult}
-                </span>
-              )}
-              <button
-                onClick={async () => {
-                  const next = !activeMode;
-                  setActiveModeState(next);
-                  await setActiveMode(next);
-                }}
-                className={`px-3 py-1.5 text-[10px] font-bold border tracking-widest uppercase transition-all flex items-center gap-1.5 ${
-                  activeMode
-                    ? "border-[#00ff41] text-[#00ff41] bg-[#00ff41]/10 shadow-[0_0_12px_rgba(0,255,65,0.3)]"
-                    : "border-[#007a1f] text-[#007a1f] hover:border-[#00ff41] hover:text-[#00ff41]"
-                }`}
-              >
-                {activeMode && <span className="w-1.5 h-1.5 rounded-full bg-[#00ff41] animate-pulse" />}
-                ⚡ {activeMode ? "ACTIVE" : "ACTIVE_MODE"}
-              </button>
-              <button
-                onClick={handleDiscover}
-                disabled={discovering}
-                className="px-3 py-1.5 text-[10px] border border-[#007a1f] text-[#007a1f] hover:border-[#00ff41] hover:text-[#00ff41] transition-all tracking-widest uppercase disabled:opacity-40"
-              >
-                {discovering ? "SCANNING…" : "⟳ RUN_SCAN"}
-              </button>
-            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {discoverResult && (
+              <span className={`text-[10px] font-mono border px-2 py-1 ${
+                discoverResult.startsWith("ERR") || discoverResult.startsWith("NET")
+                  ? "text-[#ff0040] border-[#ff0040]/40"
+                  : "text-[#00ff41] border-[#00ff41]/40"
+              }`}>
+                {discoverResult}
+              </span>
+            )}
+            <button
+              onClick={async () => {
+                const next = !activeMode;
+                setActiveModeState(next);
+                await setActiveMode(next);
+              }}
+              className={`px-2.5 py-1 text-[10px] font-bold border tracking-widest uppercase transition-all flex items-center gap-1.5 ${
+                activeMode
+                  ? "border-[#00ff41] text-[#00ff41] bg-[#00ff41]/10"
+                  : "border-[#007a1f]/50 text-[#007a1f] hover:border-[#00ff41] hover:text-[#00ff41]"
+              }`}
+            >
+              {activeMode && <span className="w-1.5 h-1.5 rounded-full bg-[#00ff41] animate-pulse" />}
+              {activeMode ? "ACTIVE" : "ACTIVE_MODE"}
+            </button>
+            <button
+              onClick={handleDiscover}
+              disabled={discovering}
+              className="px-2.5 py-1 text-[10px] border border-[#007a1f]/50 text-[#007a1f] hover:border-[#00ff41] hover:text-[#00ff41] transition-all tracking-widest uppercase disabled:opacity-40"
+            >
+              {discovering ? "SCANNING…" : "⟳ SCAN"}
+            </button>
           </div>
         </div>
 
-        {/* ── Scan active banner ──────────────────────────────────────────── */}
-        {discovering && (
-          <div className="mb-3 border border-[#00e5ff]/60 bg-[#00e5ff]/5 px-4 py-3 overflow-hidden relative">
-            {/* animated sweep line */}
+        {/* ── AGENT CTA — unmissable when queue has items ──────────────────── */}
+        {pendingQueue > 0 && (
+          <div
+            className="mb-3 relative overflow-hidden border-2 border-[#ffb800] cursor-pointer group"
+            onClick={() => setTab("queue")}
+            style={{ background: "rgba(255,184,0,0.04)" }}
+          >
+            {/* Sweep animation */}
             <div
-              className="absolute inset-y-0 w-16 bg-gradient-to-r from-transparent via-[#00e5ff]/20 to-transparent animate-[scan_1.6s_ease-in-out_infinite]"
-              style={{ animation: "scan 1.6s ease-in-out infinite" }}
+              className="absolute inset-y-0 w-24 bg-gradient-to-r from-transparent via-[#ffb800]/15 to-transparent pointer-events-none"
+              style={{ animation: "agentSweep 2s ease-in-out infinite" }}
             />
             <style>{`
-              @keyframes scan {
-                0%   { left: -4rem; }
+              @keyframes agentSweep {
+                0%   { left: -6rem; }
                 100% { left: 100%; }
               }
             `}</style>
-            <div className="relative flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <span className="inline-block w-2 h-2 rounded-full bg-[#00e5ff] animate-pulse" />
-                <span className="text-[11px] text-[#00e5ff] font-bold uppercase tracking-widest">
-                  DISCOVERY_SCAN ACTIVE
-                </span>
-                <span className="text-[10px] text-[#00e5ff]/60 uppercase tracking-wider">
-                  — querying algora · issuehunt · opire · github
-                </span>
+            <div className="relative flex items-center gap-5 px-5 py-4">
+              <div className="flex-1 min-w-0">
+                <div className="text-[#ffb800] text-sm font-bold uppercase tracking-[0.2em] animate-pulse">
+                  ⚡ RUN AGENT NOW — {pendingQueue} BOUNT{pendingQueue === 1 ? "Y" : "IES"} READY
+                </div>
+                {summary.queueProjectedUsd > 0 && (
+                  <div className="text-[#ffb800]/60 text-[10px] mt-0.5 tracking-wider">
+                    {formatCurrency(summary.queueProjectedUsd)} potential earnings queued · click to view queue
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                {["ALGORA", "ISSUEHUNT", "OPIRE", "GITHUB"].map(src => (
-                  <span key={src} className="text-[9px] border border-[#00e5ff]/30 text-[#00e5ff]/50 px-1.5 py-0.5 uppercase tracking-wider animate-pulse">
-                    {src}
-                  </span>
-                ))}
-              </div>
+              <code className="shrink-0 text-[11px] text-[#ffb800] border border-[#ffb800]/50 px-3 py-2 select-all group-hover:border-[#ffb800] transition-colors">
+                node scripts/income-agent.mjs
+              </code>
             </div>
           </div>
         )}
 
-        {/* ── Agent queue alert ───────────────────────────────────────────── */}
-        {pendingQueue > 0 && (
-          <div
-            className="mb-3 flex items-center justify-between px-4 py-3 border border-[#00ff41]/60 bg-[#00ff41]/5 cursor-pointer hover:bg-[#00ff41]/10 transition-colors"
-            onClick={() => setTab("queue")}
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-[#00ff41] text-lg font-bold tabular-nums animate-pulse">{pendingQueue}</span>
-              <span className="text-[11px] text-[#00ff41] font-bold uppercase tracking-widest">
-                BOUNTIES_QUEUED — run agent to process
-              </span>
+        {/* ── Scan active banner ───────────────────────────────────────────── */}
+        {discovering && (
+          <div className="mb-3 border border-[#00e5ff]/50 bg-[#00e5ff]/5 px-4 py-2.5 overflow-hidden relative">
+            <div
+              className="absolute inset-y-0 w-16 bg-gradient-to-r from-transparent via-[#00e5ff]/20 to-transparent pointer-events-none"
+              style={{ animation: "scan 1.6s ease-in-out infinite" }}
+            />
+            <style>{`@keyframes scan { 0% { left:-4rem; } 100% { left:100%; } }`}</style>
+            <div className="relative flex items-center gap-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00e5ff] animate-pulse shrink-0" />
+              <span className="text-[10px] text-[#00e5ff] font-bold uppercase tracking-widest">DISCOVERY ACTIVE</span>
+              <span className="text-[9px] text-[#00e5ff]/50 uppercase tracking-wider hidden sm:block">— algora · issuehunt · opire · github</span>
             </div>
-            <code className="text-[10px] text-[#007a1f] border border-[#007a1f]/40 px-2 py-1 select-all">
-              node scripts/income-agent.mjs
-            </code>
           </div>
         )}
 
-        {/* ── Approval banner ─────────────────────────────────────────────── */}
+        {/* ── Approval banner ──────────────────────────────────────────────── */}
         {summary.pendingApprovals > 0 && (
           <div
-            className="mb-4 flex items-center justify-between px-4 py-2.5 border border-[#ffb800]/50 bg-[#ffb800]/5 cursor-pointer hover:bg-[#ffb800]/10 transition-colors"
+            className="mb-3 flex items-center justify-between px-4 py-2 border border-[#ffb800]/40 bg-[#ffb800]/3 cursor-pointer hover:bg-[#ffb800]/8 transition-colors"
             onClick={() => setTab("approvals")}
           >
-            <span className="text-[11px] text-[#ffb800] tracking-wider uppercase">
-              ⚠ ATTENTION_REQUIRED: {summary.pendingApprovals} action{summary.pendingApprovals > 1 ? "s" : ""} pending human approval
+            <span className="text-[10px] text-[#ffb800] tracking-wider uppercase">
+              ⚠ {summary.pendingApprovals} action{summary.pendingApprovals > 1 ? "s" : ""} require your approval
             </span>
-            <span className="text-[10px] text-[#ffb800]/60 uppercase tracking-widest">[REVIEW_NOW →]</span>
+            <span className="text-[9px] text-[#ffb800]/50 uppercase tracking-widest shrink-0">[REVIEW →]</span>
           </div>
         )}
 
-        {/* ── KPI tiles ───────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5 mb-4">
-          <CyberKpi
+        {/* ── KPI chips + cooldowns ────────────────────────────────────────── */}
+        <div className="flex items-center gap-3 mb-3 overflow-x-auto flex-wrap">
+          <KpiChip
             label="THIS_WEEK"
             value={formatCurrency(summary.collectedThisWeek)}
-            sub={`Target: ${formatCurrency(summary.weeklyTarget)}`}
-            progress={summary.weeklyProgress}
-            accent={summary.weeklyProgress >= 1 ? "green" : "default"}
+            sub={`/ ${formatCurrency(summary.weeklyTarget)} target`}
+            accent={summary.weeklyProgress >= 1 ? "green" : summary.collectedThisWeek > 0 ? "amber" : "default"}
           />
-          <CyberKpi
-            label="ALL_TIME"
-            value={formatCurrency(allTimeCollected)}
-            sub={`${paidCount} payment${paidCount !== 1 ? "s" : ""} confirmed`}
-            accent={allTimeCollected > 0 ? "green" : "default"}
-          />
-          <CyberKpi
-            label="TOTAL_QUEUED"
+          <KpiChip
+            label="QUEUED"
             value={String(pendingQueue)}
-            sub={pendingQueue > 0 ? "run agent to process" : "queue empty"}
+            sub={pendingQueue > 0 ? "run agent" : "queue empty"}
             accent={pendingQueue > 0 ? "amber" : "default"}
           />
-          <CyberKpi
-            label="SUBMITTED_PRS"
-            value={String(submittedCount)}
-            sub={submittedCount > 0 ? `+${inProgressCount} in_progress` : `${inProgressCount} in_progress`}
-            accent={submittedCount > 0 ? "green" : "default"}
-          />
-          <CyberKpi
+          <KpiChip
             label="WIN_RATE"
             value={`${winRate}%`}
-            sub={(() => {
-              const projected = summary.queueProjectedUsd * (winRate / 100);
-              if (totalAttempted > 0 && projected > 0)
-                return `${totalWon}/${totalAttempted} · $${Math.round(projected)} projected`;
-              if (totalAttempted > 0)
-                return `${totalWon}/${totalAttempted} merged`;
-              return summary.queueProjectedUsd > 0
-                ? `$${Math.round(summary.queueProjectedUsd)} queued potential`
-                : "no PRs submitted yet";
-            })()}
-            progress={totalAttempted > 0 ? winRate / 100 : undefined}
+            sub={totalAttempted > 0 ? `${totalWon}/${totalAttempted}` : "no PRs yet"}
             accent={winRate >= 50 ? "green" : winRate > 0 ? "amber" : "default"}
           />
+          <KpiChip
+            label="ALL_TIME"
+            value={formatCurrency(allTimeCollected)}
+            sub={`${paidCount} confirmed`}
+            accent={allTimeCollected > 0 ? "green" : "default"}
+          />
+          <div className="ml-auto shrink-0">
+            <CooldownPanel />
+          </div>
         </div>
 
         {/* ── Pipeline funnel ──────────────────────────────────────────────── */}
-        <div className="border border-[#00ff41]/20 bg-[#030603] px-5 py-4 mb-4">
-          <p className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em] mb-3">PIPELINE_FUNNEL</p>
-          <div className="flex items-stretch gap-0 overflow-x-auto">
+        <div className="border border-[#00ff41]/12 bg-[#030603] px-4 py-2.5 mb-3 overflow-x-auto">
+          <div className="flex items-center gap-0.5 min-w-max">
             {([
-              { label: "SCAN",      value: summary.activeOpportunities, color: "#00e5ff", desc: "discovered" },
-              { label: "QUEUE",     value: pendingQueue,                 color: "#00e5ff", desc: "ready" },
-              { label: "WORKING",   value: inProgressCount,             color: "#ffb800", desc: "in_progress" },
-              { label: "SUBMITTED", value: submittedCount,              color: "#ff8c00", desc: "PRs open" },
-              { label: "MERGED",    value: doneCount,                   color: "#00ff41", desc: "accepted" },
-              { label: "PAID",      value: paidCount,                   color: "#00ff41", desc: "confirmed" },
+              { label: "SCAN",      value: summary.activeOpportunities, color: "#00e5ff" },
+              { label: "QUEUE",     value: pendingQueue,                 color: "#00e5ff" },
+              { label: "WORKING",   value: inProgressCount,             color: "#ffb800" },
+              { label: "SUBMITTED", value: submittedCount,              color: "#ff8c00" },
+              { label: "MERGED",    value: doneCount,                   color: "#00ff41" },
+              { label: "PAID",      value: paidCount,                   color: "#00ff41" },
             ] as const).map((stage, i, arr) => (
-              <div key={stage.label} className="flex items-stretch min-w-0">
-                <div className="flex flex-col items-center px-5 py-2 min-w-[90px]">
-                  <p className="text-[9px] uppercase tracking-[0.15em] mb-1" style={{ color: stage.value > 0 ? stage.color : "#004d14" }}>
+              <div key={stage.label} className="flex items-center">
+                <div className="flex flex-col items-center px-4 py-0.5">
+                  <span className="text-[9px] uppercase tracking-wider" style={{ color: stage.value > 0 ? stage.color : "#1a4d1a" }}>
                     {stage.label}
-                  </p>
-                  <p className="text-2xl font-bold tabular-nums" style={{ color: stage.value > 0 ? stage.color : "#1a4d1a" }}>
+                  </span>
+                  <span className="text-xl font-bold tabular-nums leading-tight" style={{ color: stage.value > 0 ? stage.color : "#1a4d1a" }}>
                     {stage.value}
-                  </p>
-                  <p className="text-[9px] text-[#004d14] mt-0.5 uppercase tracking-wider">{stage.desc}</p>
+                  </span>
                 </div>
                 {i < arr.length - 1 && (
-                  <div className="flex items-center px-1 text-[#007a1f] text-sm self-center">▶</div>
+                  <span className="text-[#007a1f]/40 text-xs">▶</span>
                 )}
               </div>
             ))}
-            <div className="ml-auto flex items-center">
-              <CooldownPanel />
-            </div>
           </div>
         </div>
 
@@ -372,24 +354,23 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
           {/* Left: main tabs + content */}
           <div className="flex-1 min-w-0">
             {/* Tab bar */}
-            <div className="flex gap-0 border-b border-[#00ff41]/20 mb-4 overflow-x-auto">
+            <div className="flex gap-0 border-b border-[#00ff41]/15 mb-3 overflow-x-auto">
               {tabs.map(t => (
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className={`flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold border-b-2 transition-colors whitespace-nowrap tracking-[0.12em] uppercase ${
+                  className={`flex items-center gap-1.5 px-3 py-2 text-[10px] font-bold border-b-2 transition-colors whitespace-nowrap tracking-[0.12em] uppercase ${
                     tab === t.id
                       ? "border-[#00ff41] text-[#00ff41] bg-[#00ff41]/5"
                       : "border-transparent text-[#007a1f] hover:text-[#00cc33]"
                   }`}
                 >
-                  [{t.label}
+                  {t.label}
                   {t.count != null && t.count > 0 && (
-                    <span className={`font-bold ${
+                    <span className={`text-[9px] font-bold ${
                       t.id === "approvals" ? "text-[#ffb800]" : "text-[#00cc33]"
                     }`}>{t.count}</span>
                   )}
-                  ]
                 </button>
               ))}
             </div>
@@ -405,8 +386,8 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
             {tab === "log"           && <ActivityTab entries={summary.recentActivity} />}
           </div>
 
-          {/* Right: live terminal feed */}
-          <div className="w-[340px] xl:w-[400px] shrink-0 h-[calc(100vh-280px)] sticky top-4">
+          {/* Right: live terminal feed — takes more space */}
+          <div className="w-[380px] xl:w-[480px] 2xl:w-[560px] shrink-0 h-[calc(100vh-220px)] sticky top-4">
             <IncomeTerminalFeed initialEntries={summary.recentActivity} lastDiscoveryRun={summary.lastDiscoveryRun} />
           </div>
         </div>
@@ -414,8 +395,6 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
     </div>
   );
 }
-
-// ── Next scan countdown ───────────────────────────────────────────────────────
 
 // ── Cooldown timers ───────────────────────────────────────────────────────────
 
@@ -434,8 +413,8 @@ function nextSlotFromHours(slots: number[], now: number): number {
   return next.getTime();
 }
 
-const DISCOVER_SLOTS  = Array.from({ length: 24 }, (_, i) => i);       // every hour
-const CHECK_PR_SLOTS  = Array.from({ length: 12 }, (_, i) => i * 2 + 1); // odd hours
+const DISCOVER_SLOTS  = Array.from({ length: 24 }, (_, i) => i);
+const CHECK_PR_SLOTS  = Array.from({ length: 12 }, (_, i) => i * 2 + 1);
 
 type CooldownDef = {
   label: string;
@@ -456,8 +435,8 @@ function CooldownBar({ def, now }: { def: CooldownDef; now: number }) {
   const remaining = nextSlot - now;
   const elapsed   = def.intervalMs - remaining;
   const pct       = Math.min(1, Math.max(0, elapsed / def.intervalMs));
-  const filled    = Math.round(pct * 16);
-  const empty     = 16 - filled;
+  const filled    = Math.round(pct * 14);
+  const empty     = 14 - filled;
   const nearFull  = pct >= 0.85;
 
   const h = Math.floor(remaining / 3600000);
@@ -468,28 +447,24 @@ function CooldownBar({ def, now }: { def: CooldownDef; now: number }) {
     : `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
 
   return (
-    <div className="flex flex-col gap-1 min-w-[130px]">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[9px] uppercase tracking-[0.15em] font-bold" style={{ color: def.color }}>
+    <div className="flex flex-col gap-0.5 min-w-[110px]">
+      <div className="flex items-center justify-between gap-1">
+        <span className="text-[9px] uppercase tracking-[0.12em] font-bold" style={{ color: def.color }}>
           {def.icon} {def.label}
         </span>
-        <span className="text-[9px] text-[#004d14]">{h > 0 ? `${h}h` : "1h"} cd</span>
       </div>
-      {/* Bar */}
       <div
-        className={`text-[11px] tabular-nums font-mono tracking-[-0.05em] ${nearFull ? "animate-pulse" : ""}`}
+        className={`text-[10px] tabular-nums font-mono tracking-[-0.05em] ${nearFull ? "animate-pulse" : ""}`}
         style={{ color: def.color, textShadow: nearFull ? `0 0 8px ${def.glowColor}` : undefined }}
       >
         {"▓".repeat(filled)}{"░".repeat(empty)}
       </div>
-      {/* Countdown */}
       <p
-        className={`text-xl font-bold tabular-nums tracking-widest leading-none ${nearFull ? "animate-pulse" : ""}`}
-        style={{ color: def.color, textShadow: nearFull ? `0 0 12px ${def.glowColor}` : undefined }}
+        className={`text-base font-bold tabular-nums tracking-widest leading-none ${nearFull ? "animate-pulse" : ""}`}
+        style={{ color: def.color, textShadow: nearFull ? `0 0 10px ${def.glowColor}` : undefined }}
       >
         {countdown}
       </p>
-      <p className="text-[9px] text-[#004d14] uppercase tracking-widest">until fire</p>
     </div>
   );
 }
@@ -502,30 +477,8 @@ function CooldownPanel() {
   }, []);
 
   return (
-    <div className="flex gap-5 pl-5 border-l border-[#00ff41]/20">
+    <div className="flex gap-4">
       {COOLDOWNS.map(def => <CooldownBar key={def.label} def={def} now={now} />)}
-    </div>
-  );
-}
-
-// ── Cyber KPI card ────────────────────────────────────────────────────────────
-
-function CyberKpi({
-  label, value, sub, progress, accent = "default",
-}: {
-  label: string; value: string; sub?: string; progress?: number; accent?: "default" | "green" | "amber";
-}) {
-  const valueColor = accent === "green" ? "text-[#00ff41]" : accent === "amber" ? "text-[#ffb800]" : "text-[#00cc33]";
-  return (
-    <div className="border border-[#00ff41]/20 bg-[#030603] px-4 py-3">
-      <p className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em] mb-2">{label}</p>
-      <p className={`text-xl font-bold tabular-nums ${valueColor}`}>{value}</p>
-      {progress != null && (
-        <div className="mt-1.5">
-          <CyberBar value={progress} max={1} color={accent === "green" ? "#00ff41" : accent === "amber" ? "#ffb800" : "#00cc33"} />
-        </div>
-      )}
-      {sub && <p className="mt-1 text-[10px] text-[#004d14]">{sub}</p>}
     </div>
   );
 }
@@ -541,22 +494,21 @@ function OverviewTab({ summary, onTabChange }: { summary: IncomeSummary; onTabCh
 
   return (
     <div className="space-y-4">
-      {/* Row 1: Active pipeline (full width) */}
-      <div className="border border-[#ffb800]/30 bg-[#030603]">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-[#ffb800]/20">
+      {/* Row 1: Active pipeline */}
+      <div className="border border-[#ffb800]/25 bg-[#030603]">
+        <div className="flex items-center justify-between px-4 py-2 border-b border-[#ffb800]/15">
           <span className="text-[9px] text-[#ffb800] uppercase tracking-[0.2em]">⚙ ACTIVE_PIPELINE</span>
           <button onClick={() => onTabChange("pipeline")} className="text-[9px] text-[#007a1f] hover:text-[#00ff41] uppercase tracking-widest">[VIEW_ALL →]</button>
         </div>
         {activePipelineItems.length === 0 ? (
-          <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; No active work — select opportunities and run agent to begin</p>
+          <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; No active work — run agent to begin</p>
         ) : (
-          <div className="divide-y divide-[#ffb800]/10">
+          <div className="divide-y divide-[#ffb800]/8">
             {activePipelineItems.slice(0, 5).map(w => (
               <div key={w.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                 <div className="min-w-0 flex-1">
                   <p className="text-[11px] text-[#00cc33] truncate">{w.title}</p>
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                    <span className="text-[9px] text-[#004d14] uppercase tracking-wider">{w.engine}</span>
                     {(w as any).progress_note && (
                       <span className="text-[9px] text-[#007a1f] truncate max-w-[200px]">{(w as any).progress_note}</span>
                     )}
@@ -580,15 +532,14 @@ function OverviewTab({ summary, onTabChange }: { summary: IncomeSummary; onTabCh
 
       {/* Row 2: Queue ready + Top picks */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Queue ready to work */}
-        <div className="border border-[#00e5ff]/30 bg-[#030603]">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-[#00e5ff]/20">
+        <div className="border border-[#00e5ff]/25 bg-[#030603]">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-[#00e5ff]/15">
             <span className="text-[9px] text-[#00e5ff] uppercase tracking-[0.2em]">⬡ QUEUE_READY</span>
             <button onClick={() => onTabChange("queue")} className="text-[9px] text-[#007a1f] hover:text-[#00ff41] uppercase tracking-widest">[RUN_AGENT →]</button>
           </div>
-          <div className="divide-y divide-[#00e5ff]/10">
+          <div className="divide-y divide-[#00e5ff]/8">
             {queueReady.length === 0 ? (
-              <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; No queued items — scan for opportunities</p>
+              <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; Queue empty — waiting for discovery scan</p>
             ) : (
               queueReady.slice(0, 5).map(w => (
                 <div key={w.id} className="flex items-center justify-between gap-2 px-4 py-2.5">
@@ -600,13 +551,12 @@ function OverviewTab({ summary, onTabChange }: { summary: IncomeSummary; onTabCh
           </div>
         </div>
 
-        {/* Top opportunities pick list */}
-        <div className="border border-[#00ff41]/20 bg-[#030603]">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-[#00ff41]/20">
+        <div className="border border-[#00ff41]/15 bg-[#030603]">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-[#00ff41]/12">
             <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em]">TOP_PICKS</span>
             <button onClick={() => onTabChange("opportunities")} className="text-[9px] text-[#007a1f] hover:text-[#00ff41] uppercase tracking-widest">[VIEW_ALL →]</button>
           </div>
-          <div className="divide-y divide-[#00ff41]/10">
+          <div className="divide-y divide-[#00ff41]/8">
             {summary.topOpportunities.slice(0, 5).map(opp => (
               <OppRow key={opp.id} opp={opp} compact />
             ))}
@@ -617,18 +567,17 @@ function OverviewTab({ summary, onTabChange }: { summary: IncomeSummary; onTabCh
         </div>
       </div>
 
-      {/* Row 3: Earnings + Source win rate (2-col) */}
+      {/* Row 3: Earnings + Source win rate */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Recent earnings */}
-        <div className="border border-[#00ff41]/20 bg-[#030603]">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-[#00ff41]/20">
+        <div className="border border-[#00ff41]/15 bg-[#030603]">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-[#00ff41]/12">
             <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em]">EARNINGS_LEDGER</span>
             <button onClick={() => onTabChange("ledger")} className="text-[9px] text-[#007a1f] hover:text-[#00ff41] uppercase tracking-widest">[FULL_LEDGER →]</button>
           </div>
           {summary.recentEarnings.length === 0 ? (
             <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; No earnings logged yet</p>
           ) : (
-            <div className="divide-y divide-[#00ff41]/10">
+            <div className="divide-y divide-[#00ff41]/8">
               {summary.recentEarnings.slice(0, 4).map(e => (
                 <div key={e.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                   <div>
@@ -647,15 +596,14 @@ function OverviewTab({ summary, onTabChange }: { summary: IncomeSummary; onTabCh
           )}
         </div>
 
-        {/* Source win rate breakdown */}
-        <div className="border border-[#00ff41]/20 bg-[#030603]">
-          <div className="px-4 py-2 border-b border-[#00ff41]/20">
+        <div className="border border-[#00ff41]/15 bg-[#030603]">
+          <div className="px-4 py-2 border-b border-[#00ff41]/12">
             <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em]">WIN_RATE_BY_SOURCE</span>
           </div>
           {allSources.length === 0 ? (
-            <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; Collecting data — submit PRs to build win rate history</p>
+            <p className="text-[10px] text-[#004d14] px-4 py-4">&gt; Submit PRs to build win rate history</p>
           ) : (
-            <div className="divide-y divide-[#00ff41]/10">
+            <div className="divide-y divide-[#00ff41]/8">
               {allSources.map(src => {
                 const s = summary.winRateBySource[src];
                 const pct = Math.round(s.rate * 100);
@@ -736,7 +684,7 @@ function OppRow({ opp, compact = false }: { opp: Opportunity; compact?: boolean 
   const [pending, startTransition] = useTransition();
 
   return (
-    <div className={`border border-[#00ff41]/15 bg-[#030603] hover:border-[#00ff41]/35 transition-colors ${compact ? "px-4 py-2.5" : "p-4"}`}>
+    <div className={`border border-[#00ff41]/12 bg-[#030603] hover:border-[#00ff41]/30 transition-colors ${compact ? "px-4 py-2.5" : "p-4"}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -779,7 +727,7 @@ function OppRow({ opp, compact = false }: { opp: Opportunity; compact?: boolean 
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
           {opp.reward_usd != null && (
-            <span className={`font-bold tabular-nums text-[#00ff41] shadow-[0_0_8px_rgba(0,255,65,0.3)] ${compact ? "text-sm" : "text-lg"}`}>
+            <span className={`font-bold tabular-nums text-[#00ff41] ${compact ? "text-sm" : "text-lg"}`}>
               {formatCurrency(opp.reward_usd)}
             </span>
           )}
@@ -821,11 +769,12 @@ function WorkQueueTab({ queue }: { queue: WorkItem[] }) {
     <div className="space-y-3">
       {active.length === 0 && (
         <div className="border border-[#007a1f]/30 bg-[#030603] px-6 py-8 text-center">
-          <p className="text-[11px] text-[#007a1f]">&gt; Queue empty — select an opportunity to begin</p>
+          <p className="text-[11px] text-[#007a1f]">&gt; Queue empty — waiting for auto-discovery</p>
+          <p className="text-[9px] text-[#004d14] mt-2 font-mono">Opportunities are queued automatically — run the agent to begin</p>
         </div>
       )}
       {active.map(w => (
-        <div key={w.id} className="border border-[#00ff41]/20 bg-[#030603] p-4">
+        <div key={w.id} className="border border-[#00ff41]/15 bg-[#030603] p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 mb-1.5 flex-wrap">
@@ -912,7 +861,7 @@ function AssetsTab({ assets }: { assets: Asset[] }) {
             ) : (
               <div className="space-y-2">
                 {list.map(a => (
-                  <div key={a.id} className="border border-[#00ff41]/15 bg-[#030603] p-4">
+                  <div key={a.id} className="border border-[#00ff41]/12 bg-[#030603] p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -962,7 +911,7 @@ function LedgerTab({ earnings }: { earnings: Earning[] }) {
           { label: "TOTAL_RECORDS",   value: String(earnings.length), color: "text-[#00cc33]" },
           { label: "COLLECTED_CNT",   value: String(collected.length), color: "text-[#00cc33]" },
         ].map(item => (
-          <div key={item.label} className="border border-[#00ff41]/15 bg-[#030603] px-4 py-3">
+          <div key={item.label} className="border border-[#00ff41]/12 bg-[#030603] px-4 py-3">
             <p className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em] mb-1">{item.label}</p>
             <p className={`text-xl font-bold tabular-nums ${item.color}`}>{item.value}</p>
           </div>
@@ -974,16 +923,16 @@ function LedgerTab({ earnings }: { earnings: Earning[] }) {
           <p className="text-[11px] text-[#007a1f]">&gt; No earnings logged yet</p>
         </div>
       ) : (
-        <div className="border border-[#00ff41]/20 overflow-hidden">
+        <div className="border border-[#00ff41]/15 overflow-hidden">
           <table className="w-full text-[10px] font-mono">
-            <thead className="bg-[#030603] border-b border-[#00ff41]/20">
+            <thead className="bg-[#030603] border-b border-[#00ff41]/15">
               <tr>
                 {["DATE", "DESCRIPTION", "SOURCE", "STATUS", "AMOUNT", ""].map(h => (
                   <th key={h} className="px-4 py-2 text-left text-[9px] text-[#007a1f] uppercase tracking-[0.15em] font-bold">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#00ff41]/10">
+            <tbody className="divide-y divide-[#00ff41]/8">
               {earnings.map(e => (
                 <tr key={e.id} className="bg-black hover:bg-[#030603] transition-colors">
                   <td className="px-4 py-2 text-[#004d14] tabular-nums whitespace-nowrap">{e.earned_date}</td>
@@ -1085,14 +1034,14 @@ function ApprovalsTab({ approvals }: { approvals: Approval[] }) {
 
 function ActivityTab({ entries }: { entries: ActivityEntry[] }) {
   return (
-    <div className="border border-[#00ff41]/20 bg-black overflow-hidden">
+    <div className="border border-[#00ff41]/15 bg-black overflow-hidden">
       {entries.length === 0 ? (
         <div className="px-6 py-8 text-center">
           <p className="text-[11px] text-[#007a1f]">&gt; No activity logged yet</p>
         </div>
       ) : (
         <table className="w-full text-[10px] font-mono">
-          <tbody className="divide-y divide-[#00ff41]/10">
+          <tbody className="divide-y divide-[#00ff41]/8">
             {entries.map(a => (
               <tr key={a.id} className="hover:bg-[#030603] transition-colors">
                 <td className="px-4 py-2 text-[#2a4d2a] whitespace-nowrap tabular-nums w-[7rem]">
