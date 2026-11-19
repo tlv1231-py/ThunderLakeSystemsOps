@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useTransition, useOptimistic } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/utils";
 import {
   dismissOpportunity, queueOpportunity, markOpportunityInProgress,
   approveAction, rejectAction, logEarning, markEarningCollected,
-  createAsset, triggerDiscovery,
+  createAsset,
 } from "@/app/(admin)/income/actions";
 import type { IncomeSummary, Opportunity, Asset, Earning, WorkItem, Approval, ActivityEntry } from "@/lib/income/types";
 
@@ -106,9 +107,11 @@ function ProgressRing({ value, target, label }: { value: number; target: number;
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function IncomeDashboard({ summary, allEarnings, allAssets }: Props) {
+  const router = useRouter();
   const [tab, setTab]   = useState<Tab>("overview");
   const [pending, startTransition] = useTransition();
   const [discovering, setDiscovering] = useState(false);
+  const [discoverResult, setDiscoverResult] = useState<string | null>(null);
   const [showLogEarning, setShowLogEarning] = useState(false);
   const [oppFilter, setOppFilter] = useState<string>("all");
 
@@ -124,8 +127,20 @@ export function IncomeDashboard({ summary, allEarnings, allAssets }: Props) {
 
   async function handleDiscover() {
     setDiscovering(true);
-    try { await triggerDiscovery(); } finally {
-      setTimeout(() => setDiscovering(false), 3000);
+    setDiscoverResult(null);
+    try {
+      const res = await fetch("/api/income/discover");
+      const data = await res.json();
+      if (data.ok) {
+        setDiscoverResult(`+${data.new} new from ${data.sources?.map((s: any) => `${s.source}(${s.count})`).join(", ")}`);
+        router.refresh();
+      } else {
+        setDiscoverResult("Error: " + (data.error ?? "unknown"));
+      }
+    } catch (e) {
+      setDiscoverResult("Network error");
+    } finally {
+      setDiscovering(false);
     }
   }
 
@@ -142,13 +157,20 @@ export function IncomeDashboard({ summary, allEarnings, allAssets }: Props) {
             {" · "}{summary.activeOpportunities} active opportunities
           </p>
         </div>
-        <button
-          onClick={handleDiscover}
-          disabled={discovering}
-          className="px-3 py-1.5 text-xs font-medium rounded-lg border border-zinc-700 text-zinc-300 hover:bg-zinc-800 transition-colors disabled:opacity-50"
-        >
-          {discovering ? "Scanning…" : "⟳ Run Discovery"}
-        </button>
+        <div className="flex items-center gap-3">
+          {discoverResult && (
+            <span className={`text-xs font-mono ${discoverResult.startsWith("Error") || discoverResult.startsWith("Network") ? "text-red-500" : "text-emerald-500"}`}>
+              {discoverResult}
+            </span>
+          )}
+          <button
+            onClick={handleDiscover}
+            disabled={discovering}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg border border-zinc-700 text-zinc-300 hover:bg-zinc-800 transition-colors disabled:opacity-50"
+          >
+            {discovering ? "Scanning…" : "⟳ Run Discovery"}
+          </button>
+        </div>
       </div>
 
       {/* ── Approval banner ─────────────────────────────────────────────── */}
