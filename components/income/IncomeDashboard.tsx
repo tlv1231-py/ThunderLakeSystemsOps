@@ -155,7 +155,12 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-zinc-100">Income Operations</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-semibold text-zinc-100">Income Operations</h1>
+            <span className="font-mono text-[10px] text-zinc-600 bg-zinc-800/60 border border-zinc-700/50 rounded px-1.5 py-0.5 select-all">
+              {process.env.NEXT_PUBLIC_BUILD_SHA ?? "dev"}
+            </span>
+          </div>
           <p className="mt-1 text-sm text-zinc-500">
             {summary.lastDiscoveryRun
               ? `Last discovery: ${new Date(summary.lastDiscoveryRun).toLocaleString("en-US", { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" })}`
