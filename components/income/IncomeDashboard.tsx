@@ -457,44 +457,41 @@ function QueueList({ items }: { items: any[] }) {
 
 function Dot() { return <span className="text-zinc-800 text-lg select-none">·</span>; }
 
-function HeaderStats({ summary, winRate, allTimeUsd, openPRs, totalSubmissions, lastScanTs }: {
-  summary: IncomeSummary; winRate: number; allTimeUsd: number; openPRs: number; totalSubmissions: number; lastScanTs: string | null;
+function StatCell({ value, label, color }: { value: string; label: string; color?: string }) {
+  return (
+    <div className="flex flex-col">
+      <span className={`text-lg font-semibold tabular-nums leading-tight ${color ?? "text-white"}`}>{value}</span>
+      <span className="text-[11px] text-zinc-600 leading-tight">{label}</span>
+    </div>
+  );
+}
+
+function HeaderStats({ allTimeUsd, inFlightUsd, submittedAllTime, acceptedCount, rejectedCount, winRate, readyCount, lastScanTs }: {
+  allTimeUsd: number; inFlightUsd: number; submittedAllTime: number; acceptedCount: number; rejectedCount: number; winRate: number; readyCount: number; lastScanTs: string | null;
 }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
   const remaining = nextScan(now) - now;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-1 mt-2">
-      <div>
-        <span className="text-lg font-semibold text-white tabular-nums text-glow">{usd(summary.collectedThisWeek)}</span>
-      </div>
+    <div className="flex flex-wrap items-end gap-x-7 gap-y-1 mt-2">
+      <StatCell value={usd(allTimeUsd)} label="total earned" color={allTimeUsd > 0 ? "text-emerald-400 green-glow" : "text-zinc-500"} />
       <Dot />
-      <div>
-        <span className="text-lg font-semibold text-white tabular-nums">{totalSubmissions}</span>
-        <span className="text-sm text-zinc-500 ml-1">total submissions</span>
-      </div>
+      <StatCell value={usd(inFlightUsd)} label="submitted value" color={inFlightUsd > 0 ? "text-sky-400" : "text-zinc-500"} />
       <Dot />
-      <div>
-        <span className={`text-lg font-semibold tabular-nums ${openPRs > 0 ? "text-sky-400" : "text-zinc-500"}`}>{openPRs}</span>
-        <span className="text-sm text-zinc-500 ml-1">pending</span>
-      </div>
+      <StatCell value={String(submittedAllTime)} label="submitted" />
       <Dot />
-      <div>
-        <span className={`text-lg font-semibold tabular-nums ${winRate > 0 ? "text-emerald-400 green-glow" : "text-zinc-500"}`}>{winRate}%</span>
-        <span className="text-sm text-zinc-500 ml-1">win rate</span>
-      </div>
+      <StatCell value={String(acceptedCount)} label="accepted" color={acceptedCount > 0 ? "text-emerald-400" : "text-zinc-500"} />
       <Dot />
-      <div>
-        <span className="text-sm text-zinc-500">{usd(allTimeUsd)}</span>
-        <span className="text-sm text-zinc-700 ml-1">total</span>
-      </div>
+      <StatCell value={String(rejectedCount)} label="rejected" color={rejectedCount > 0 ? "text-red-400" : "text-zinc-500"} />
       <Dot />
-      <div>
-        <span className="text-sm text-zinc-500">scan in </span>
-        <span className={`text-sm tabular-nums font-mono ${remaining < 300000 ? "text-amber-400" : "text-zinc-400"}`}>
-          {countdown(remaining)}
-        </span>
+      <StatCell value={`${winRate}%`} label="win rate" color={winRate > 0 ? "text-white" : "text-zinc-500"} />
+      <Dot />
+      <StatCell value={String(readyCount)} label="ready for pipeline" color={readyCount > 0 ? "text-amber-400" : "text-zinc-500"} />
+      <Dot />
+      <div className="flex flex-col">
+        <span className={`text-lg font-semibold tabular-nums font-mono leading-tight ${remaining < 300000 ? "text-amber-400" : "text-zinc-500"}`}>{countdown(remaining)}</span>
+        <span className="text-[11px] text-zinc-600 leading-tight">next scan</span>
       </div>
     </div>
   );
@@ -998,14 +995,14 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   const pendingQueue    = liveItems.filter(w => w.status === "pending");
   const activeItems     = liveItems.filter(w => w.status === "in_progress");
   const activeSet       = new Set(activeItems.map(i => i.id));
-  const submittedCount  = liveItems.filter(w => w.status === "submitted").length;
-  const doneCount       = liveItems.filter(w => w.status === "done").length;
-  const paidCount       = allEarnings.filter(e => e.status === "collected").length;
+  const acceptedCount   = liveItems.filter(w => w.status === "done").length + allEarnings.filter(e => e.status === "collected").length;
+  const rejectedCount   = liveItems.filter(w => w.status === "failed").length;
+  const submittedAllTime = liveItems.filter(w => ["submitted","done","failed"].includes(w.status)).length;
+  const inFlightUsd     = liveItems.filter(w => w.status === "submitted").reduce((s, w) => s + (w.expected_usd ?? 0), 0);
   const allTimeUsd      = allEarnings.filter(e => e.status === "collected").reduce((s, e) => s + e.amount_usd, 0);
-  const totalAttempted  = submittedCount + doneCount + paidCount;
-  const winRate         = totalAttempted > 0 ? Math.round(((doneCount + paidCount) / totalAttempted) * 100) : 0;
+  const winRate         = (acceptedCount + rejectedCount) > 0 ? Math.round((acceptedCount / (acceptedCount + rejectedCount)) * 100) : 0;
   const activeMissions  = liveItems.filter(w => !["done","failed","cancelled"].includes(w.status)).length;
-  const openPRs         = submittedCount;
+
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "scan",      label: "scan",      count: summary.activeOpportunities || undefined },
@@ -1053,7 +1050,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
               Bounty Engine<span className="cursor ml-0.5 text-zinc-600">_</span>
               <span className="ml-2 text-[10px] text-zinc-700 font-mono font-normal">{DASH_VERSION}</span>
             </h1>
-            <HeaderStats summary={summary} winRate={winRate} allTimeUsd={allTimeUsd} openPRs={openPRs} totalSubmissions={totalAttempted} lastScanTs={lastScanTs} />
+            <HeaderStats allTimeUsd={allTimeUsd} inFlightUsd={inFlightUsd} submittedAllTime={submittedAllTime} acceptedCount={acceptedCount} rejectedCount={rejectedCount} winRate={winRate} readyCount={pendingQueue.length} lastScanTs={lastScanTs} />
           </div>
           <div className="flex items-center gap-3 shrink-0 mt-1">
             {discoverResult && (
