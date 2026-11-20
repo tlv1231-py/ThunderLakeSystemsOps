@@ -252,6 +252,7 @@ for (const item of queuedItems) {
     status: "in_progress",
   }).eq("id", opp.id);
 
+  let prSubmitted = false; // guard: prevent outer catch from downgrading "submitted" → "failed"
   try {
     // ── 1. Resolve repo ───────────────────────────────────────────────────────
     await progress(workId, 5, "Resolving repository…");
@@ -543,6 +544,8 @@ A clean UNCERTAIN is better than a bad PR.
       status: prUrl ? "submitted" : "in_progress",
     }).eq("id", opp.id);
 
+    if (prUrl) prSubmitted = true;
+
     // No approval record — pipeline is fully autonomous. Monitor the board directly.
 
     await log(userId, "agent_pr_opened", `${issueTitle} → ${prUrl || "no PR"}`, prUrl ? "ok" : "warning");
@@ -555,11 +558,14 @@ A clean UNCERTAIN is better than a bad PR.
 
   } catch (err) {
     console.error(`  ✗  Error: ${err.message}`);
-    await db.from("income_work_queue").update({
-      status: "failed",
-      progress_note: `Error: ${String(err).slice(0, 200)}`,
-      agent_log: String(err),
-    }).eq("id", workId);
+    // Don't override "submitted" if PR was already opened — EPERM on Windows cleanup can fire here
+    if (!prSubmitted) {
+      await db.from("income_work_queue").update({
+        status: "failed",
+        progress_note: `Error: ${String(err).slice(0, 200)}`,
+        agent_log: String(err),
+      }).eq("id", workId);
+    }
     await log(userId, "agent_error", String(err).slice(0, 200), "error");
   }
 }
