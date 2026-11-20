@@ -468,6 +468,17 @@ function QueueList({ items }: { items: any[] }) {
 
 function Dot() { return <span className="text-zinc-800 text-lg select-none">·</span>; }
 
+function ScanCountdown() {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+  const remaining = nextScan(now) - now;
+  return (
+    <span className={`text-sm tabular-nums font-mono ${remaining < 120000 ? "text-amber-400" : "text-zinc-600"}`}>
+      {countdown(remaining)}
+    </span>
+  );
+}
+
 function StatCell({ value, label, color }: { value: string; label: string; color?: string }) {
   return (
     <div className="flex flex-col">
@@ -477,13 +488,9 @@ function StatCell({ value, label, color }: { value: string; label: string; color
   );
 }
 
-function HeaderStats({ allTimeUsd, inFlightUsd, submittedAllTime, acceptedCount, rejectedCount, winRate, readyCount, lastScanTs }: {
-  allTimeUsd: number; inFlightUsd: number; submittedAllTime: number; acceptedCount: number; rejectedCount: number; winRate: number; readyCount: number; lastScanTs: string | null;
+function HeaderStats({ allTimeUsd, inFlightUsd, submittedAllTime, acceptedCount, rejectedCount, winRate, readyCount }: {
+  allTimeUsd: number; inFlightUsd: number; submittedAllTime: number; acceptedCount: number; rejectedCount: number; winRate: number; readyCount: number;
 }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
-  const remaining = nextScan(now) - now;
-
   return (
     <div className="flex flex-wrap items-end gap-x-7 gap-y-1 mt-2">
       <StatCell value={usd(allTimeUsd)} label="total earned" color={allTimeUsd > 0 ? "text-emerald-400 green-glow" : "text-zinc-500"} />
@@ -499,11 +506,6 @@ function HeaderStats({ allTimeUsd, inFlightUsd, submittedAllTime, acceptedCount,
       <StatCell value={`${winRate}%`} label="win rate" color={winRate > 0 ? "text-white" : "text-zinc-500"} />
       <Dot />
       <StatCell value={String(readyCount)} label="ready for pipeline" color={readyCount > 0 ? "text-amber-400" : "text-zinc-500"} />
-      <Dot />
-      <div className="flex flex-col">
-        <span className={`text-lg font-semibold tabular-nums font-mono leading-tight ${remaining < 300000 ? "text-amber-400" : "text-zinc-500"}`}>{countdown(remaining)}</span>
-        <span className="text-[11px] text-zinc-600 leading-tight">next scan</span>
-      </div>
     </div>
   );
 }
@@ -952,8 +954,7 @@ function SectionHeader({ label, count }: { label: string; count?: number }) {
 export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipelineItems }: Props) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("scan");
-  const [discovering, setDiscovering] = useState(false);
-  const [discoverResult, setDiscoverResult] = useState<string | null>(null);
+
   const [menuOpen, setMenuOpen] = useState(false);
   const [muted, setMutedState] = useState(() => { try { return localStorage.getItem("tls_muted") === "1"; } catch { return false; } });
   const [, startT] = useTransition();
@@ -1038,16 +1039,6 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleDiscover() {
-    setDiscovering(true); setDiscoverResult(null);
-    try {
-      const r = await fetch("/api/income/discover");
-      const d = await r.json();
-      setDiscoverResult(d.ok ? `+${d.new} found` : "error");
-      if (d.ok) router.refresh();
-    } catch { setDiscoverResult("error"); }
-    finally { setDiscovering(false); }
-  }
 
   return (
     <div className="bg-black text-white font-mono -mx-4 -mt-6 -mb-6 min-h-screen relative">
@@ -1055,12 +1046,6 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
 
       <div className="max-w-[960px] mx-auto px-6 py-6 relative z-10">
 
-        {/* Scan progress bar */}
-        {discovering && (
-          <div className="h-px bg-zinc-900 mb-6 overflow-hidden">
-            <div className="h-full bg-white scan-prog" />
-          </div>
-        )}
 
         {/* ── header ──────────────────────────────────────────────────── */}
         <div className="flex items-start justify-between gap-4 mb-6">
@@ -1069,14 +1054,10 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
               Bounty Engine<span className="cursor ml-0.5 text-zinc-600">_</span>
               <span className="ml-2 text-[10px] text-zinc-700 font-mono font-normal">{DASH_VERSION}</span>
             </h1>
-            <HeaderStats allTimeUsd={allTimeUsd} inFlightUsd={inFlightUsd} submittedAllTime={submittedAllTime} acceptedCount={acceptedCount} rejectedCount={rejectedCount} winRate={winRate} readyCount={pendingQueue.length} lastScanTs={lastScanTs} />
+            <HeaderStats allTimeUsd={allTimeUsd} inFlightUsd={inFlightUsd} submittedAllTime={submittedAllTime} acceptedCount={acceptedCount} rejectedCount={rejectedCount} winRate={winRate} readyCount={pendingQueue.length} />
           </div>
           <div className="flex items-center gap-3 shrink-0 mt-1">
-            {discoverResult && (
-              <span className={`text-sm ${discoverResult.startsWith("+") ? "text-emerald-400" : "text-zinc-500"}`}>
-                {discoverResult}
-              </span>
-            )}
+            <ScanCountdown />
             <button onClick={() => router.refresh()}
               className="text-sm text-zinc-600 hover:text-zinc-300 transition-colors px-1" title="Refresh">
               ↺
@@ -1086,13 +1067,6 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
               className={`text-sm border px-2.5 py-1 transition-colors ${muted ? "border-zinc-800 text-zinc-700" : "border-zinc-600 text-zinc-300 hover:border-zinc-400"}`}
               title={muted ? "Unmute audio" : "Mute audio"}>
               {muted ? "🔇" : "🔊"}
-            </button>
-            <button
-              onClick={handleDiscover}
-              disabled={discovering}
-              className={`text-sm border px-3 py-1 transition-all disabled:opacity-30
-                ${discovering ? "border-zinc-700 text-zinc-500" : "idle-pulse text-white hover:border-white"}`}>
-              {discovering ? "scanning…" : "scan"}
             </button>
             <button
               onClick={() => setMenuOpen(o => !o)}

@@ -65,11 +65,16 @@
   #status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #27272a; margin-right: 6px; }
   #status-dot.live { background: #4ade80; animation: pulse 2s ease-in-out infinite; }
   #server-hint { font-size: 10px; color: #3f3f46; margin-top: 6px; }
+  #stop-btn {
+    background: none; border: none; color: #3f3f46; cursor: pointer;
+    font-family: inherit; font-size: 11px; padding: 0; float: right;
+  }
+  #stop-btn:hover { color: #f87171; }
 </style>
 </head>
 <body>
 
-<h1><span id="status-dot"></span>TLS Pipeline</h1>
+<h1><span id="status-dot"></span>TLS Pipeline<button id="stop-btn" onclick="stopServer()" title="Stop server">■ stop</button></h1>
 
 <div class="stat">
   <span class="stat-val green" id="staged-count">—</span>
@@ -171,12 +176,12 @@ function renderItems() {
 }
 
 async function load() {
-  const q = sb.from('income_work_queue')
+  let q = sb.from('income_work_queue')
     .select('id,title,status,expected_usd,pr_url')
     .not('status', 'in', '(failed,cancelled,done)')
     .order('priority')
     .limit(30);
-  if (USER_ID) q.eq('user_id', USER_ID);
+  if (USER_ID) q = q.eq('user_id', USER_ID);
   const { data, error } = await q;
   if (data) { items = data; renderItems(); }
   document.getElementById('status-dot').className = 'live';
@@ -267,7 +272,19 @@ function copyCmd() {
   });
 }
 
-load().then(subscribe);
+async function stopServer() {
+  if (!confirm('Stop the agent server?')) return;
+  try {
+    await fetch(AGENT_SERVER + '/stop', { method: 'POST', signal: AbortSignal.timeout(3000) });
+    document.getElementById('stop-btn').textContent = '✓ stopped';
+    document.getElementById('status-dot').className = '';
+    addLog('server stopped', 'err');
+  } catch {
+    addLog('server already stopped or unreachable', 'err');
+  }
+}
+
+load().then(() => { addLog('user: ' + (USER_ID || '(none — no filter applied)'), USER_ID ? 'info' : 'err'); subscribe(); });
 </script>
 </body>
 </html>

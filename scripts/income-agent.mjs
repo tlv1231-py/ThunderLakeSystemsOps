@@ -21,6 +21,21 @@ import { createClient } from "@supabase/supabase-js";
 
 // ── Load env ──────────────────────────────────────────────────────────────────
 const ROOT = resolve(import.meta.dirname, "..");
+
+// ── Run summary log (self-diagnosis — written to logs/pipeline-last-run.json) ─
+const _runLog = { ts: new Date().toISOString(), errors: [], warnings: [] };
+const _origConsoleError = console.error;
+console.error = (...args) => {
+  _runLog.errors.push({ ts: new Date().toISOString(), msg: args.map(String).join(" ") });
+  _origConsoleError(...args);
+};
+process.on("exit", () => {
+  try {
+    const logsDir = join(ROOT, "logs");
+    mkdirSync(logsDir, { recursive: true });
+    writeFileSync(join(logsDir, "pipeline-last-run.json"), JSON.stringify(_runLog, null, 2));
+  } catch {}
+});
 const envPath = join(ROOT, ".env.local");
 if (!existsSync(envPath)) {
   console.error("❌  .env.local not found. Run from the project root.");
