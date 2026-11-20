@@ -334,8 +334,10 @@ function WaitingColumn({ items, fresh, active }: {
           const isActive = active?.has(item.id);
           const amtLabel = item.usdAmt >= 1000
             ? `$${(item.usdAmt / 1000 % 1 === 0 ? (item.usdAmt / 1000).toFixed(0) : (item.usdAmt / 1000).toFixed(1))}k`
-            : item.usdAmt > 0 ? `$${Math.round(item.usdAmt)}`
-            : item.score != null ? `${item.score}` : "?";
+            : item.usdAmt > 0 ? `$${Math.round(item.usdAmt)}` : "?";
+          const scoreColor = item.score != null
+            ? `hsl(${Math.round(item.score * 1.2)},85%,55%)`
+            : null;
           return (
             <div
               key={item.id}
@@ -350,17 +352,21 @@ function WaitingColumn({ items, fresh, active }: {
                   ["--cg" as any]: `${accent}55`,
                 }}
               >
-                <div className="text-[24px] font-mono font-bold tabular-nums leading-none" style={{ color: accent }}>
-                  {amtLabel}
+                <div className="flex items-baseline justify-between gap-1 leading-none">
+                  {scoreColor && (
+                    <span className="text-[20px] font-mono font-bold tabular-nums" style={{ color: scoreColor }}>
+                      {item.score}
+                    </span>
+                  )}
+                  <span className="text-[20px] font-mono font-bold tabular-nums ml-auto" style={{ color: accent }}>
+                    {amtLabel}
+                  </span>
                 </div>
                 <div className="text-[10px] text-zinc-500 mt-1.5 leading-snug" style={{
                   display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
                 }}>
                   {item.title}
                 </div>
-                {item.score != null && (
-                  <div className="text-[9px] text-zinc-700 mt-1.5 font-mono">score {item.score}</div>
-                )}
               </div>
             </div>
           );
@@ -763,7 +769,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v20";
+const DASH_VERSION = "v21";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
