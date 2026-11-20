@@ -344,24 +344,28 @@ for (const item of queuedItems) {
     }
 
     // ── 3. Clone ──────────────────────────────────────────────────────────────
+    // Clone the UPSTREAM (not the fork) so the working tree starts at upstream HEAD.
+    // Cloning the fork risks a stale main (weeks behind upstream), which causes the
+    // PR diff to include all upstream commits since the fork was created.
     await progress(workId, 20, `Cloning ${forkRepo}…`);
 
     mkdirSync(WORKDIR, { recursive: true });
     const repoName  = ghRepo.split("/")[1];
     const cloneDir  = join(WORKDIR, `${repoName}-${Date.now()}`);
 
-    run(`gh repo clone ${forkRepo} "${cloneDir}" -- --depth=50 --quiet`);
+    run(`gh repo clone ${ghRepo} "${cloneDir}" -- --depth=50 --quiet`);
 
-    // Override remote URL to use token directly (avoids Windows credential store mismatch)
-    if (GITHUB_TOKEN) {
-      run(`git remote set-url origin https://${GITHUB_TOKEN}@github.com/${forkRepo}.git`, { cwd: cloneDir });
-    }
+    // Point origin at our fork for pushing (not the upstream)
+    const forkRemote = GITHUB_TOKEN
+      ? `https://${GITHUB_TOKEN}@github.com/${forkRepo}.git`
+      : `https://github.com/${forkRepo}.git`;
+    run(`git remote set-url origin ${forkRemote}`, { cwd: cloneDir });
 
     // Suppress LF→CRLF warnings on Windows — prevents git add failures
     try { run("git config core.autocrlf false", { cwd: cloneDir }); } catch {}
     try { run("git config core.safecrlf false", { cwd: cloneDir }); } catch {}
 
-    // gh repo clone sets upstream automatically when cloning a fork — skip if already set
+    // Add upstream remote for reference
     try { run(`git remote add upstream https://github.com/${ghRepo}.git`, { cwd: cloneDir }); } catch {}
 
     // ── 4. Create branch ──────────────────────────────────────────────────────
