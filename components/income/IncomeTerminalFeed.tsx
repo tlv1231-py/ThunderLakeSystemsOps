@@ -132,7 +132,7 @@ export function IncomeTerminalFeed({ initialEntries }: Props) {
       });
     }
 
-    const pollTimer = setInterval(poll, 30_000);
+    const pollTimer = setInterval(poll, 10_000);
     return () => { supabase.removeChannel(channel); clearInterval(pollTimer); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -150,8 +150,15 @@ export function IncomeTerminalFeed({ initialEntries }: Props) {
   const remaining = nextMs - now;
   const remM = Math.floor(remaining / 60000);
   const remS = Math.floor((remaining % 60000) / 1000);
-  const countdownLabel = `NEXT: ${String(remM).padStart(2,"0")}:${String(remS).padStart(2,"0")}`;
-  const overdue = remaining === 0;
+
+  // Overdue: last confirmed scan was more than 20 minutes ago (missed at least 1 window)
+  const missedMs = lastScanTs ? now - lastScanTs : null;
+  const isOverdue = missedMs !== null && missedMs > 20 * 60 * 1000;
+  const overdueMin = missedMs ? Math.floor(missedMs / 60000) : 0;
+
+  const countdownLabel = isOverdue
+    ? `OVERDUE ${overdueMin}m`
+    : `NEXT: ${String(remM).padStart(2,"0")}:${String(remS).padStart(2,"0")}`;
 
   const lastScanLabel = (() => {
     if (!lastScanTs) return "LAST: —";
@@ -176,7 +183,7 @@ export function IncomeTerminalFeed({ initialEntries }: Props) {
       <div className="px-3 py-1.5 border-b border-[#00ff41]/20 bg-[#030603] shrink-0 flex items-center justify-between">
         <span className="text-[9px] text-[#004d14] uppercase tracking-widest">{lastScanLabel}</span>
         <span className={`text-[11px] font-bold tabular-nums tracking-widest ${
-          overdue ? "text-[#ffb800] animate-pulse" : "text-[#00ff41]"
+          isOverdue ? "text-[#ff0040] animate-pulse" : "text-[#00ff41]"
         }`}>
           {countdownLabel}
         </span>
