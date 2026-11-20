@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -457,73 +457,136 @@ function getAgentServer() {
   return localStorage.getItem("tls_agent_server") || DEFAULT_AGENT_SERVER;
 }
 
-function AgentCTA({ count, projected }: { count: number; projected: number }) {
-  const [state, setState] = useState<"idle" | "running" | "done" | "copied">("idle");
+type FeedLine = { id: string; ts: string; type: string; msg: string; color: string };
+
+function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCount: number; projected: number }) {
+  const [lines, setLines] = useState<FeedLine[]>([]);
+  const [runState, setRunState] = useState<"idle" | "running" | "done" | "copied">("idle");
   const [serverAddr, setServerAddr] = useState(DEFAULT_AGENT_SERVER);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setServerAddr(getAgentServer()); }, []);
 
-  function configureServer() {
-    const cur = getAgentServer();
-    const next = window.prompt("Agent server address (laptop's LAN IP:port):", cur);
-    if (next && next.trim()) {
-      const addr = next.trim().startsWith("http") ? next.trim() : `http://${next.trim()}`;
-      localStorage.setItem("tls_agent_server", addr);
-      setServerAddr(addr);
-    }
+  function add(type: string, msg: string, color: string) {
+    const ts = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    setLines(prev => [...prev.slice(-99), { id: `${Date.now()}-${Math.random()}`, ts, type, msg, color }]);
   }
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [lines]);
+
+  useEffect(() => {
+    const sb = createClient();
+
+    const ch1 = (sb as any).channel(`lf_wq_${userId}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "income_work_queue", filter: `user_id=eq.${userId}` }, (p: any) => {
+        const title = (p.new.title || "").slice(0, 48);
+        const st = p.new.status;
+        const [label, color] =
+          st === "in_progress" ? ["WORKING",   "#2dd4bf"] :
+          st === "submitted"   ? ["SUBMITTED", "#38bdf8"] :
+          st === "done"        ? ["MERGED",    "#4ade80"] :
+          st === "failed"      ? ["FAILED",    "#f87171"] :
+          st === "review"      ? ["REVIEW",    "#fbbf24"] :
+          st === "pending"     ? ["STAGED",    "#a1a1aa"] :
+                                 [st.toUpperCase(), "#52525b"];
+        add(label, title, color);
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "income_work_queue", filter: `user_id=eq.${userId}` }, (p: any) => {
+        add("QUEUED", (p.new.title || "").slice(0, 48), "#a1a1aa");
+      })
+      .subscribe();
+
+    const ch2 = (sb as any).channel(`lf_log_${userId}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "income_activity_log" }, (p: any) => {
+        const d = p.new;
+        if (d.action === "discovery_run") add("SCAN", (d.detail || "").slice(0, 60), "#2dd4bf");
+        else add("LOG", (d.detail || d.action || "").slice(0, 60), "#52525b");
+      })
+      .subscribe();
+
+    return () => { sb.removeChannel(ch1); sb.removeChannel(ch2); };
+  }, [userId]);
 
   async function run() {
-    if (state === "running") return;
-    setState("running");
+    if (runState === "running") return;
+    setRunState("running");
+    add("RUN", "pipeline triggered", "#fbbf24");
     try {
-      const r = await fetch(`${serverAddr}/run`, {
-        method: "POST",
-        signal: AbortSignal.timeout(4000),
-      });
-      if (!r.ok) throw new Error("server error");
-      setState("done");
-      setTimeout(() => setState("idle"), 3000);
+      const r = await fetch(`${serverAddr}/run`, { method: "POST", signal: AbortSignal.timeout(4000) });
+      if (!r.ok) throw new Error();
+      setRunState("done");
+      setTimeout(() => setRunState("idle"), 3000);
     } catch {
-      // Server not running — fall back to clipboard
       await navigator.clipboard.writeText("node scripts/income-agent.mjs");
-      setState("copied");
-      setTimeout(() => setState("idle"), 2000);
+      add("RUN", "server offline — command copied to clipboard", "#f87171");
+      setRunState("copied");
+      setTimeout(() => setRunState("idle"), 2500);
     }
   }
 
-  const label =
-    state === "running" ? "running…" :
-    state === "done"    ? "✓ started" :
-    state === "copied"  ? "copied (start agent-server.mjs)" :
-    `run pipeline`;
+  const btnLabel =
+    runState === "running" ? "running…" :
+    runState === "done"    ? "✓ started" :
+    runState === "copied"  ? "copied" :
+    "run pipeline";
 
-  const cls =
-    state === "running" ? "text-teal-400 border-teal-800" :
-    state === "done"    ? "text-emerald-400 border-emerald-900" :
-    state === "copied"  ? "text-amber-400 border-amber-900" :
-    "text-white border-zinc-700 hover:border-white";
+  const btnCls =
+    runState === "running" ? "border-teal-800 text-teal-400" :
+    runState === "done"    ? "border-emerald-900 text-emerald-400" :
+    runState === "copied"  ? "border-amber-900 text-amber-400" :
+    "border-zinc-700 text-white hover:border-white";
 
   return (
-    <div className="border border-zinc-800 bg-zinc-950 px-4 py-3 mb-6 flex items-center justify-between gap-4">
-      <p className="text-sm text-zinc-300">
-        <span className="text-emerald-400 font-medium">{count}</span>{" "}
-        {count === 1 ? "bounty" : "bounties"} staged
-        {projected > 0 && <span className="text-zinc-600 ml-2">{usd(projected)} projected</span>}
-      </p>
-      <div className="flex items-center gap-2 shrink-0">
-        <button
-          onClick={run}
-          disabled={state === "running"}
-          className={`text-sm border px-4 py-1.5 transition-all disabled:opacity-60 whitespace-nowrap ${cls}`}>
-          {label}
-        </button>
-        <button
-          onClick={configureServer}
-          title={`Agent server: ${serverAddr}`}
-          className="text-zinc-700 hover:text-zinc-400 transition-colors text-xs px-1">
-          ⚙
-        </button>
+    <div className="border border-zinc-900 mb-6 font-mono">
+      {/* header */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-900 bg-zinc-950">
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] text-zinc-600 uppercase tracking-widest">Live</span>
+          {stagedCount > 0 && (
+            <span className="text-[11px] text-zinc-500">
+              <span className="text-emerald-400">{stagedCount}</span> staged
+              {projected > 0 && <span className="text-zinc-700 ml-1.5">{usd(projected)}</span>}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={run}
+            disabled={runState === "running"}
+            className={`text-xs border px-3 py-1 transition-all disabled:opacity-50 ${btnCls}`}>
+            {btnLabel}
+          </button>
+          <button
+            onClick={() => {
+              const cur = getAgentServer();
+              const next = window.prompt("Agent server address:", cur);
+              if (next?.trim()) {
+                const addr = next.trim().startsWith("http") ? next.trim() : `http://${next.trim()}`;
+                localStorage.setItem("tls_agent_server", addr);
+                setServerAddr(addr);
+              }
+            }}
+            title={`Agent server: ${serverAddr}`}
+            className="text-zinc-700 hover:text-zinc-500 transition-colors text-xs">
+            ⚙
+          </button>
+        </div>
+      </div>
+      {/* feed */}
+      <div className="h-40 overflow-y-auto px-4 py-2 space-y-px bg-black">
+        {lines.length === 0 && (
+          <p className="text-[11px] text-zinc-800 py-1 select-none">— waiting for activity —</p>
+        )}
+        {lines.map(l => (
+          <div key={l.id} className="flex gap-3 text-[11px] leading-5">
+            <span className="text-zinc-700 shrink-0 tabular-nums">{l.ts}</span>
+            <span className="shrink-0 w-16 tabular-nums" style={{ color: l.color }}>{l.type}</span>
+            <span className="text-zinc-400 truncate">{l.msg}</span>
+          </div>
+        ))}
+        <div ref={bottomRef} />
       </div>
     </div>
   );
@@ -663,10 +726,8 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
           </div>
         </div>
 
-        {/* ── agent CTA ───────────────────────────────────────────────── */}
-        {pendingQueue.length > 0 && (
-          <AgentCTA count={pendingQueue.length} projected={summary.queueProjectedUsd} />
-        )}
+        {/* ── live feed ───────────────────────────────────────────────── */}
+        <LiveFeed userId={userId} stagedCount={pendingQueue.length} projected={summary.queueProjectedUsd} />
 
         {/* ── active bounties ─────────────────────────────────────────── */}
         <section className="mb-8">
