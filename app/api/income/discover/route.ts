@@ -34,6 +34,10 @@ export async function GET(req: Request) {
     userId = user?.id ?? null;
   } catch {}
   if (!userId) {
+    // Use the pinned admin user for cron-triggered calls (avoids listUsers returning wrong account)
+    userId = process.env.INCOME_AGENT_USER_ID ?? null;
+  }
+  if (!userId) {
     const { data: users } = await db.auth.admin.listUsers({ perPage: 1 });
     userId = users?.users?.[0]?.id ?? null;
   }
