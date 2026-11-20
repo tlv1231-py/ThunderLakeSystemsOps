@@ -480,16 +480,34 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
-const AGENT_SERVER = "http://localhost:3002";
+const DEFAULT_AGENT_SERVER = "http://localhost:3002";
+
+function getAgentServer() {
+  if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
+  return localStorage.getItem("tls_agent_server") || DEFAULT_AGENT_SERVER;
+}
 
 function AgentCTA({ count, projected }: { count: number; projected: number }) {
   const [state, setState] = useState<"idle" | "running" | "done" | "copied">("idle");
+  const [serverAddr, setServerAddr] = useState(DEFAULT_AGENT_SERVER);
+
+  useEffect(() => { setServerAddr(getAgentServer()); }, []);
+
+  function configureServer() {
+    const cur = getAgentServer();
+    const next = window.prompt("Agent server address (laptop's LAN IP:port):", cur);
+    if (next && next.trim()) {
+      const addr = next.trim().startsWith("http") ? next.trim() : `http://${next.trim()}`;
+      localStorage.setItem("tls_agent_server", addr);
+      setServerAddr(addr);
+    }
+  }
 
   async function run() {
     if (state === "running") return;
     setState("running");
     try {
-      const r = await fetch(`${AGENT_SERVER}/run`, {
+      const r = await fetch(`${serverAddr}/run`, {
         method: "POST",
         signal: AbortSignal.timeout(4000),
       });
@@ -523,12 +541,20 @@ function AgentCTA({ count, projected }: { count: number; projected: number }) {
         {count === 1 ? "bounty" : "bounties"} staged
         {projected > 0 && <span className="text-zinc-600 ml-2">{usd(projected)} projected</span>}
       </p>
-      <button
-        onClick={run}
-        disabled={state === "running"}
-        className={`text-sm border px-4 py-1.5 transition-all disabled:opacity-60 whitespace-nowrap ${cls}`}>
-        {label}
-      </button>
+      <div className="flex items-center gap-2 shrink-0">
+        <button
+          onClick={run}
+          disabled={state === "running"}
+          className={`text-sm border px-4 py-1.5 transition-all disabled:opacity-60 whitespace-nowrap ${cls}`}>
+          {label}
+        </button>
+        <button
+          onClick={configureServer}
+          title={`Agent server: ${serverAddr}`}
+          className="text-zinc-700 hover:text-zinc-400 transition-colors text-xs px-1">
+          ⚙
+        </button>
+      </div>
     </div>
   );
 }
