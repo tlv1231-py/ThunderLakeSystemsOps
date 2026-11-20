@@ -55,12 +55,17 @@ const REPO_BLOCKLIST = [
   "bountyscout", "bounty-scout", "bug-bounty-list", "bug-bounties",
 ];
 
-// Keywords in issue titles that signal non-code tasks (content, design, creative)
+// Keywords in issue titles that signal non-code tasks (content, design, creative, admin)
 const NON_CODE_TITLE_PATTERNS = [
   /\bpoem\b/i, /\bcontent creation\b/i, /\bwrite a\b/i, /\bgenerate text\b/i,
   /\blogo\b/i, /\bdesign\b.*\bmockup\b/i, /\bartwork\b/i,
   /\btweet\b/i, /\bblog post\b/i, /\bcopywriting\b/i,
   /\bgenerate.*content\b/i, /\bcreative writing\b/i,
+  // Admin / ops / non-code signals
+  /\btutorial\b/i, /\bpayout operation\b/i, /\bprivate form\b/i,
+  /\bavailability.*inquiry\b/i, /\bpayment inquiry\b/i,
+  /\bannouncement\b/i, /\bmarketing\b/i, /\bsocial media\b/i,
+  /\bonboarding\b.*\bform\b/i, /\bsurvey\b/i,
 ];
 
 // Minimum reward in USD — below this, pipeline time per run exceeds expected return

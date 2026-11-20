@@ -525,18 +525,50 @@ function QueueList({ items }: { items: any[] }) {
 
 function Dot() { return <span className="text-zinc-800 text-lg select-none">·</span>; }
 
-function ScanCountdown({ lastScanTs }: { lastScanTs: string | null }) {
+function ScanCountdown({ lastScanTs: initialTs }: { lastScanTs: string | null }) {
   const [now, setNow] = useState(() => Date.now());
+  const [lastScanMs, setLastScanMs] = useState<number | null>(() =>
+    initialTs ? new Date(initialTs).getTime() : null
+  );
+
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
-  // Drive from last actual scan: advance in 15-min steps until next is in the future
+
+  // Live subscription — update lastScanMs when a scan actually lands
+  useEffect(() => {
+    const { createClient } = require("@/lib/supabase/client");
+    const supabase = createClient();
+    const seenScan = new Set<string>();
+    const ch = (supabase as any)
+      .channel("scan_countdown")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "income_activity_log" }, (p: any) => {
+        const e = p.new;
+        if (seenScan.has(e.id)) return;
+        seenScan.add(e.id);
+        if (e.action === "discovery_run" || e.action === "scan_start") {
+          setLastScanMs(new Date(e.created_at).getTime());
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, []);
+
   let nextMs: number;
-  if (lastScanTs) {
-    nextMs = new Date(lastScanTs).getTime() + 15 * 60 * 1000;
+  if (lastScanMs) {
+    nextMs = lastScanMs + 15 * 60 * 1000;
     while (nextMs <= now) nextMs += 15 * 60 * 1000;
   } else {
     nextMs = nextScan(now);
   }
   const remaining = nextMs - now;
+
+  // Overdue: last confirmed scan > 20 min ago
+  const missedMs = lastScanMs ? now - lastScanMs : null;
+  const isOverdue = missedMs !== null && missedMs > 20 * 60 * 1000;
+  const overdueMin = missedMs ? Math.floor(missedMs / 60000) : 0;
+
+  if (isOverdue) {
+    return <span className="text-sm tabular-nums font-mono text-red-500 animate-pulse">OVERDUE {overdueMin}m</span>;
+  }
   return (
     <span className={`text-sm tabular-nums font-mono ${remaining < 120000 ? "text-amber-400" : "text-zinc-600"}`}>
       {countdown(remaining)}
@@ -695,7 +727,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v15";
+const DASH_VERSION = "v16";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
