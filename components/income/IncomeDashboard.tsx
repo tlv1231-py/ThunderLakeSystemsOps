@@ -66,6 +66,10 @@ const CSS = `
   0%,100%{ box-shadow:none; }
   50%    { box-shadow:0 0 14px 2px var(--ta,#fff4); }
 }
+@keyframes tileActive {
+  0%,100%{ border-color:rgba(45,212,191,0.4); box-shadow:0 0 8px rgba(45,212,191,0.2); }
+  50%    { border-color:rgba(45,212,191,0.9); box-shadow:0 0 18px rgba(45,212,191,0.5); }
+}
 
 .text-glow   { animation: textGlow 3s ease-in-out infinite }
 .green-glow  { animation: greenGlow 3s ease-in-out infinite }
@@ -77,6 +81,8 @@ const CSS = `
 .scan-prog   { transform-origin:left; animation: scanProg 55s linear forwards }
 .tile-enter  { animation: tileEnter .32s cubic-bezier(0.34,1.56,0.64,1) both }
 .tile-submit { animation: tileSubmit .5s ease-out, tilePulse 1.5s ease-in-out 2 }
+.tile-active { animation: tileActive 1.8s ease-in-out infinite }
+.tls-feed { font-family:'Geist','Inter','Segoe UI Variable',system-ui,-apple-system,sans-serif; font-size:15px; letter-spacing:-0.01em; }
 `;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -178,8 +184,8 @@ const S_BAR_CLS: Record<string, string> = {
 
 // ── bounty tile (pixel square) ───────────────────────────────────────────────
 
-function BountyTile({ id, title, usdAmt, score, url, fresh, submitted }: {
-  id: string; title: string; usdAmt: number; score?: number | null; url?: string | null; fresh?: boolean; submitted?: boolean;
+function BountyTile({ id, title, usdAmt, score, url, fresh, submitted, active }: {
+  id: string; title: string; usdAmt: number; score?: number | null; url?: string | null; fresh?: boolean; submitted?: boolean; active?: boolean;
 }) {
   const accent = bountyAccent(title);
   const [tip, setTip] = useState(false);
@@ -191,12 +197,12 @@ function BountyTile({ id, title, usdAmt, score, url, fresh, submitted }: {
   return (
     <div className="relative" onMouseEnter={() => setTip(true)} onMouseLeave={() => setTip(false)}>
       <div
-        className={`w-16 h-16 flex items-center justify-center cursor-pointer select-none transition-all duration-150 ${fresh ? (submitted ? "tile-submit" : "tile-enter") : ""}`}
+        className={`w-16 h-16 flex items-center justify-center cursor-pointer select-none transition-all duration-150 ${fresh ? (submitted ? "tile-submit" : "tile-enter") : ""} ${active ? "tile-active" : ""}`}
         style={{
           background: '#000',
-          border: `1px solid rgba(255,255,255,0.3)`,
+          border: `1px solid ${active ? "rgba(45,212,191,0.4)" : "rgba(255,255,255,0.3)"}`,
           ["--ta" as any]: accent + "aa",
-          boxShadow: tip ? `0 0 14px 2px ${accent}44` : "none",
+          boxShadow: tip ? `0 0 14px 2px ${accent}44` : active ? "0 0 8px rgba(45,212,191,0.2)" : "none",
         }}
         onClick={() => url && window.open(url, "_blank")}
       >
@@ -213,9 +219,9 @@ function BountyTile({ id, title, usdAmt, score, url, fresh, submitted }: {
   );
 }
 
-function BoardColumn({ label, colorLabel, items, fresh, submitted }: {
+function BoardColumn({ label, colorLabel, items, fresh, submitted, active }: {
   label: string; colorLabel: string; items: { id: string; title: string; usdAmt: number; score?: number | null; url?: string | null }[];
-  fresh?: Set<string>; submitted?: Set<string>;
+  fresh?: Set<string>; submitted?: Set<string>; active?: Set<string>;
 }) {
   return (
     <div>
@@ -234,9 +240,40 @@ function BoardColumn({ label, colorLabel, items, fresh, submitted }: {
             url={item.url}
             fresh={fresh?.has(item.id)}
             submitted={submitted?.has(item.id)}
+            active={active?.has(item.id)}
           />
         ))}
         {items.length === 0 && <span className="text-[11px] text-zinc-800 self-center">—</span>}
+      </div>
+    </div>
+  );
+}
+
+function SideColumn({ label, color, items, fresh, submitted, active }: {
+  label: string; color: string;
+  items: { id: string; title: string; usdAmt: number; url?: string | null }[];
+  fresh?: Set<string>; submitted?: Set<string>; active?: Set<string>;
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 mb-2">
+        <span className="text-[9px] uppercase tracking-widest" style={{ color }}>{label}</span>
+        {items.length > 0 && <span className="text-[9px] text-zinc-700">{items.length}</span>}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {items.map(item => (
+          <BountyTile
+            key={item.id}
+            id={item.id}
+            title={item.title}
+            usdAmt={item.usdAmt}
+            url={item.url}
+            fresh={fresh?.has(item.id)}
+            submitted={submitted?.has(item.id)}
+            active={active?.has(item.id)}
+          />
+        ))}
+        {items.length === 0 && <span className="text-[11px] text-zinc-800">—</span>}
       </div>
     </div>
   );
@@ -796,23 +833,24 @@ function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; 
     "border-zinc-700 text-white hover:border-white";
 
   return (
-    <div className="border border-zinc-900 mb-6 font-mono">
-      {/* header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-900 bg-zinc-950">
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] text-zinc-600 uppercase tracking-widest">Live</span>
+    <div>
+      {/* minimal control row — no box */}
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[11px] text-zinc-700">
           {stagedCount > 0 && (
-            <span className="text-[11px] text-zinc-500">
-              <span className="text-emerald-400">{stagedCount}</span> staged
-              {projected > 0 && <span className="text-zinc-700 ml-1.5">{usd(projected)}</span>}
-            </span>
+            <><span className="text-emerald-400 font-medium">{stagedCount}</span> queued{projected > 0 && <span className="text-zinc-800 ml-1.5">{usd(projected)}</span>}</>
           )}
-        </div>
-        <div className="flex items-center gap-2">
+        </span>
+        <div className="flex items-center gap-4">
           <button
             onClick={run}
             disabled={runState === "running"}
-            className={`text-xs border px-3 py-1 transition-all disabled:opacity-50 ${btnCls}`}>
+            className={`text-[12px] transition-colors disabled:opacity-30 ${
+              runState === "running" ? "text-teal-400" :
+              runState === "done"    ? "text-emerald-400" :
+              runState === "copied"  ? "text-amber-400" :
+              "text-zinc-600 hover:text-white"
+            }`}>
             {btnLabel}
           </button>
           <button
@@ -826,18 +864,17 @@ function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; 
               }
             }}
             title={`Agent server: ${serverAddr}`}
-            className="text-zinc-700 hover:text-zinc-500 transition-colors text-xs">
+            className="text-zinc-800 hover:text-zinc-500 transition-colors text-xs">
             ⚙
           </button>
         </div>
       </div>
-      {/* feed */}
-      <div className="h-[42vh] overflow-y-auto px-5 py-3 space-y-1 bg-black">
+      {/* feed — no border, left edge flush */}
+      <div className="h-[55vh] overflow-y-auto space-y-1 pr-2">
         {lines.length === 0 && (
-          <p className="text-sm text-zinc-700 py-1 select-none">— waiting for activity —</p>
+          <p className="tls-feed text-zinc-700 py-1 select-none">— waiting for activity —</p>
         )}
         {lines.map((l, idx) => {
-          // find action keyword at start for P/L color coding
           let kwLen = 0, kwColor = "";
           for (const [kw, c] of ACTION_COLORS) {
             if (l.msg.startsWith(kw)) { kwLen = kw.length; kwColor = c; break; }
@@ -845,25 +882,24 @@ function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; 
           const kwText = l.msg.slice(0, kwLen);
           const rest   = l.msg.slice(kwLen);
 
-          // apply bountyKey accent to the remainder
           let restNode: React.ReactNode;
           if (l.bountyKey && rest.includes(l.bountyKey)) {
             const bkIdx  = rest.indexOf(l.bountyKey);
             const before = rest.slice(0, bkIdx);
             const after  = rest.slice(bkIdx + l.bountyKey.length);
             restNode = <>
-              {before && <span className="text-zinc-200">{before}</span>}
+              {before && <span className="text-zinc-300">{before}</span>}
               <span style={{ color: l.accent }}>{l.bountyKey}</span>
-              {after && <span className="text-zinc-200">{after}</span>}
+              {after && <span className="text-zinc-300">{after}</span>}
             </>;
           } else {
-            restNode = <span className="text-zinc-200">{rest}</span>;
+            restNode = <span className="text-zinc-300">{rest}</span>;
           }
 
           const isNew = idx === lines.length - 1;
           return (
-            <div key={l.id} className={`flex gap-3 text-[13px] leading-relaxed font-sans ${isNew ? "fade-up" : ""}`}>
-              <span className="text-zinc-600 shrink-0 tabular-nums font-mono text-[11px] mt-0.5">{l.ts}</span>
+            <div key={l.id} className={`flex gap-3 tls-feed leading-[1.65] ${isNew ? "fade-up" : ""}`}>
+              <span className="text-zinc-700 shrink-0 tabular-nums font-mono text-[11px] mt-[3px]">{l.ts}</span>
               <span className="break-words min-w-0">
                 {kwLen > 0 && <span style={{ color: kwColor }}>{kwText}</span>}
                 {restNode}
@@ -937,6 +973,8 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   }, [userId]);
 
   const pendingQueue    = liveItems.filter(w => w.status === "pending");
+  const activeItems     = liveItems.filter(w => w.status === "in_progress");
+  const activeSet       = new Set(activeItems.map(i => i.id));
   const submittedCount  = liveItems.filter(w => w.status === "submitted").length;
   const doneCount       = liveItems.filter(w => w.status === "done").length;
   const paidCount       = allEarnings.filter(e => e.status === "collected").length;
@@ -1020,39 +1058,34 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
           </div>
         </div>
 
-        {/* ── live feed ───────────────────────────────────────────────── */}
-        <LiveFeed userId={userId} stagedCount={pendingQueue.length} projected={summary.queueProjectedUsd} onScan={ts => setLastScanTs(ts)} />
-
-        {/* ── 3-column bounty board ────────────────────────────────────── */}
-        <section className="mb-8 grid grid-cols-3 gap-6 border-t border-zinc-900 pt-5">
-          <BoardColumn
-            label="Scanned"
-            colorLabel="#2dd4bf"
-            items={(summary.topOpportunities as Opportunity[])
-              .filter(o => !["dismissed","queued","in_progress","submitted","done","paid"].includes(o.status))
-              .filter(o => (o.reward_usd ?? 0) > 0)
-              .slice(0, 20)
-              .map(o => ({ id: o.id, title: o.title, usdAmt: o.reward_usd ?? 0, score: o.score, url: o.url }))}
-            fresh={fresh}
-          />
-          <BoardColumn
-            label="Waiting"
-            colorLabel="#fbbf24"
-            items={liveItems
-              .filter(i => ["pending","in_progress","review"].includes(i.status))
-              .map(i => ({ id: i.id, title: i.title, usdAmt: i.expected_usd ?? 0, url: i.income_opportunities?.url ?? null }))}
-            fresh={fresh}
-          />
-          <BoardColumn
-            label="Submitted"
-            colorLabel="#38bdf8"
-            items={liveItems
-              .filter(i => i.status === "submitted")
-              .map(i => ({ id: i.id, title: i.title, usdAmt: i.expected_usd ?? 0, url: i.pr_url ?? null }))}
-            fresh={fresh}
-            submitted={submitted}
-          />
-        </section>
+        {/* ── terminal + side columns ─────────────────────────────────── */}
+        <div className="flex gap-8 items-start mb-8">
+          {/* Terminal — no frame, left edge flush */}
+          <div className="flex-1 min-w-0">
+            <LiveFeed userId={userId} stagedCount={pendingQueue.length} projected={summary.queueProjectedUsd} onScan={ts => setLastScanTs(ts)} />
+          </div>
+          {/* WAITING + SUBMITTED — slim right columns */}
+          <div className="w-[72px] shrink-0 space-y-6 pt-9">
+            <SideColumn
+              label="Waiting"
+              color="#fbbf24"
+              items={liveItems
+                .filter(i => ["pending","in_progress","review"].includes(i.status))
+                .map(i => ({ id: i.id, title: i.title, usdAmt: i.expected_usd ?? 0, url: i.income_opportunities?.url ?? null }))}
+              fresh={fresh}
+              active={activeSet}
+            />
+            <SideColumn
+              label="Submitted"
+              color="#38bdf8"
+              items={liveItems
+                .filter(i => i.status === "submitted")
+                .map(i => ({ id: i.id, title: i.title, usdAmt: i.expected_usd ?? 0, url: i.pr_url ?? null }))}
+              fresh={fresh}
+              submitted={submitted}
+            />
+          </div>
+        </div>
 
         {/* ── detail tabs (behind hamburger) ──────────────────────────── */}
         {menuOpen && <div className="border-t border-zinc-900 pt-6">
