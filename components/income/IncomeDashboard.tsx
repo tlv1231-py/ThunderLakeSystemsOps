@@ -365,7 +365,16 @@ function MissionCard({ item, fresh }: { item: any; fresh: boolean }) {
 
 // ── audio cues ────────────────────────────────────────────────────────────────
 
+let _muted = false;
+try { _muted = localStorage.getItem("tls_muted") === "1"; } catch {}
+export function isMuted() { return _muted; }
+export function setMuted(v: boolean) {
+  _muted = v;
+  try { localStorage.setItem("tls_muted", v ? "1" : "0"); } catch {}
+}
+
 function playScanSound() {
+  if (_muted) return;
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     // 8-bit radar sweep: ascending square-wave tones
@@ -390,6 +399,7 @@ async function notifyScan(detail: string) {
 }
 
 function playBountyChime() {
+  if (_muted) return;
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     // 8-bit "point scored" — G C E G C ascending arpeggio
@@ -406,6 +416,7 @@ function playBountyChime() {
 }
 
 function playTick() {
+  if (_muted) return;
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     const osc = ctx.createOscillator(); const g = ctx.createGain();
@@ -620,7 +631,8 @@ function getAgentServer() {
 
 type FeedLine = { id: string; ts: string; msg: string; accent: string; bountyKey?: string; hidden?: boolean };
 
-const BOUNTY_PALETTE = ["#e879f9","#fb923c","#facc15","#a3e635","#34d399","#22d3ee","#818cf8","#f472b6","#ff6b6b","#4ecdc4"];
+// No reds, greens, blues, ambers, or teals — those are reserved for system status colors
+const BOUNTY_PALETTE = ["#e879f9","#fb923c","#a3e635","#fda4af","#a78bfa","#818cf8","#f472b6","#c084fc","#d8b4fe","#f9a8d4"];
 
 const ACTION_COLORS: [string, string][] = [
   ["Abandoned",      "#f87171"],
@@ -943,7 +955,14 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   const [discovering, setDiscovering] = useState(false);
   const [discoverResult, setDiscoverResult] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [muted, setMutedState] = useState(() => { try { return localStorage.getItem("tls_muted") === "1"; } catch { return false; } });
   const [, startT] = useTransition();
+
+  function toggleMute() {
+    const next = !muted;
+    setMuted(next);
+    setMutedState(next);
+  }
 
   // Live pipeline items — realtime subscription keeps these current
   const [liveItems, setLiveItems] = useState<any[]>(pipelineItems);
@@ -1061,6 +1080,12 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
             <button onClick={() => router.refresh()}
               className="text-sm text-zinc-600 hover:text-zinc-300 transition-colors px-1" title="Refresh">
               ↺
+            </button>
+            <button
+              onClick={toggleMute}
+              className={`text-sm border px-2.5 py-1 transition-colors ${muted ? "border-zinc-800 text-zinc-700" : "border-zinc-600 text-zinc-300 hover:border-zinc-400"}`}
+              title={muted ? "Unmute audio" : "Mute audio"}>
+              {muted ? "🔇" : "🔊"}
             </button>
             <button
               onClick={handleDiscover}
