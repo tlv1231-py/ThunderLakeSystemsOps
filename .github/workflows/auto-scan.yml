@@ -1,0 +1,17 @@
+name: Auto Bounty Scan
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # every 30 minutes, all day, no machine needed
+  workflow_dispatch:           # manual trigger from GitHub Actions tab
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Trigger discovery scan
+        run: |
+          curl -sS --max-time 90 \
+            "https://thunder-lake-systems-ops.vercel.app/api/income/discover" \
+            | jq '{ok: .ok, new: .new, total: .total, duration: .duration}' || true
