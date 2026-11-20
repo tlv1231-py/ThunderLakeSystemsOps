@@ -7,6 +7,10 @@ const TIMEOUT = 12_000;
 export async function fetchGitHubBounties(): Promise<DiscoveredOpportunity[]> {
   // stars:>50 is critical — eliminates fake/trap repos, bounty aggregator cross-posts,
   // and crypto repos with no real maintainer payout history.
+  // Fresh date threshold: issues created in the last 30 days have far less competition
+  const d = new Date(); d.setDate(d.getDate() - 30);
+  const freshDate = d.toISOString().slice(0, 10); // YYYY-MM-DD
+
   const queries = [
     // Label-based — quality repos only (>50 stars filters 90% of fake/trap repos)
     "label:bounty+is:open+is:issue+stars:>50",
@@ -24,6 +28,16 @@ export async function fetchGitHubBounties(): Promise<DiscoveredOpportunity[]> {
     "%22%24%22+bounty+in:title+is:open+is:issue+stars:>50",
     // Good-first-issue = bounded, easy entry — high agent win rate
     "label:good-first-issue+label:bounty+is:open+is:issue+stars:>20",
+    // ── Fresh bounties (created in last 30 days) — far less competition ──────
+    // Recency is the key edge: get in before other devs find it
+    `label:bounty+is:open+is:issue+stars:>10+created:>${freshDate}`,
+    `label:opire+is:open+is:issue+created:>${freshDate}`,
+    `algora+in:body+is:open+is:issue+created:>${freshDate}`,
+    `language:typescript+label:bounty+is:open+is:issue+created:>${freshDate}`,
+    `language:python+label:bounty+is:open+is:issue+created:>${freshDate}`,
+    // Go and Rust — less crowded, good hourly rate
+    "language:go+label:bounty+is:open+is:issue+stars:>20",
+    "language:rust+label:bounty+is:open+is:issue+stars:>20",
   ];
   const token = process.env.GITHUB_TOKEN;
   const headers: Record<string, string> = {
@@ -98,17 +112,22 @@ async function fetchRepoLanguage(
 // ── Algora.io — public bounty feed ────────────────────────────────────────────
 export async function fetchAlgoraBounties(): Promise<DiscoveredOpportunity[]> {
   try {
-    const res = await fetch(
-      "https://console.algora.io/api/bounties?page=0&pageSize=50&status=OPEN",
-      {
+    // Fetch pages 0 and 1 to get up to 100 bounties
+    const [res0, res1] = await Promise.all([
+      fetch("https://console.algora.io/api/bounties?page=0&pageSize=50&status=OPEN", {
         headers: { "User-Agent": UA, Accept: "application/json" },
         signal: AbortSignal.timeout(TIMEOUT),
-      },
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-
-    const items: any[] = Array.isArray(data) ? data : (data.items ?? data.bounties ?? data.data ?? []);
+      }),
+      fetch("https://console.algora.io/api/bounties?page=1&pageSize=50&status=OPEN", {
+        headers: { "User-Agent": UA, Accept: "application/json" },
+        signal: AbortSignal.timeout(TIMEOUT),
+      }),
+    ]);
+    const d0 = res0.ok ? await res0.json() : null;
+    const d1 = res1.ok ? await res1.json() : null;
+    const p0: any[] = d0 ? (Array.isArray(d0) ? d0 : (d0.items ?? d0.bounties ?? d0.data ?? [])) : [];
+    const p1: any[] = d1 ? (Array.isArray(d1) ? d1 : (d1.items ?? d1.bounties ?? d1.data ?? [])) : [];
+    const items: any[] = [...p0, ...p1];
     return items.map((b: any): DiscoveredOpportunity => ({
       source: "algora",
       external_id: String(b.id ?? b.bountyId ?? b.number ?? ""),

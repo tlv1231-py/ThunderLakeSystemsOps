@@ -692,7 +692,8 @@ function ScanCountdown({ lastScanTs }: { lastScanTs: string | null }) {
     return <span className="text-sm tabular-nums font-mono text-red-500 animate-pulse">OVERDUE {overdueMin}m</span>;
   }
   if (waitingForScan) {
-    return <span className="text-sm tabular-nums font-mono text-amber-400 animate-pulse">scanning…</span>;
+    const elapsedSec = Math.floor((now - lastPassedSlot) / 1000);
+    return <span className="text-sm tabular-nums font-mono text-amber-400 animate-pulse">scanning… {elapsedSec}s</span>;
   }
   return (
     <span className={`text-sm tabular-nums font-mono ${remaining < 120000 ? "text-amber-400" : "text-zinc-600"}`}>
@@ -852,7 +853,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v39";
+const DASH_VERSION = "v40";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
