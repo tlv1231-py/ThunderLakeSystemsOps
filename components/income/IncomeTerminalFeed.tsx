@@ -137,16 +137,17 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun }: Props) 
     return () => { supabase.removeChannel(channel); clearInterval(pollTimer); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Drive countdown from last actual scan + 15min; slot math only as bootstrap fallback
-  function slotFallback(ts: number) {
+  // Always count to next UTC cron slot (:00/:15/:30/:45) — independent of when scan landed
+  function nextSlot(ts: number) {
     const d = new Date(ts);
     const m = d.getUTCMinutes();
     const next = m < 15 ? 15 : m < 30 ? 30 : m < 45 ? 45 : 60;
     if (next === 60) { d.setUTCMinutes(0, 0, 0); d.setUTCHours(d.getUTCHours() + 1); }
     else { d.setUTCMinutes(next, 0, 0); }
+    d.setUTCSeconds(0, 0);
     return d.getTime();
   }
-  let nextMs = lastScanTs ? lastScanTs + 15 * 60 * 1000 : slotFallback(now);
+  let nextMs = nextSlot(now);
   while (nextMs <= now) nextMs += 15 * 60 * 1000;
   const remaining = nextMs - now;
   const remM = Math.floor(remaining / 60000);

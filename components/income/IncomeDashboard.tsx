@@ -125,6 +125,7 @@ function nextScan(now: number) {
   const next = m < 15 ? 15 : m < 30 ? 30 : m < 45 ? 45 : 60;
   if (next === 60) { d.setUTCMinutes(0, 0, 0); d.setUTCHours(d.getUTCHours() + 1); }
   else { d.setUTCMinutes(next, 0, 0); }
+  d.setUTCSeconds(0, 0);
   return d.getTime();
 }
 
@@ -605,13 +606,9 @@ function ScanCountdown({ lastScanTs: initialTs }: { lastScanTs: string | null })
     return () => { supabase.removeChannel(ch); };
   }, []);
 
-  let nextMs: number;
-  if (lastScanMs) {
-    nextMs = lastScanMs + 15 * 60 * 1000;
-    while (nextMs <= now) nextMs += 15 * 60 * 1000;
-  } else {
-    nextMs = nextScan(now);
-  }
+  // Always count to next UTC cron slot (:00/:15/:30/:45) — independent of when scan landed
+  let nextMs = nextScan(now);
+  while (nextMs <= now) nextMs += 15 * 60 * 1000;
   const remaining = nextMs - now;
   const remM = Math.floor(remaining / 60000);
   const remS = Math.floor((remaining % 60000) / 1000);
@@ -792,7 +789,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v27";
+const DASH_VERSION = "v28";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
