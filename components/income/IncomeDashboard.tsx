@@ -580,6 +580,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   const [discovering, setDiscovering] = useState(false);
   const [discoverResult, setDiscoverResult] = useState<string | null>(null);
   const [stagedCollapsed, setStagedCollapsed] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [, startT] = useTransition();
 
   useEffect(() => {
@@ -652,6 +653,12 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
                 ${discovering ? "border-zinc-700 text-zinc-500" : "idle-pulse text-white hover:border-white"}`}>
               {discovering ? "scanning…" : "scan"}
             </button>
+            <button
+              onClick={() => setMenuOpen(o => !o)}
+              className={`text-sm border px-2.5 py-1 transition-colors ${menuOpen ? "border-zinc-500 text-zinc-300" : "border-zinc-800 text-zinc-600 hover:border-zinc-500 hover:text-zinc-300"}`}
+              title="Scan · Ledger · Log">
+              ☰
+            </button>
           </div>
         </div>
 
@@ -660,9 +667,9 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
           <AgentCTA count={pendingQueue.length} projected={summary.queueProjectedUsd} />
         )}
 
-        {/* ── pipeline ────────────────────────────────────────────────── */}
+        {/* ── active bounties ─────────────────────────────────────────── */}
         <section className="mb-8">
-          <SectionHeader label="Pipeline" count={activeMissions} />
+          <SectionHeader label="Active" count={activeMissions} />
           <Missions userId={userId} initialItems={pipelineItems} />
         </section>
 
@@ -683,8 +690,8 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
           </section>
         )}
 
-        {/* ── detail tabs ─────────────────────────────────────────────── */}
-        <div className="border-t border-zinc-900 pt-6">
+        {/* ── detail tabs (behind hamburger) ──────────────────────────── */}
+        {menuOpen && <div className="border-t border-zinc-900 pt-6">
           <div className="flex gap-5 mb-6 sticky top-0 bg-black py-2 z-20">
             {tabs.map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
@@ -722,7 +729,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
               lastDiscoveryRun={summary.lastDiscoveryRun}
             />
           </div>
-        </div>
+        </div>}
 
       </div>
     </div>
