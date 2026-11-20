@@ -595,6 +595,13 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
     { id: "log",       label: "log" },
   ];
 
+  // Polling fallback — refreshes server props every 10s in case realtime isn't firing
+  useEffect(() => {
+    const t = setInterval(() => router.refresh(), 10_000);
+    return () => clearInterval(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function handleDiscover() {
     setDiscovering(true); setDiscoverResult(null);
     try {
