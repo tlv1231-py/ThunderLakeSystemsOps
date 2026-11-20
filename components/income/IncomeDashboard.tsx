@@ -476,6 +476,31 @@ function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCo
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [lines]);
 
+  // Load history from activity log on mount
+  useEffect(() => {
+    const sb = createClient();
+    (sb as any).from("income_activity_log")
+      .select("id,action,detail,created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(60)
+      .then(({ data }: any) => {
+        if (!data?.length) return;
+        const history: FeedLine[] = data.reverse().map((e: any) => {
+          const ts = new Date(e.created_at).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+          const [type, color] =
+            e.action === "discovery_run"  ? ["SCAN",      "#2dd4bf"] :
+            e.action === "pr_submitted"   ? ["SUBMITTED", "#38bdf8"] :
+            e.action === "pr_merged"      ? ["MERGED",    "#4ade80"] :
+            e.action === "work_started"   ? ["WORKING",   "#2dd4bf"] :
+            e.action === "work_failed"    ? ["FAILED",    "#f87171"] :
+                                            ["LOG",       "#52525b"];
+          return { id: e.id, ts, type, msg: (e.detail || e.action || "").slice(0, 60), color };
+        });
+        setLines(history);
+      });
+  }, [userId]);
+
   useEffect(() => {
     const sb = createClient();
 
@@ -499,7 +524,7 @@ function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCo
       .subscribe();
 
     const ch2 = (sb as any).channel(`lf_log_${userId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "income_activity_log" }, (p: any) => {
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "income_activity_log", filter: `user_id=eq.${userId}` }, (p: any) => {
         const d = p.new;
         if (d.action === "discovery_run") add("SCAN", (d.detail || "").slice(0, 60), "#2dd4bf");
         else add("LOG", (d.detail || d.action || "").slice(0, 60), "#52525b");
