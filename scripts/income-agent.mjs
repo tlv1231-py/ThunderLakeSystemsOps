@@ -71,6 +71,26 @@ async function log(userId, action, detail, status = "ok") {
   });
 }
 
+// ── Pre-pass: dismiss all non-automatable items (no GitHub URL) ───────────────
+const { data: allPending } = await db
+  .from("income_work_queue")
+  .select("id, user_id, title, income_opportunities(id, url, repo_url, source)")
+  .eq("status", "pending");
+
+for (const item of allPending ?? []) {
+  const opp = item.income_opportunities;
+  if (!opp) continue;
+  const oppUrl = (opp.url ?? opp.repo_url ?? "").toLowerCase();
+  if (!oppUrl.startsWith("https://github.com/")) {
+    console.log(`  🚫  Auto-dismissing non-GitHub: ${item.title}`);
+    await db.from("income_work_queue").update({
+      status: "failed",
+      progress_note: `Out of scope: non-GitHub task (${opp.source ?? "unknown"})`,
+    }).eq("id", item.id);
+    await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
+  }
+}
+
 // ── Fetch queued items ────────────────────────────────────────────────────────
 const { data: queuedItems, error: qErr } = await db
   .from("income_work_queue")

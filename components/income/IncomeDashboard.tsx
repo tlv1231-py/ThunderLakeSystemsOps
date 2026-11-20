@@ -191,16 +191,15 @@ function BountyTile({ id, title, usdAmt, score, url, fresh, submitted }: {
   return (
     <div className="relative" onMouseEnter={() => setTip(true)} onMouseLeave={() => setTip(false)}>
       <div
-        className={`w-14 h-14 flex items-center justify-center cursor-pointer select-none transition-all duration-150 ${fresh ? (submitted ? "tile-submit" : "tile-enter") : ""}`}
+        className={`w-16 h-16 flex items-center justify-center cursor-pointer select-none transition-all duration-150 ${fresh ? (submitted ? "tile-submit" : "tile-enter") : ""}`}
         style={{
-          border: `1px solid ${accent}`,
-          background: `color-mix(in srgb, ${accent} 10%, transparent)`,
-          ["--ta" as any]: accent + "66",
-          boxShadow: tip ? `0 0 12px 1px ${accent}44` : "none",
+          background: accent,
+          ["--ta" as any]: accent + "aa",
+          boxShadow: tip ? `0 0 14px 2px ${accent}66` : "none",
         }}
         onClick={() => url && window.open(url, "_blank")}
       >
-        <span className="text-[11px] font-mono font-semibold tabular-nums" style={{ color: accent }}>{label}</span>
+        <span className="text-[13px] font-mono font-bold tabular-nums text-black">{label}</span>
       </div>
       {tip && (
         <div className="absolute bottom-full left-0 mb-2 z-50 w-52 bg-zinc-950 border border-zinc-700 p-2 pointer-events-none" style={{ borderLeftColor: accent, borderLeftWidth: 2 }}>
@@ -763,22 +762,21 @@ function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; 
           <p className="text-[11px] text-zinc-800 py-1 select-none">— waiting for activity —</p>
         )}
         {lines.map(l => {
-          // Split message so only the bounty name gets accent color; rest is white
-          let msgNode: React.ReactNode = <span className="text-white">{l.msg}</span>;
+          let msgNode: React.ReactNode = <span className="text-zinc-400">{l.msg}</span>;
           if (l.bountyKey && l.msg.includes(l.bountyKey)) {
             const idx = l.msg.indexOf(l.bountyKey);
             const before = l.msg.slice(0, idx);
             const after  = l.msg.slice(idx + l.bountyKey.length);
             msgNode = <>
-              {before && <span className="text-white">{before}</span>}
+              {before && <span className="text-zinc-400">{before}</span>}
               <span style={{ color: l.accent }}>{l.bountyKey}</span>
-              {after && <span className="text-white">{after}</span>}
+              {after && <span className="text-zinc-400">{after}</span>}
             </>;
           }
           return (
             <div key={l.id} className="flex gap-3 text-[11px] leading-5">
               <span className="text-zinc-700 shrink-0 tabular-nums">{l.ts}</span>
-              <span className="shrink-0 w-16 tabular-nums" style={{ color: l.typeColor }}>{l.type}</span>
+              <span className="shrink-0 w-16 tabular-nums text-white">{l.type}</span>
               <span className="break-words min-w-0">{msgNode}</span>
             </div>
           );
