@@ -51,6 +51,21 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// ── Clean stale WORKDIR entries (EPERM prevention) ────────────────────────────
+// Prior runs may leave locked dirs on Windows — wipe anything older than 2h
+try {
+  const { readdirSync, statSync } = await import("fs");
+  if (existsSync(WORKDIR)) {
+    const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+    for (const entry of readdirSync(WORKDIR)) {
+      const full = join(WORKDIR, entry);
+      try {
+        if (statSync(full).mtimeMs < cutoff) rmSync(full, { recursive: true, force: true });
+      } catch {}
+    }
+  }
+} catch {}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function run(cmd, opts = {}) {
   return execSync(cmd, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], ...opts }).trim();
@@ -240,6 +255,10 @@ for (const item of queuedItems) {
       run(`git remote set-url origin https://${GITHUB_TOKEN}@github.com/${forkRepo}.git`, { cwd: cloneDir });
     }
 
+    // Suppress LF→CRLF warnings on Windows — prevents git add failures
+    try { run("git config core.autocrlf false", { cwd: cloneDir }); } catch {}
+    try { run("git config core.safecrlf false", { cwd: cloneDir }); } catch {}
+
     // gh repo clone sets upstream automatically when cloning a fork — skip if already set
     try { run(`git remote add upstream https://github.com/${ghRepo}.git`, { cwd: cloneDir }); } catch {}
 
@@ -386,7 +405,14 @@ A clean UNCERTAIN is better than a bad PR.
     // ── 8. Commit ─────────────────────────────────────────────────────────────
     await progress(workId, 75, "Committing fix…");
 
-    run("git add -A", { cwd: cloneDir });
+    try {
+      run("git add -A", { cwd: cloneDir });
+    } catch (e) {
+      // LF→CRLF warnings can cause exit 1 on Windows — reconfigure and retry once
+      run("git config core.autocrlf false", { cwd: cloneDir });
+      run("git config core.safecrlf false", { cwd: cloneDir });
+      run("git add -A", { cwd: cloneDir });
+    }
     run(`git commit -m "fix: ${issueTitle.slice(0, 72).replace(/"/g, "'")}"`, { cwd: cloneDir });
 
     // ── 9. Push ───────────────────────────────────────────────────────────────
