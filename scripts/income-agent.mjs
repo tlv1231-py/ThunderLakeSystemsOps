@@ -52,7 +52,22 @@ const env = Object.fromEntries(
 const REPO_BLOCKLIST = [
   "bounty-plaza", "bounty-board", "bounty-list", "bounties-list",
   "crypto-bounty", "web3-bounty", "defi-bounty",
+  "bountyscout", "bounty-scout", "bug-bounty-list", "bug-bounties",
 ];
+
+// Keywords in issue titles that signal non-code tasks (content, design, creative)
+const NON_CODE_TITLE_PATTERNS = [
+  /\bpoem\b/i, /\bcontent creation\b/i, /\bwrite a\b/i, /\bgenerate text\b/i,
+  /\blogo\b/i, /\bdesign\b.*\bmockup\b/i, /\bartwork\b/i,
+  /\btweet\b/i, /\bblog post\b/i, /\bcopywriting\b/i,
+  /\bgenerate.*content\b/i, /\bcreative writing\b/i,
+];
+
+// Minimum reward in USD — below this, pipeline time per run exceeds expected return
+const MIN_REWARD_USD = 15;
+
+// Minimum score — below this, historical abandon rate is too high to be worth running
+const MIN_SCORE = 65;
 
 const SUPABASE_URL      = env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY      = env.SUPABASE_SERVICE_ROLE_KEY;
@@ -171,6 +186,33 @@ for (const item of queuedItems) {
     continue;
   }
 
+  // Skip below minimum reward — pipeline time per run exceeds expected return at this value
+  if (opp.reward_usd < MIN_REWARD_USD) {
+    console.log(`  ⚠  Reward $${opp.reward_usd} below minimum $${MIN_REWARD_USD} — skipping`);
+    await db.from("income_work_queue").update({ status: "failed", progress_note: `Below minimum reward ($${opp.reward_usd} < $${MIN_REWARD_USD})` }).eq("id", item.id);
+    await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
+    continue;
+  }
+
+  // Skip below minimum score — high abandon rate below this threshold
+  if (opp.score != null && opp.score < MIN_SCORE) {
+    console.log(`  ⚠  Score ${opp.score} below minimum ${MIN_SCORE} — skipping`);
+    await db.from("income_work_queue").update({ status: "failed", progress_note: `Below minimum score (${opp.score} < ${MIN_SCORE})` }).eq("id", item.id);
+    await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
+    continue;
+  }
+
+  // Skip non-code tasks (content creation, poems, design, etc.)
+  const titleLower = (opp.title ?? "").toLowerCase();
+  const isNonCode = NON_CODE_TITLE_PATTERNS.some(p => p.test(opp.title ?? ""));
+  if (isNonCode) {
+    console.log(`  🚫  Non-code task detected in title — skipping: ${opp.title}`);
+    await db.from("income_work_queue").update({ status: "failed", progress_note: "Non-code task (content/design/creative) — out of scope" }).eq("id", item.id);
+    await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
+    await log(item.user_id, "opportunity_dismissed", `${opp.title} [non-code task]`, "info");
+    continue;
+  }
+
   // Auto-dismiss non-GitHub tasks (design, payout forms, sales kits, etc.)
   const oppUrl = (opp.url ?? opp.repo_url ?? "").toLowerCase();
   if (!oppUrl.startsWith("https://github.com/")) {
@@ -219,6 +261,19 @@ for (const item of queuedItems) {
       await log(userId, "agent_skip", `${issueTitle}|||no repo URL found`, "warning");
       continue;
     }
+
+    // ── 1a. Pre-check competition — skip if already saturated with open PRs ──
+    await progress(workId, 6, "Checking open PR competition…");
+    try {
+      const openPRs = JSON.parse(run(`gh api "repos/${ghRepo}/pulls?state=open&per_page=10" --jq "length"`));
+      if (openPRs >= 4) {
+        await progress(workId, 0, `Too many competing PRs (${openPRs}) — skipping`);
+        await db.from("income_work_queue").update({ status: "failed", progress_note: `Saturated: ${openPRs} open PRs already targeting this issue` }).eq("id", workId);
+        await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
+        await log(userId, "agent_skip", `${issueTitle}|||${openPRs} open PRs — saturated`, "warning");
+        continue;
+      }
+    } catch {}
 
     // ── 1b. Verify repo has content ───────────────────────────────────────────
     await progress(workId, 8, "Checking repo has commits…");

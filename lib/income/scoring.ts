@@ -118,11 +118,18 @@ export function scoreOpportunity(opp: DiscoveredOpportunity): {
     else if (daysLeft < 5) score -= 4;
   }
 
+  // ── Non-code content penalty: cut score by 70% for creative/content tasks ──
+  const NON_CODE_SIGNALS = [
+    "poem", "content creation", "write a", "generate text", "blog post",
+    "copywriting", "creative writing", "logo", "artwork", "tweet",
+  ];
+  const isNonCode = NON_CODE_SIGNALS.some(s => techText.includes(s));
+
   // ── Anti-fit penalty: apply AFTER all additive scoring ───────────────────
-  // Halve the score for languages where we have poor expected win rate.
-  // Still non-zero so they appear in the list rather than being silently dropped.
   const rawScore = Math.max(0, Math.min(100, Math.round(score)));
-  const finalScore = isAntiFit ? Math.round(rawScore * 0.5) : rawScore;
+  const finalScore = isNonCode ? Math.round(rawScore * 0.3)
+    : isAntiFit ? Math.round(rawScore * 0.5)
+    : rawScore;
 
   return {
     score:            finalScore,

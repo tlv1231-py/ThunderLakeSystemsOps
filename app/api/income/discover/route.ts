@@ -69,6 +69,15 @@ export async function GET(req: Request) {
   const REPO_BLOCKLIST = [
     "bounty-plaza", "bounty-board", "bounty-list", "bounties-list",
     "crypto-bounty", "web3-bounty", "defi-bounty",
+    "bountyscout", "bounty-scout", "bug-bounty-list", "bug-bounties",
+    "/bug-bounty/",
+  ];
+
+  const NON_CODE_TITLE_PATTERNS = [
+    /\bpoem\b/i, /\bcontent creation\b/i, /\bwrite a\b/i, /\bgenerate text\b/i,
+    /\blogo\b/i, /\bdesign\b.*\bmockup\b/i, /\bartwork\b/i,
+    /\btweet\b/i, /\bblog post\b/i, /\bcopywriting\b/i,
+    /\bgenerate.*content\b/i, /\bcreative writing\b/i,
   ];
 
   for (const opp of opportunities) {
@@ -77,6 +86,9 @@ export async function GET(req: Request) {
     // Drop known fake bounty aggregator repos before storing
     const repoLower = (opp.repo_url ?? opp.url ?? "").toLowerCase();
     if (REPO_BLOCKLIST.some(p => repoLower.includes(p))) { skipCount++; continue; }
+
+    // Drop non-code tasks before storing
+    if (NON_CODE_TITLE_PATTERNS.some(p => p.test(opp.title ?? ""))) { skipCount++; continue; }
 
     // Check if already dismissed or in-progress
     const { data: existing } = await db
@@ -125,8 +137,8 @@ export async function GET(req: Request) {
         .select("id").single();
       newCount++;
 
-      // Auto-queue high-quality bounties with low competition (score >= 50, < 3 open PRs)
-      if (opp.reward_usd && opp.reward_usd > 0 && score >= 50 && (opp.open_prs ?? 0) < 3 && inserted && userId) {
+      // Auto-queue only high-quality bounties: score >= 65, reward >= $15, < 3 open PRs
+      if (opp.reward_usd && opp.reward_usd >= 15 && score >= 65 && (opp.open_prs ?? 0) < 3 && inserted && userId) {
         await db.from("income_opportunities").update({ status: "queued" }).eq("id", inserted.id);
         await db.from("income_work_queue").insert({
           engine:          "bounty",
