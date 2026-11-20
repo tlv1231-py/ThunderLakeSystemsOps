@@ -97,6 +97,10 @@ const CSS = `
 .tile-active { animation: tileActive 1.8s ease-in-out infinite }
 .count-punch { animation: countPunch .38s cubic-bezier(0.34,1.56,0.64,1) both }
 .card-glow   { animation: cardGlow .6s ease-out both }
+@keyframes numUp   { 0%{transform:translateY(6px);color:#22c55e} 70%{color:#4ade80} 100%{transform:translateY(0);color:#fff} }
+@keyframes numDown { 0%{transform:translateY(-6px);color:#ef4444} 70%{color:#f87171} 100%{transform:translateY(0);color:#fff} }
+.num-up   { animation: numUp   .55s cubic-bezier(0.22,1,0.36,1) both }
+.num-down { animation: numDown .55s cubic-bezier(0.22,1,0.36,1) both }
 .tls-feed { font-family:'Geist','Inter','Segoe UI Variable',system-ui,-apple-system,sans-serif; font-size:15px; letter-spacing:-0.01em; }
 .fade-down { animation: fadeDown .3s ease-out both }
 .tls-scroll { overflow-y:auto; scrollbar-width:none; }
@@ -276,27 +280,46 @@ function WaitingColumn({ items, fresh, active }: {
   fresh?: Set<string>; active?: Set<string>;
 }) {
   const [prevCount, setPrevCount] = useState(items.length);
-  const [punch, setPunch] = useState(false);
+  const [countDir, setCountDir] = useState<"up"|"down"|null>(null);
+  const totalUsd = items.reduce((s, i) => s + (i.usdAmt ?? 0), 0);
+  const [prevTotal, setPrevTotal] = useState(totalUsd);
+  const [totalDir, setTotalDir] = useState<"up"|"down"|null>(null);
+
   useEffect(() => {
-    if (items.length > prevCount) { setPunch(true); setTimeout(() => setPunch(false), 420); }
-    setPrevCount(items.length);
+    if (items.length !== prevCount) {
+      setCountDir(items.length > prevCount ? "up" : "down");
+      const t = setTimeout(() => setCountDir(null), 600);
+      setPrevCount(items.length);
+      return () => clearTimeout(t);
+    }
   }, [items.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const totalUsd = items.reduce((s, i) => s + (i.usdAmt ?? 0), 0);
+  useEffect(() => {
+    if (totalUsd !== prevTotal) {
+      setTotalDir(totalUsd > prevTotal ? "up" : "down");
+      const t = setTimeout(() => setTotalDir(null), 600);
+      setPrevTotal(totalUsd);
+      return () => clearTimeout(t);
+    }
+  }, [totalUsd]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="w-56">
       {/* Header */}
-      <div className="mb-4 flex items-end justify-between">
+      <div className="mb-4 flex items-start justify-between">
         <div className="flex flex-col leading-none">
-          <span className={`text-5xl font-black tabular-nums leading-none ${punch ? "count-punch" : ""} ${items.length > 0 ? "text-amber-400" : "text-zinc-700"}`}>
+          <span className={`text-5xl font-black tabular-nums leading-none ${
+            countDir === "up" ? "num-up" : countDir === "down" ? "num-down" : ""
+          } ${items.length === 0 ? "text-zinc-700" : "text-white"}`}>
             {items.length}
           </span>
-          <span className="text-[10px] uppercase tracking-widest text-amber-500/40 mt-1">queued</span>
+          <span className="text-[10px] uppercase tracking-widest text-zinc-600 mt-1">queued</span>
         </div>
         {totalUsd > 0 && (
           <div className="flex flex-col items-end leading-none">
-            <span className="text-3xl font-black tabular-nums leading-none text-zinc-300">{usd(totalUsd)}</span>
+            <span className={`text-5xl font-black tabular-nums leading-none ${
+              totalDir === "up" ? "num-up" : totalDir === "down" ? "num-down" : "text-white"
+            }`}>{usd(totalUsd)}</span>
             <span className="text-[10px] uppercase tracking-widest text-zinc-600 mt-1">total value</span>
           </div>
         )}
@@ -727,7 +750,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v16";
+const DASH_VERSION = "v17";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
