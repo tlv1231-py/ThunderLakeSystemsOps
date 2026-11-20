@@ -4,23 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { ActivityEntry } from "@/lib/income/types";
 
-// Cron fires every hour on the hour UTC
-const CRON_SLOTS_UTC = Array.from({ length: 24 }, (_, i) => i);
-function nextCronSlot(now: number): number {
-  const d = new Date(now);
-  const h = d.getUTCHours();
-  const nextHour = CRON_SLOTS_UTC.find(s => s > h);
-  const next = new Date(d);
-  next.setUTCMinutes(0, 0, 0);
-  if (nextHour !== undefined) {
-    next.setUTCHours(nextHour);
-  } else {
-    next.setUTCDate(next.getUTCDate() + 1);
-    next.setUTCHours(CRON_SLOTS_UTC[0]);
-  }
-  return next.getTime();
-}
-
 type TermLine = {
   id: string;
   ts: string;
@@ -82,6 +65,12 @@ export function IncomeTerminalFeed({ initialEntries }: Props) {
   const [connected, setConnected] = useState(false);
   const [blink, setBlink] = useState(true);
   const [now, setNow] = useState(() => Date.now());
+
+  // Last scan timestamp — derived from entries, updated as new ones arrive
+  const [lastScanTs, setLastScanTs] = useState<number | null>(() => {
+    const e = initialEntries.find(e => e.action === "discovery_run" || e.action === "scan_start");
+    return e ? new Date(e.created_at).getTime() : null;
+  });
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom on new lines
@@ -101,9 +90,11 @@ export function IncomeTerminalFeed({ initialEntries }: Props) {
     return () => clearInterval(t);
   }, []);
 
-  // Supabase realtime
+  // Supabase realtime + 30s poll fallback
   useEffect(() => {
     const supabase = createClient();
+    const seenIds = new Set(lines.map(l => l.id));
+
     const channel = (supabase as any)
       .channel("income_terminal_feed")
       .on(
@@ -111,20 +102,60 @@ export function IncomeTerminalFeed({ initialEntries }: Props) {
         { event: "INSERT", schema: "public", table: "income_activity_log" },
         (payload: any) => {
           const entry = payload.new as ActivityEntry;
+          if (seenIds.has(entry.id)) return;
+          seenIds.add(entry.id);
           setLines(prev => [...prev.slice(-99), toTermLine(entry)]);
+          if (entry.action === "discovery_run" || entry.action === "scan_start") {
+            setLastScanTs(new Date(entry.created_at).getTime());
+          }
         }
       )
       .subscribe((status: string) => setConnected(status === "SUBSCRIBED"));
 
-    return () => { supabase.removeChannel(channel); };
-  }, []);
+    // Poll every 30s so scans always surface even if Realtime misses them
+    async function poll() {
+      const { data } = await (supabase as any)
+        .from("income_activity_log")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (!data) return;
+      const fresh = (data as ActivityEntry[]).filter(e => !seenIds.has(e.id));
+      if (!fresh.length) return;
+      fresh.forEach(e => seenIds.add(e.id));
+      const latestScan = fresh.find(e => e.action === "discovery_run" || e.action === "scan_start");
+      if (latestScan) setLastScanTs(new Date(latestScan.created_at).getTime());
+      setLines(prev => {
+        const next = [...prev, ...fresh.map(toTermLine)];
+        next.sort((a, b) => a.ts < b.ts ? -1 : 1);
+        return next.slice(-100);
+      });
+    }
 
-  // Countdown display — based on next fixed UTC cron slot (hourly)
-  const { label: countdownLabel, overdue } = (() => {
-    const remaining = nextCronSlot(now) - now;
-    const m = Math.floor(remaining / 60000);
-    const s = Math.floor((remaining % 60000) / 1000);
-    return { label: `NEXT: ${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`, overdue: false };
+    const pollTimer = setInterval(poll, 30_000);
+    return () => { supabase.removeChannel(channel); clearInterval(pollTimer); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Next scan: next :00/:15/:30/:45 UTC minute boundary
+  function nextScan15(ts: number) {
+    const d = new Date(ts);
+    const m = d.getUTCMinutes();
+    const next = m < 15 ? 15 : m < 30 ? 30 : m < 45 ? 45 : 60;
+    if (next === 60) { d.setUTCMinutes(0, 0, 0); d.setUTCHours(d.getUTCHours() + 1); }
+    else { d.setUTCMinutes(next, 0, 0); }
+    return d.getTime();
+  }
+
+  const remaining = nextScan15(now) - now;
+  const remM = Math.floor(remaining / 60000);
+  const remS = Math.floor((remaining % 60000) / 1000);
+  const countdownLabel = `NEXT: ${String(remM).padStart(2,"0")}:${String(remS).padStart(2,"0")}`;
+  const overdue = false;
+
+  const lastScanLabel = (() => {
+    if (!lastScanTs) return "LAST: —";
+    const ago = Math.floor((now - lastScanTs) / 60000);
+    return ago < 1 ? "LAST: <1m ago" : ago < 60 ? `LAST: ${ago}m ago` : `LAST: ${Math.floor(ago / 60)}h ago`;
   })();
 
   return (
@@ -140,9 +171,9 @@ export function IncomeTerminalFeed({ initialEntries }: Props) {
         </div>
       </div>
 
-      {/* Header row 2: countdown */}
-      <div className={`px-3 py-1.5 border-b border-[#00ff41]/20 bg-[#030603] shrink-0 flex items-center justify-between`}>
-        <span className="text-[9px] text-[#004d14] uppercase tracking-widest">DISCOVERY_CYCLE · 1:00:00</span>
+      {/* Header row 2: last scan + next scan */}
+      <div className="px-3 py-1.5 border-b border-[#00ff41]/20 bg-[#030603] shrink-0 flex items-center justify-between">
+        <span className="text-[9px] text-[#004d14] uppercase tracking-widest">{lastScanLabel}</span>
         <span className={`text-[11px] font-bold tabular-nums tracking-widest ${
           overdue ? "text-[#ffb800] animate-pulse" : "text-[#00ff41]"
         }`}>
