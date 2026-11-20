@@ -480,22 +480,54 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
+const AGENT_SERVER = "http://localhost:3002";
+
 function AgentCTA({ count, projected }: { count: number; projected: number }) {
-  const [copied, setCopied] = useState(false);
-  const cmd = "node scripts/income-agent.mjs";
-  function copy() {
-    navigator.clipboard.writeText(cmd).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
+  const [state, setState] = useState<"idle" | "running" | "done" | "copied">("idle");
+
+  async function run() {
+    if (state === "running") return;
+    setState("running");
+    try {
+      const r = await fetch(`${AGENT_SERVER}/run`, {
+        method: "POST",
+        signal: AbortSignal.timeout(4000),
+      });
+      if (!r.ok) throw new Error("server error");
+      setState("done");
+      setTimeout(() => setState("idle"), 3000);
+    } catch {
+      // Server not running — fall back to clipboard
+      await navigator.clipboard.writeText("node scripts/income-agent.mjs");
+      setState("copied");
+      setTimeout(() => setState("idle"), 2000);
+    }
   }
+
+  const label =
+    state === "running" ? "running…" :
+    state === "done"    ? "✓ started" :
+    state === "copied"  ? "copied (start agent-server.mjs)" :
+    `run pipeline`;
+
+  const cls =
+    state === "running" ? "text-teal-400 border-teal-800" :
+    state === "done"    ? "text-emerald-400 border-emerald-900" :
+    state === "copied"  ? "text-amber-400 border-amber-900" :
+    "text-white border-zinc-700 hover:border-white";
+
   return (
-    <div className="border border-zinc-800 hover:border-zinc-600 transition-colors bg-zinc-950 px-4 py-3 mb-6 flex items-center justify-between gap-4">
+    <div className="border border-zinc-800 bg-zinc-950 px-4 py-3 mb-6 flex items-center justify-between gap-4">
       <p className="text-sm text-zinc-300">
         <span className="text-emerald-400 font-medium">{count}</span>{" "}
-        {count === 1 ? "bounty" : "bounties"} ready to work
+        {count === 1 ? "bounty" : "bounties"} staged
         {projected > 0 && <span className="text-zinc-600 ml-2">{usd(projected)} projected</span>}
       </p>
-      <button onClick={copy}
-        className="text-sm font-mono text-zinc-500 hover:text-white transition-colors whitespace-nowrap border border-zinc-800 hover:border-zinc-500 px-3 py-1">
-        {copied ? <span className="text-emerald-400">✓ copied</span> : cmd}
+      <button
+        onClick={run}
+        disabled={state === "running"}
+        className={`text-sm border px-4 py-1.5 transition-all disabled:opacity-60 whitespace-nowrap ${cls}`}>
+        {label}
       </button>
     </div>
   );
