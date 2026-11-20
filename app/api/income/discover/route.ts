@@ -56,7 +56,7 @@ export async function GET(req: Request) {
       action:  "scan_source",
       detail:  err
         ? `${source.toUpperCase()}: error — ${err}`
-        : `${source.toUpperCase()}: found ${count} opportunit${count === 1 ? "y" : "ies"}`,
+        : `${source.toUpperCase()}: found ${count} bount${count === 1 ? "y" : "ies"}`,
       status:  err ? "warning" : "ok",
       metadata: { source, count },
       user_id:  userId,
@@ -153,7 +153,7 @@ export async function GET(req: Request) {
   await db.from("income_activity_log").insert({
     engine:  "bounty",
     action:  "discovery_run",
-    detail:  `Found ${opportunities.length} opportunities (${newCount} new, ${skipCount} skipped)`,
+    detail:  `Found ${opportunities.length} bounties (${newCount} new, ${skipCount} skipped)`,
     status:  "ok",
     metadata: { log, duration_ms: durationMs, sources: log.map(l => l.source) },
     user_id:  userId,

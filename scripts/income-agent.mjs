@@ -186,7 +186,7 @@ for (const item of queuedItems) {
     if (!ghRepo) {
       await progress(workId, 0, "Could not determine repo URL — skipping");
       await db.from("income_work_queue").update({ status: "failed" }).eq("id", workId);
-      await log(userId, "agent_skip", `No repo URL for: ${issueTitle}`, "warning");
+      await log(userId, "agent_skip", `${issueTitle}|||no repo URL found`, "warning");
       continue;
     }
 
@@ -198,7 +198,7 @@ for (const item of queuedItems) {
         await progress(workId, 0, "Repo is empty — no code to fix");
         await db.from("income_work_queue").update({ status: "failed" }).eq("id", workId);
         await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
-        await log(userId, "agent_skip", `Empty repo: ${ghRepo}`, "warning");
+        await log(userId, "agent_skip", `${issueTitle}|||repo is empty — no code to work with`, "warning");
         continue;
       }
     } catch {}
@@ -222,7 +222,7 @@ for (const item of queuedItems) {
       await progress(workId, 0, `Fork failed — cannot proceed without push access`);
       await db.from("income_work_queue").update({ status: "failed", progress_note: "Fork failed — forks may be disabled for this org" }).eq("id", workId);
       await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
-      await log(userId, "opportunity_dismissed", `${issueTitle} [fork disabled]`, "warning");
+      await log(userId, "agent_skip", `${issueTitle}|||org has forks disabled`, "warning");
       continue;
     }
 
@@ -372,10 +372,14 @@ A clean UNCERTAIN is better than a bad PR.
       : "";
 
     if (!hasChanges) {
-      await progress(workId, 0, `Claude made no changes — ${summary.slice(0, 120)}`);
+      const uncertainMatch = summary.match(/^UNCERTAIN:\s*(.+)/i);
+      const abandonReason = uncertainMatch
+        ? uncertainMatch[1].split("\n")[0].slice(0, 100)
+        : "Claude produced no code changes";
+      await progress(workId, 0, `Abandoned — ${abandonReason}`);
       await db.from("income_work_queue").update({ status: "failed" }).eq("id", workId);
-      await log(userId, "agent_no_changes", issueTitle, "warning");
-      rmSync(cloneDir, { recursive: true, force: true });
+      await log(userId, "agent_no_changes", `${issueTitle}|||${abandonReason}`, "warning");
+      try { rmSync(cloneDir, { recursive: true, force: true }); } catch {}
       continue;
     }
 

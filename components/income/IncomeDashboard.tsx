@@ -624,16 +624,28 @@ function formatFeedEntry(action: string, detail: string): { msg: string; bountyK
       return { msg: `Merged — ${detail}`, bountyKey: detail };
     case "pr_closed":
       return { msg: `PR closed — ${detail}`, bountyKey: detail };
-    case "agent_no_changes":
-      return { msg: `Abandoned — ${detail}`, bountyKey: detail };
-    case "agent_skip":
-      return { msg: `Skipped — ${detail}` };
+    case "agent_no_changes": {
+      const sep = detail.indexOf("|||");
+      const title  = sep > -1 ? detail.slice(0, sep) : detail;
+      const reason = sep > -1 ? detail.slice(sep + 3) : "no code changes";
+      return { msg: `Abandoned bounty — ${title} — ${reason}`, bountyKey: title };
+    }
+    case "agent_skip": {
+      const sep = detail.indexOf("|||");
+      const title  = sep > -1 ? detail.slice(0, sep) : detail;
+      const reason = sep > -1 ? detail.slice(sep + 3) : "";
+      return { msg: reason ? `Skipped — ${title} — ${reason}` : `Skipped — ${detail}`, bountyKey: sep > -1 ? title : undefined };
+    }
     case "agent_error":
       return { msg: `Error: ${detail}` };
     case "opportunity_queued":
       return { msg: `Staged — ${detail}`, bountyKey: detail };
-    case "opportunity_dismissed":
-      return { msg: `Dismissed — ${detail}`, bountyKey: detail };
+    case "opportunity_dismissed": {
+      const sep = detail.indexOf("|||");
+      const title  = sep > -1 ? detail.slice(0, sep) : detail;
+      const reason = sep > -1 ? detail.slice(sep + 3) : "";
+      return { msg: reason ? `Dismissed — ${title} — ${reason}` : `Dismissed — ${detail}`, bountyKey: title };
+    }
     case "earning_logged":
       return { msg: `Earned — ${detail}`, bountyKey: detail };
     case "approval_approved":
