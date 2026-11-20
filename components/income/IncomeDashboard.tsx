@@ -557,6 +557,9 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   const [liveItems, setLiveItems] = useState<any[]>(pipelineItems);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
 
+  // Sync when server props refresh (router.refresh() polling)
+  useEffect(() => { setLiveItems(pipelineItems); }, [pipelineItems]);
+
   useEffect(() => {
     const sb = createClient();
     const ch = (sb as any).channel(`m_${userId}`)
