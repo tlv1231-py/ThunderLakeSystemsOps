@@ -285,16 +285,21 @@ function WaitingColumn({ items, fresh, active }: {
   const totalUsd = items.reduce((s, i) => s + (i.usdAmt ?? 0), 0);
 
   return (
-    <div className="w-44">
+    <div className="w-56">
       {/* Header */}
-      <div className="mb-3 flex items-baseline justify-between">
-        <span className="text-[9px] uppercase tracking-widest text-amber-500/50">Waiting</span>
-        <div className="flex items-baseline gap-2">
-          {totalUsd > 0 && <span className="text-[11px] text-zinc-600 tabular-nums">{usd(totalUsd)}</span>}
-          <span className={`text-sm font-bold tabular-nums leading-none ${punch ? "count-punch" : ""} ${items.length > 0 ? "text-amber-400" : "text-zinc-700"}`}>
+      <div className="mb-4 flex items-end justify-between">
+        <div className="flex flex-col leading-none">
+          <span className={`text-5xl font-black tabular-nums leading-none ${punch ? "count-punch" : ""} ${items.length > 0 ? "text-amber-400" : "text-zinc-700"}`}>
             {items.length}
           </span>
+          <span className="text-[10px] uppercase tracking-widest text-amber-500/40 mt-1">queued</span>
         </div>
+        {totalUsd > 0 && (
+          <div className="flex flex-col items-end leading-none">
+            <span className="text-3xl font-black tabular-nums leading-none text-zinc-300">{usd(totalUsd)}</span>
+            <span className="text-[10px] uppercase tracking-widest text-zinc-600 mt-1">total value</span>
+          </div>
+        )}
       </div>
 
       {/* Cards */}
@@ -700,7 +705,7 @@ function getAgentServer() {
 type FeedLine = { id: string; ts: string; msg: string; accent: string; bountyKey?: string; hidden?: boolean };
 
 // No reds, greens, blues, ambers, or teals — those are reserved for system status colors
-const BOUNTY_PALETTE = ["#e879f9","#fb923c","#a3e635","#fda4af","#a78bfa","#818cf8","#f472b6","#c084fc","#d8b4fe","#f9a8d4"];
+const BOUNTY_PALETTE = ["#e879f9","#a78bfa","#818cf8","#f472b6","#c084fc","#d8b4fe","#f9a8d4","#7c3aed","#9333ea","#a855f7"];
 
 const ACTION_COLORS: [string, string][] = [
   ["Abandoned",      "#f87171"],
