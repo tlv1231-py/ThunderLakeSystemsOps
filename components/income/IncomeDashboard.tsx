@@ -632,6 +632,8 @@ function ScanCountdown({ lastScanTs: initialTs }: { lastScanTs: string | null })
   const [lastScanMs, setLastScanMs] = useState<number | null>(() =>
     initialTs ? new Date(initialTs).getTime() : null
   );
+  // waitingForScan: true once the slot time passes until a scan_start event confirms the scan landed
+  const [waitingForScan, setWaitingForScan] = useState(false);
   const prevTickSec = useRef<number | null>(null);
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
@@ -649,18 +651,23 @@ function ScanCountdown({ lastScanTs: initialTs }: { lastScanTs: string | null })
         seenScan.add(e.id);
         if (e.action === "discovery_run" || e.action === "scan_start") {
           setLastScanMs(new Date(e.created_at).getTime());
+          setWaitingForScan(false);
         }
       })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, []);
 
-  // Always count to next UTC cron slot (:00/:15/:30/:45) — independent of when scan landed
   let nextMs = nextScan(now);
   while (nextMs <= now) nextMs += 15 * 60 * 1000;
   const remaining = nextMs - now;
   const remM = Math.floor(remaining / 60000);
   const remS = Math.floor((remaining % 60000) / 1000);
+
+  // Enter "scanning…" state when the cron slot arrives — stay until scan_start confirms
+  useEffect(() => {
+    if (remaining < 2000 && !waitingForScan) setWaitingForScan(true);
+  }, [remaining]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Overdue: last confirmed scan > 20 min ago
   const missedMs = lastScanMs ? now - lastScanMs : null;
@@ -669,7 +676,7 @@ function ScanCountdown({ lastScanTs: initialTs }: { lastScanTs: string | null })
 
   // Tick on last 5 seconds
   useEffect(() => {
-    if (!isOverdue && remM === 0 && remS >= 1 && remS <= 5) {
+    if (!waitingForScan && !isOverdue && remM === 0 && remS >= 1 && remS <= 5) {
       if (prevTickSec.current !== remS) {
         prevTickSec.current = remS;
         playTick();
@@ -679,6 +686,9 @@ function ScanCountdown({ lastScanTs: initialTs }: { lastScanTs: string | null })
 
   if (isOverdue) {
     return <span className="text-sm tabular-nums font-mono text-red-500 animate-pulse">OVERDUE {overdueMin}m</span>;
+  }
+  if (waitingForScan) {
+    return <span className="text-sm tabular-nums font-mono text-amber-400 animate-pulse">scanning…</span>;
   }
   return (
     <span className={`text-sm tabular-nums font-mono ${remaining < 120000 ? "text-amber-400" : "text-zinc-600"}`}>
@@ -838,7 +848,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v36";
+const DASH_VERSION = "v37";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
