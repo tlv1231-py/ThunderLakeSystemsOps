@@ -269,7 +269,9 @@ function SideColumn({ label, color, items, fresh, submitted, active }: {
     <div>
       <div className="flex items-center gap-1.5 mb-2">
         <span className="text-[9px] uppercase tracking-widest" style={{ color }}>{label}</span>
-        {items.length > 0 && <span className="text-[9px] text-zinc-700">{items.length}</span>}
+        <span className={`text-[11px] font-semibold tabular-nums ${items.length > 0 ? "text-amber-400" : "text-zinc-700"}`}>
+          {items.length}
+        </span>
       </div>
       <div className="flex flex-col gap-1.5">
         {items.map(item => (
@@ -468,10 +470,14 @@ function QueueList({ items }: { items: any[] }) {
 
 function Dot() { return <span className="text-zinc-800 text-lg select-none">·</span>; }
 
-function ScanCountdown() {
+function ScanCountdown({ lastScanTs }: { lastScanTs: string | null }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
-  const remaining = nextScan(now) - now;
+  // Drive from actual last scan time when known; fall back to UTC slot math
+  const nextMs = lastScanTs
+    ? new Date(lastScanTs).getTime() + 15 * 60 * 1000
+    : nextScan(now);
+  const remaining = Math.max(0, nextMs - now);
   return (
     <span className={`text-sm tabular-nums font-mono ${remaining < 120000 ? "text-amber-400" : "text-zinc-600"}`}>
       {countdown(remaining)}
@@ -488,8 +494,8 @@ function StatCell({ value, label, color }: { value: string; label: string; color
   );
 }
 
-function HeaderStats({ allTimeUsd, inFlightUsd, submittedAllTime, acceptedCount, rejectedCount, winRate, readyCount }: {
-  allTimeUsd: number; inFlightUsd: number; submittedAllTime: number; acceptedCount: number; rejectedCount: number; winRate: number; readyCount: number;
+function HeaderStats({ allTimeUsd, inFlightUsd, submittedAllTime, acceptedCount, rejectedCount, winRate }: {
+  allTimeUsd: number; inFlightUsd: number; submittedAllTime: number; acceptedCount: number; rejectedCount: number; winRate: number;
 }) {
   return (
     <div className="flex flex-wrap items-end gap-x-7 gap-y-1 mt-2">
@@ -504,8 +510,6 @@ function HeaderStats({ allTimeUsd, inFlightUsd, submittedAllTime, acceptedCount,
       <StatCell value={String(rejectedCount)} label="rejected" color={rejectedCount > 0 ? "text-red-400" : "text-zinc-500"} />
       <Dot />
       <StatCell value={`${winRate}%`} label="win rate" color={winRate > 0 ? "text-white" : "text-zinc-500"} />
-      <Dot />
-      <StatCell value={String(readyCount)} label="ready for pipeline" color={readyCount > 0 ? "text-amber-400" : "text-zinc-500"} />
     </div>
   );
 }
@@ -1054,10 +1058,10 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
               Bounty Engine<span className="cursor ml-0.5 text-zinc-600">_</span>
               <span className="ml-2 text-[10px] text-zinc-700 font-mono font-normal">{DASH_VERSION}</span>
             </h1>
-            <HeaderStats allTimeUsd={allTimeUsd} inFlightUsd={inFlightUsd} submittedAllTime={submittedAllTime} acceptedCount={acceptedCount} rejectedCount={rejectedCount} winRate={winRate} readyCount={pendingQueue.length} />
+            <HeaderStats allTimeUsd={allTimeUsd} inFlightUsd={inFlightUsd} submittedAllTime={submittedAllTime} acceptedCount={acceptedCount} rejectedCount={rejectedCount} winRate={winRate} />
           </div>
           <div className="flex items-center gap-3 shrink-0 mt-1">
-            <ScanCountdown />
+            <ScanCountdown lastScanTs={lastScanTs} />
             <button onClick={() => router.refresh()}
               className="text-sm text-zinc-600 hover:text-zinc-300 transition-colors px-1" title="Refresh">
               ↺
@@ -1083,8 +1087,8 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
           <div className="flex-1 min-w-0">
             <LiveFeed userId={userId} stagedCount={pendingQueue.length} projected={summary.queueProjectedUsd} onScan={ts => setLastScanTs(ts)} onRun={syncQueue} />
           </div>
-          {/* WAITING + SUBMITTED — slim right columns */}
-          <div className="shrink-0 flex flex-row gap-4 pt-9">
+          {/* WAITING — slim right column */}
+          <div className="shrink-0 pt-9">
             <SideColumn
               label="Waiting"
               color="#fbbf24"
@@ -1093,15 +1097,6 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
                 .map(i => ({ id: i.id, title: i.title, usdAmt: i.expected_usd ?? 0, url: i.income_opportunities?.url ?? null }))}
               fresh={fresh}
               active={activeSet}
-            />
-            <SideColumn
-              label="Submitted"
-              color="#38bdf8"
-              items={liveItems
-                .filter(i => i.status === "submitted")
-                .map(i => ({ id: i.id, title: i.title, usdAmt: i.expected_usd ?? 0, url: i.pr_url ?? null }))}
-              fresh={fresh}
-              submitted={submitted}
             />
           </div>
         </div>

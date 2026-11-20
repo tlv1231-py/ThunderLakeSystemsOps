@@ -136,8 +136,8 @@ export function IncomeTerminalFeed({ initialEntries }: Props) {
     return () => { supabase.removeChannel(channel); clearInterval(pollTimer); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Next scan: next :00/:15/:30/:45 UTC minute boundary
-  function nextScan15(ts: number) {
+  // Drive countdown from last actual scan + 15min; slot math only as bootstrap fallback
+  function slotFallback(ts: number) {
     const d = new Date(ts);
     const m = d.getUTCMinutes();
     const next = m < 15 ? 15 : m < 30 ? 30 : m < 45 ? 45 : 60;
@@ -145,12 +145,12 @@ export function IncomeTerminalFeed({ initialEntries }: Props) {
     else { d.setUTCMinutes(next, 0, 0); }
     return d.getTime();
   }
-
-  const remaining = nextScan15(now) - now;
+  const nextMs = lastScanTs ? lastScanTs + 15 * 60 * 1000 : slotFallback(now);
+  const remaining = Math.max(0, nextMs - now);
   const remM = Math.floor(remaining / 60000);
   const remS = Math.floor((remaining % 60000) / 1000);
   const countdownLabel = `NEXT: ${String(remM).padStart(2,"0")}:${String(remS).padStart(2,"0")}`;
-  const overdue = false;
+  const overdue = remaining === 0;
 
   const lastScanLabel = (() => {
     if (!lastScanTs) return "LAST: —";
