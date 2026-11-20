@@ -79,7 +79,14 @@ const { data: allPending } = await db
 
 for (const item of allPending ?? []) {
   const opp = item.income_opportunities;
-  if (!opp) continue;
+  if (!opp) {
+    console.log(`  🚫  Auto-dismissing orphan (no opportunity link): ${item.title}`);
+    await db.from("income_work_queue").update({
+      status: "failed",
+      progress_note: "No linked opportunity — cannot process",
+    }).eq("id", item.id);
+    continue;
+  }
   const oppUrl = (opp.url ?? opp.repo_url ?? "").toLowerCase();
   if (!oppUrl.startsWith("https://github.com/")) {
     console.log(`  🚫  Auto-dismissing non-GitHub: ${item.title}`);
@@ -143,7 +150,7 @@ for (const item of queuedItems) {
       progress_note: `Out of scope: non-GitHub task (${opp.source ?? "no source"})`,
     }).eq("id", item.id);
     await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
-    await log(userId, "opportunity_dismissed", `${issueTitle} [non-automatable]`, "info");
+    await log(item.user_id, "opportunity_dismissed", `${opp.title ?? item.title} [non-automatable]`, "info");
     continue;
   }
 

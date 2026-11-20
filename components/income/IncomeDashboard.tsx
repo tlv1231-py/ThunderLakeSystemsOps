@@ -320,16 +320,16 @@ function MissionCard({ item, fresh }: { item: any; fresh: boolean }) {
 function playScanSound() {
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    // Radar sweep: rising sine + short tail
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(300, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.25);
-    gain.gain.setValueAtTime(0.09, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.6);
+    // 8-bit radar sweep: ascending square-wave tones
+    [220, 294, 392, 523].forEach((freq, i) => {
+      const osc = ctx.createOscillator(); const g = ctx.createGain();
+      osc.connect(g); g.connect(ctx.destination);
+      osc.type = "square"; osc.frequency.value = freq;
+      const t = ctx.currentTime + i * 0.065;
+      g.gain.setValueAtTime(0.05, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.065);
+      osc.start(t); osc.stop(t + 0.065);
+    });
   } catch {}
 }
 
@@ -344,20 +344,28 @@ async function notifyScan(detail: string) {
 function playBountyChime() {
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const notes = [523.25, 659.25, 783.99, 1046.50]; // C5 E5 G5 C6
-    notes.forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = "square";
-      osc.frequency.value = freq;
-      const t = ctx.currentTime + i * 0.09;
-      gain.gain.setValueAtTime(0.08, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-      osc.start(t);
-      osc.stop(t + 0.12);
+    // 8-bit "point scored" — G C E G C ascending arpeggio
+    [392, 523, 659, 784, 1047].forEach((freq, i) => {
+      const osc = ctx.createOscillator(); const g = ctx.createGain();
+      osc.connect(g); g.connect(ctx.destination);
+      osc.type = "square"; osc.frequency.value = freq;
+      const t = ctx.currentTime + i * 0.055;
+      g.gain.setValueAtTime(0.07, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.075);
+      osc.start(t); osc.stop(t + 0.075);
     });
+  } catch {}
+}
+
+function playTick() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = ctx.createOscillator(); const g = ctx.createGain();
+    osc.connect(g); g.connect(ctx.destination);
+    osc.type = "square"; osc.frequency.value = 880;
+    g.gain.setValueAtTime(0.022, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.015);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.015);
   } catch {}
 }
 
@@ -649,6 +657,7 @@ function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; 
     if (hidden) return;
     const ts = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
     setLines(prev => [...prev.slice(-99), { id: `${Date.now()}-${Math.random()}`, ts, msg, accent, bountyKey }]);
+    playTick();
   }
 
   useEffect(() => {
@@ -694,7 +703,10 @@ function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; 
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "income_work_queue", filter: `user_id=eq.${userId}` }, (p: any) => {
         const t = p.new.title || "";
-        add(`Staged — ${t}`, bountyAccent(t), t);
+        const amt = p.new.expected_usd ?? 0;
+        const amtStr = amt > 0 ? ` ${usd(amt)} —` : "";
+        add(`Staged —${amtStr} ${t}`, bountyAccent(t), t);
+        playBountyChime();
       })
       .subscribe();
 
@@ -779,11 +791,11 @@ function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; 
         </div>
       </div>
       {/* feed */}
-      <div className="h-[42vh] overflow-y-auto px-4 py-2 space-y-px bg-black">
+      <div className="h-[42vh] overflow-y-auto px-5 py-3 space-y-1 bg-black">
         {lines.length === 0 && (
-          <p className="text-[11px] text-zinc-800 py-1 select-none">— waiting for activity —</p>
+          <p className="text-sm text-zinc-700 py-1 select-none">— waiting for activity —</p>
         )}
-        {lines.map(l => {
+        {lines.map((l, idx) => {
           // find action keyword at start for P/L color coding
           let kwLen = 0, kwColor = "";
           for (const [kw, c] of ACTION_COLORS) {
@@ -795,21 +807,22 @@ function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; 
           // apply bountyKey accent to the remainder
           let restNode: React.ReactNode;
           if (l.bountyKey && rest.includes(l.bountyKey)) {
-            const idx    = rest.indexOf(l.bountyKey);
-            const before = rest.slice(0, idx);
-            const after  = rest.slice(idx + l.bountyKey.length);
+            const bkIdx  = rest.indexOf(l.bountyKey);
+            const before = rest.slice(0, bkIdx);
+            const after  = rest.slice(bkIdx + l.bountyKey.length);
             restNode = <>
-              {before && <span className="text-white">{before}</span>}
+              {before && <span className="text-zinc-200">{before}</span>}
               <span style={{ color: l.accent }}>{l.bountyKey}</span>
-              {after && <span className="text-white">{after}</span>}
+              {after && <span className="text-zinc-200">{after}</span>}
             </>;
           } else {
-            restNode = <span className="text-white">{rest}</span>;
+            restNode = <span className="text-zinc-200">{rest}</span>;
           }
 
+          const isNew = idx === lines.length - 1;
           return (
-            <div key={l.id} className="flex gap-2 text-[11px] leading-5">
-              <span className="text-zinc-600 shrink-0 tabular-nums">{l.ts}</span>
+            <div key={l.id} className={`flex gap-3 text-[13px] leading-relaxed font-sans ${isNew ? "fade-up" : ""}`}>
+              <span className="text-zinc-600 shrink-0 tabular-nums font-mono text-[11px] mt-0.5">{l.ts}</span>
               <span className="break-words min-w-0">
                 {kwLen > 0 && <span style={{ color: kwColor }}>{kwText}</span>}
                 {restNode}
@@ -865,7 +878,6 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
           setLiveItems(prev => [p.new, ...prev]);
           setFresh(prev => new Set([...prev, p.new.id]));
           setTimeout(() => setFresh(prev => { const n = new Set(prev); n.delete(p.new.id); return n; }), 800);
-          if (p.new.status === "pending") playBountyChime();
         } else if (p.eventType === "UPDATE") {
           setLiveItems(prev => prev.map(i => i.id === p.new.id ? { ...i, ...p.new } : i));
           if (p.new.status === "submitted") {
