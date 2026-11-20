@@ -95,7 +95,7 @@ export async function GET(req: Request) {
 
         await db.from("income_activity_log").insert({
           engine: "bounty", action: "pr_merged",
-          detail: `MERGED: ${item.title} — $${item.expected_usd ?? "?"}`,
+          detail: item.title,
           status: "ok", user_id: item.user_id ?? userId,
         });
 
@@ -113,7 +113,7 @@ export async function GET(req: Request) {
 
         await db.from("income_activity_log").insert({
           engine: "bounty", action: "pr_closed",
-          detail: `PR closed/rejected: ${item.title}`,
+          detail: item.title,
           status: "warning", user_id: item.user_id ?? userId,
         });
 

@@ -1,0 +1,17 @@
+name: PR Status Check
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # every 30 minutes — detects merges, closures, CI status
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check submitted PR statuses
+        run: |
+          curl -sS --max-time 90 \
+            "https://thunder-lake-systems-ops.vercel.app/api/income/check-prs" \
+            | jq '{ok: .ok, checked: .checked, merged: .merged, closed: .closed, flagged: .flagged}' || true

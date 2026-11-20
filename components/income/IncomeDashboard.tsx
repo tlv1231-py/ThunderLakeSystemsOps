@@ -106,12 +106,10 @@ function countdown(ms: number) {
 
 function nextScan(now: number) {
   const d = new Date(now);
-  if (d.getUTCMinutes() < 30) {
-    d.setUTCMinutes(30, 0, 0);
-  } else {
-    d.setUTCMinutes(0, 0, 0);
-    d.setUTCHours(d.getUTCHours() + 1);
-  }
+  const m = d.getUTCMinutes();
+  const next = m < 15 ? 15 : m < 30 ? 30 : m < 45 ? 45 : 60;
+  if (next === 60) { d.setUTCMinutes(0, 0, 0); d.setUTCHours(d.getUTCHours() + 1); }
+  else { d.setUTCMinutes(next, 0, 0); }
   return d.getTime();
 }
 
@@ -151,8 +149,8 @@ function scoreColor(s: number) {
 // ── status config (color where it communicates meaning) ──────────────────────
 
 const S_LABEL: Record<string, string> = {
-  pending: "waiting", in_progress: "working", review: "review",
-  submitted: "submitted", done: "merged", failed: "failed", cancelled: "—",
+  pending: "waiting", in_progress: "working", review: "in review",
+  submitted: "submitted", done: "accepted", failed: "rejected", cancelled: "—",
 };
 
 const S_LABEL_CLS: Record<string, string> = {
@@ -631,13 +629,13 @@ const ACTION_COLORS: [string, string][] = [
   ["Abandoned",      "#f87171"],
   ["Error:",         "#f87171"],
   ["Failed",         "#f87171"],
+  ["Rejected",       "#f87171"],
   ["Server offline", "#f87171"],
-  ["Merged",         "#4ade80"],
-  ["PR opened",      "#4ade80"],
+  ["Accepted",       "#4ade80"],
   ["Earned",         "#4ade80"],
+  ["Submitted",      "#38bdf8"],
   ["Found ",         "#38bdf8"],
   ["Discovery scan", "#38bdf8"],
-  ["PR closed",      "#71717a"],
   ["Pipeline",       "#52525b"],
   ["Skipped",        "#71717a"],
   ["Staged",         "#71717a"],
@@ -668,13 +666,13 @@ function formatFeedEntry(action: string, detail: string): { msg: string; bountyK
       const [title, url] = detail.split(" → ");
       const prNum = url?.match(/pull\/(\d+)/)?.[1];
       const repo  = url?.match(/github\.com\/[^/]+\/([^/]+)/)?.[1];
-      const msg   = prNum && repo ? `PR opened — #${prNum} on ${repo} — ${title || ""}` : `PR opened — ${detail}`;
+      const msg   = prNum && repo ? `Submitted — #${prNum} on ${repo} — ${title || ""}` : `Submitted — ${detail}`;
       return { msg, bountyKey: title };
     }
     case "pr_merged":
-      return { msg: `Merged — ${detail}`, bountyKey: detail };
+      return { msg: `Accepted — ${detail}`, bountyKey: detail };
     case "pr_closed":
-      return { msg: `PR closed — ${detail}`, bountyKey: detail };
+      return { msg: `Rejected — ${detail}`, bountyKey: detail };
     case "agent_no_changes": {
       const sep = detail.indexOf("|||");
       const title  = sep > -1 ? detail.slice(0, sep) : detail;
@@ -778,9 +776,9 @@ function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; 
         const st = p.new.status;
         const msg =
           st === "in_progress" ? `Working on — ${title}` :
-          st === "submitted"   ? `PR opened — ${title}` :
-          st === "done"        ? `Merged — ${title}` :
-          st === "failed"      ? `Failed — ${title}` :
+          st === "submitted"   ? `Submitted — ${title}` :
+          st === "done"        ? `Accepted — ${title}` :
+          st === "failed"      ? `Rejected — ${title}` :
           st === "review"      ? `In review — ${title}` :
           st === "pending"     ? `Staged — ${title}` :
                                  `${st} — ${title}`;
