@@ -750,7 +750,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v17";
+const DASH_VERSION = "v18";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -1247,7 +1247,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
             <LiveFeed userId={userId} stagedCount={pendingQueue.length} projected={summary.queueProjectedUsd} onScan={ts => setLastScanTs(ts)} onRun={syncQueue} />
           </div>
           {/* WAITING */}
-          <div className="shrink-0 pt-9">
+          <div className="shrink-0 pt-[66px]">
             <WaitingColumn
               items={liveItems
                 .filter(i => ["pending","in_progress","review"].includes(i.status))
