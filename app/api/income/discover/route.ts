@@ -117,11 +117,58 @@ export async function GET(req: Request) {
     }
   } catch {}
 
+  // ── Re-queue sweep: promote discovered→queued if score>=65 and no active WQ entry ──
+  // Runs every scan so improvements to the scorer automatically promote good items
+  // that were scored before the threshold or before a scorer upgrade.
+  let requeueCount = 0;
+  try {
+    const { data: highScored } = await db
+      .from("income_opportunities")
+      .select("id, title, description, score, reward_usd, estimated_hours, repo_url, open_prs")
+      .eq("user_id", userId)
+      .in("status", ["discovered", "queued"])
+      .gte("score", 65)
+      .lt("open_prs", 3)
+      .limit(50);
+
+    if (highScored?.length) {
+      for (const opp of highScored as any[]) {
+        const { data: existingWQ } = await db
+          .from("income_work_queue")
+          .select("id")
+          .eq("opportunity_id", opp.id)
+          .eq("user_id", userId)
+          .in("status", ["pending", "in_progress"])
+          .maybeSingle();
+
+        if (!existingWQ) {
+          await db.from("income_opportunities").update({ status: "queued" }).eq("id", opp.id).eq("user_id", userId);
+          await db.from("income_work_queue").insert({
+            engine:            "bounty",
+            title:             opp.title,
+            description:       opp.description,
+            status:            "pending",
+            priority:          opp.score >= 85 ? 1 : opp.score >= 70 ? 2 : 3,
+            expected_usd:      opp.reward_usd,
+            estimated_hours:   opp.estimated_hours,
+            opportunity_id:    opp.id,
+            repo_url:          opp.repo_url,
+            requires_approval: false,
+            progress_note:     `Re-queued from sweep (score ${opp.score}, $${opp.reward_usd ?? 0})`,
+            progress_pct:      0,
+            user_id:           userId,
+          });
+          requeueCount++;
+        }
+      }
+    }
+  } catch {}
+
   // ── Log scan start ─────────────────────────────────────────────────────────
   await db.from("income_activity_log").insert({
     engine:  "bounty",
     action:  "scan_start",
-    detail:  `Discovery scan starting — querying algora, issuehunt, opire, github${cleanedCount > 0 ? ` (swept ${cleanedCount} stale items)` : ""}`,
+    detail:  `Discovery scan starting — querying algora, issuehunt, opire, github${cleanedCount > 0 ? ` (swept ${cleanedCount} stale items)` : ""}${requeueCount > 0 ? ` (re-queued ${requeueCount})` : ""}`,
     status:  "ok",
     user_id: userId,
   });
