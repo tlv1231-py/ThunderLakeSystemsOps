@@ -38,6 +38,10 @@ const CSS = `
   from{opacity:0;transform:translateY(8px)}
   to{opacity:1;transform:translateY(0)}
 }
+@keyframes fadeDown {
+  from{opacity:0;transform:translateY(-8px)}
+  to{opacity:1;transform:translateY(0)}
+}
 @keyframes blink {
   0%,49%{opacity:1}50%,100%{opacity:0}
 }
@@ -83,6 +87,9 @@ const CSS = `
 .tile-submit { animation: tileSubmit .5s ease-out, tilePulse 1.5s ease-in-out 2 }
 .tile-active { animation: tileActive 1.8s ease-in-out infinite }
 .tls-feed { font-family:'Geist','Inter','Segoe UI Variable',system-ui,-apple-system,sans-serif; font-size:15px; letter-spacing:-0.01em; }
+.fade-down { animation: fadeDown .3s ease-out both }
+.tls-scroll { overflow-y:auto; scrollbar-width:none; }
+.tls-scroll::-webkit-scrollbar { display:none; }
 `;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -699,8 +706,6 @@ function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; 
   const [lines, setLines] = useState<FeedLine[]>([]);
   const [runState, setRunState] = useState<"idle" | "running" | "done" | "copied">("idle");
   const [serverAddr, setServerAddr] = useState(DEFAULT_AGENT_SERVER);
-  const bottomRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => { setServerAddr(getAgentServer()); }, []);
 
   function add(msg: string, accent: string, bountyKey?: string, hidden?: boolean) {
@@ -709,10 +714,6 @@ function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; 
     setLines(prev => [...prev.slice(-99), { id: `${Date.now()}-${Math.random()}`, ts, msg, accent, bountyKey }]);
     playTick();
   }
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [lines]);
 
   // Load history from activity log on mount
   useEffect(() => {
@@ -869,12 +870,18 @@ function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; 
           </button>
         </div>
       </div>
-      {/* feed — no border, left edge flush */}
-      <div className="h-[55vh] overflow-y-auto space-y-1 pr-2">
+      {/* feed — newest at top, no scrollbar, fades at bottom */}
+      <div
+        className="h-[55vh] tls-scroll space-y-1 pr-2"
+        style={{
+          WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 60%, transparent 100%)",
+          maskImage:        "linear-gradient(to bottom, black 0%, black 60%, transparent 100%)",
+        }}
+      >
         {lines.length === 0 && (
           <p className="tls-feed text-zinc-700 py-1 select-none">— waiting for activity —</p>
         )}
-        {lines.map((l, idx) => {
+        {[...lines].reverse().map((l, idx) => {
           let kwLen = 0, kwColor = "";
           for (const [kw, c] of ACTION_COLORS) {
             if (l.msg.startsWith(kw)) { kwLen = kw.length; kwColor = c; break; }
@@ -896,9 +903,9 @@ function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; 
             restNode = <span className="text-zinc-300">{rest}</span>;
           }
 
-          const isNew = idx === lines.length - 1;
+          const isNew = idx === 0;
           return (
-            <div key={l.id} className={`flex gap-3 tls-feed leading-[1.65] ${isNew ? "fade-up" : ""}`}>
+            <div key={l.id} className={`flex gap-3 tls-feed leading-[1.65] ${isNew ? "fade-down" : ""}`}>
               <span className="text-zinc-700 shrink-0 tabular-nums font-mono text-[11px] mt-[3px]">{l.ts}</span>
               <span className="break-words min-w-0">
                 {kwLen > 0 && <span style={{ color: kwColor }}>{kwText}</span>}
@@ -907,7 +914,6 @@ function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; 
             </div>
           );
         })}
-        <div ref={bottomRef} />
       </div>
     </div>
   );
