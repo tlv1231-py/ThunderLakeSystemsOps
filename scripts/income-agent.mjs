@@ -64,6 +64,8 @@ const REPO_BLOCKLIST = [
   "dsh-bounty", "furongjun",
   // Auto-generated training data / AI-task repos — no real payout mechanism
   "misakanet", "ikalus1988",
+  // Fake bounty coordinator spam accounts (post crypto USDC bounties on random repos)
+  "ayush441-python",
 ];
 
 // Keywords in issue titles that signal non-code tasks (content, design, creative, admin)
@@ -86,6 +88,9 @@ const NON_CODE_TITLE_PATTERNS = [
   /\[micro-bounty\]/i, /micro.{0,5}bounty/i,
   // Crypto-token rewards (not USD — no real payout path)
   /\d+(\.\d+)?\s+(rtc|matic|sol|eth|btc|usdc|usdt)\b/i,
+  // Fake bounty coordinator spam / maths/data bounties
+  /bountycoordinator/i,
+  /\bmaths bounty\b/i,
 ];
 
 // Minimum reward in USD — below this, pipeline time per run exceeds expected return
@@ -231,6 +236,16 @@ for (const item of queuedItems) {
     await db.from("income_work_queue").update({ status: "failed", progress_note: "Non-code task (content/design/creative) — out of scope" }).eq("id", item.id);
     await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
     await log(item.user_id, "opportunity_dismissed", `${opp.title} [non-code task]`, "info");
+    continue;
+  }
+
+  // Skip opportunities with crypto wallet addresses or USDC payout signals in description
+  const descLower = (opp.description ?? "").toLowerCase();
+  const isCryptoPayout = /0x[0-9a-f]{40}/.test(descLower) || /\busdc payout\b/.test(descLower) || /base usdc/.test(descLower) || /\bpayout address\b/.test(descLower);
+  if (isCryptoPayout) {
+    console.log(`  🚫  Crypto payout detected in description — skipping: ${opp.title}`);
+    await db.from("income_work_queue").update({ status: "failed", progress_note: "Crypto (USDC/wallet) payout in description — not USD" }).eq("id", item.id);
+    await db.from("income_opportunities").update({ status: "dismissed", progress_note: "Auto-dismissed: crypto wallet/USDC payout in body" }).eq("id", opp.id);
     continue;
   }
 

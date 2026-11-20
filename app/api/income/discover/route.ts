@@ -45,6 +45,10 @@ const NON_CODE_TITLE_PATTERNS = [
   /\[micro-bounty\]/i, /micro.{0,5}bounty/i,
   // Crypto-token rewards (not USD — no real payout path)
   /\d+(\.\d+)?\s+(rtc|matic|sol|eth|btc|usdc|usdt)\b/i,
+  // Fake bounty coordinator spam accounts
+  /bountycoordinator/i,
+  // Maths/data bounties (financial data analysis, not code)
+  /\bmaths bounty\b/i,
 ];
 
 export async function GET(req: Request) {
@@ -210,6 +214,9 @@ export async function GET(req: Request) {
     const repoLower = (opp.repo_url ?? opp.url ?? "").toLowerCase();
     if (REPO_BLOCKLIST.some(p => repoLower.includes(p))) { skipCount++; continue; }
     if (NON_CODE_TITLE_PATTERNS.some(p => p.test(opp.title ?? ""))) { skipCount++; continue; }
+    // Description-level crypto signals: wallet addresses or USDC/crypto payout mentions
+    const descLower = (opp.description ?? "").toLowerCase();
+    if (/0x[0-9a-f]{40}/.test(descLower) || /\busdc payout\b/.test(descLower) || /base usdc/.test(descLower) || /\bpayout address\b/.test(descLower)) { skipCount++; continue; }
     if (isAntiTopic(opp)) { skipCount++; continue; }
     if (isNonCodeTask(opp)) { skipCount++; continue; }
 
