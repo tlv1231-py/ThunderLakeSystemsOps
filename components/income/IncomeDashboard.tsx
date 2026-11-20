@@ -627,16 +627,24 @@ function QueueList({ items }: { items: any[] }) {
 
 function Dot() { return <span className="text-zinc-800 text-lg select-none">·</span>; }
 
-function ScanCountdown({ lastScanTs: initialTs }: { lastScanTs: string | null }) {
+function ScanCountdown({ lastScanTs }: { lastScanTs: string | null }) {
   const [now, setNow] = useState(() => Date.now());
   const [lastScanMs, setLastScanMs] = useState<number | null>(() =>
-    initialTs ? new Date(initialTs).getTime() : null
+    lastScanTs ? new Date(lastScanTs).getTime() : null
   );
   // waitingForScan: true once the slot time passes until a scan_start event confirms the scan landed
   const [waitingForScan, setWaitingForScan] = useState(false);
   const prevTickSec = useRef<number | null>(null);
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+
+  // Sync when parent updates lastScanTs (LiveFeed's onScan callback) — most reliable signal
+  useEffect(() => {
+    if (!lastScanTs) return;
+    const ts = new Date(lastScanTs).getTime();
+    setLastScanMs(ts);
+    setWaitingForScan(false);
+  }, [lastScanTs]);
 
   // Live subscription — update lastScanMs when a scan actually lands
   useEffect(() => {
@@ -848,7 +856,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v37";
+const DASH_VERSION = "v38";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
