@@ -307,8 +307,9 @@ for (const item of queuedItems) {
 
     // ── 1b. Verify repo has content ───────────────────────────────────────────
     await progress(workId, 8, "Checking repo has commits…");
+    let defaultBranch = "main";
     try {
-      const repoMeta = JSON.parse(run(`gh api repos/${ghRepo} --jq '{size:.size}'`));
+      const repoMeta = JSON.parse(run(`gh api repos/${ghRepo} --jq '{size:.size,default_branch:.default_branch}'`));
       if (!repoMeta.size || repoMeta.size === 0) {
         await progress(workId, 0, "Repo is empty — no code to fix");
         await db.from("income_work_queue").update({ status: "failed" }).eq("id", workId);
@@ -316,6 +317,7 @@ for (const item of queuedItems) {
         await log(userId, "agent_skip", `${issueTitle}|||repo is empty — no code to work with`, "warning");
         continue;
       }
+      defaultBranch = repoMeta.default_branch || "main";
     } catch {}
 
     // ── 2. Fork repo ──────────────────────────────────────────────────────────
@@ -552,7 +554,7 @@ A clean UNCERTAIN is better than a bad PR.
     let prNum  = null;
     try {
       const prOut = run(
-        `gh pr create --repo ${ghRepo} --head ${forkRepo !== ghRepo ? `${forkRepo.split("/")[0]}:${branchName}` : branchName} --title "${issueTitle.slice(0, 100).replace(/"/g, "'")}" --body "${prBody.replace(/"/g, "'").replace(/\n/g, "\\n")}"`,
+        `gh pr create --repo ${ghRepo} --base ${defaultBranch} --head ${forkRepo !== ghRepo ? `${forkRepo.split("/")[0]}:${branchName}` : branchName} --title "${issueTitle.slice(0, 100).replace(/"/g, "'")}" --body "${prBody.replace(/"/g, "'").replace(/\n/g, "\\n")}"`,
         { cwd: cloneDir }
       );
       prUrl = prOut.match(/https:\/\/github\.com\/[^\s]+/)?.[0] ?? "";
@@ -566,7 +568,25 @@ A clean UNCERTAIN is better than a bad PR.
         prUrl = urlFromErr;
         prNum = parseInt(prUrl.split("/").pop() ?? "0") || null;
       } else {
-        await progress(workId, 85, `PR creation failed: ${errStr.slice(0, 100)}`);
+        // Fallback: try GitHub REST API directly when gh CLI fails
+        try {
+          const [baseOwner, baseRepoName] = ghRepo.split("/");
+          const forkOwner = forkRepo.split("/")[0];
+          const prTitle = issueTitle.slice(0, 100).replace(/"/g, "'");
+          const apiRes = run(
+            `gh api repos/${ghRepo}/pulls --method POST --field title="${prTitle}" --field head="${forkOwner}:${branchName}" --field base=${defaultBranch} --field body="${prBody.replace(/"/g, "'").replace(/\n/g, "\\n").slice(0, 1000)}"`,
+            { cwd: cloneDir }
+          );
+          const apiData = JSON.parse(apiRes);
+          if (apiData.html_url) {
+            prUrl = apiData.html_url;
+            prNum = apiData.number ?? (parseInt(prUrl.split("/").pop() ?? "0") || null);
+          } else {
+            await progress(workId, 85, `PR creation failed: ${errStr.slice(0, 100)}`);
+          }
+        } catch (apiErr) {
+          await progress(workId, 85, `PR creation failed: ${errStr.slice(0, 100)}`);
+        }
       }
     }
 
