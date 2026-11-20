@@ -62,6 +62,8 @@ const REPO_BLOCKLIST = [
   "rustchain-bounties", "rustchain", "elyan-labs", "elyanlabs",
   "micro-bounty-board", "/bounty-issues/",
   "dsh-bounty", "furongjun",
+  // Auto-generated training data / AI-task repos — no real payout mechanism
+  "misakanet", "ikalus1988",
 ];
 
 // Keywords in issue titles that signal non-code tasks (content, design, creative, admin)

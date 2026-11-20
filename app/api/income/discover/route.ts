@@ -23,6 +23,8 @@ const REPO_BLOCKLIST = [
   // Crypto micro-bounty aggregators (RTC, MATIC, SOL tokens — no USD payout)
   "rustchain-bounties", "rustchain", "elyan-labs", "elyanlabs",
   "dsh-bounty", "furongjun",
+  // Auto-generated training data / AI-task repos — no real payout mechanism
+  "misakanet", "ikalus1988",
 ];
 
 // Extended non-code title patterns
