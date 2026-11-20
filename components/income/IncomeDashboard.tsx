@@ -727,11 +727,49 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
   const [serverAddr, setServerAddr] = useState(DEFAULT_AGENT_SERVER);
   useEffect(() => { setServerAddr(getAgentServer()); }, []);
 
+  // ── Typewriter engine ─────────────────────────────────────────────────────
+  const typingQueueRef = useRef<FeedLine[]>([]);
+  const typingActiveRef = useRef<{ line: FeedLine; pos: number } | null>(null);
+  const [typingDisplay, setTypingDisplay] = useState<{ line: FeedLine; pos: number } | null>(null);
+  const [cursorBlink, setCursorBlink] = useState(true);
+  const [clockStr, setClockStr] = useState(() =>
+    new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })
+  );
+
+  useEffect(() => {
+    const c = setInterval(() => setCursorBlink(b => !b), 530);
+    const k = setInterval(() => setClockStr(
+      new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    ), 1000);
+    return () => { clearInterval(c); clearInterval(k); };
+  }, []);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (!typingActiveRef.current) {
+        const next = typingQueueRef.current.shift();
+        if (!next) return;
+        typingActiveRef.current = { line: next, pos: 0 };
+      }
+      const active = typingActiveRef.current;
+      const newPos = Math.min(active.pos + 3, active.line.msg.length);
+      active.pos = newPos;
+      setTypingDisplay({ line: active.line, pos: newPos });
+      if (newPos >= active.line.msg.length) {
+        const done = active.line;
+        typingActiveRef.current = null;
+        setTypingDisplay(null);
+        setLines(prev => [...prev.slice(-99), done]);
+        playTick();
+      }
+    }, 16);
+    return () => clearInterval(t);
+  }, []);
+
   function add(msg: string, accent: string, bountyKey?: string, hidden?: boolean) {
     if (hidden) return;
     const ts = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    setLines(prev => [...prev.slice(-99), { id: `${Date.now()}-${Math.random()}`, ts, msg, accent, bountyKey }]);
-    playTick();
+    typingQueueRef.current.push({ id: `${Date.now()}-${Math.random()}`, ts, msg, accent, bountyKey });
   }
 
   // Load history from activity log on mount
@@ -854,53 +892,56 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
     "border-zinc-700 text-white hover:border-white";
 
   return (
-    <div>
-      {/* minimal control row — no box */}
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-[11px] text-zinc-700">
-          {stagedCount > 0 && (
-            <><span className="text-emerald-400 font-medium">{stagedCount}</span> queued{projected > 0 && <span className="text-zinc-800 ml-1.5">{usd(projected)}</span>}</>
+    <div
+      className="tls-scroll"
+      style={{
+        height: "calc(100vh - 220px)",
+        WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 88%, transparent 100%)",
+        maskImage:        "linear-gradient(to bottom, black 0%, black 88%, transparent 100%)",
+      }}
+    >
+      {/* ── Cursor row — always pinned at top ─────────────────────────── */}
+      <div className="flex gap-3 tls-feed leading-[1.65] mb-1 sticky top-0 bg-black pb-1">
+        <span className="text-zinc-500 shrink-0 tabular-nums font-mono text-[11px] mt-[3px]">{clockStr}</span>
+        <span className="text-zinc-600 shrink-0 font-mono text-[11px] mt-[3px] select-none">›</span>
+        <span className="break-words min-w-0 font-mono">
+          {typingDisplay ? (
+            <>
+              {(() => {
+                const l = typingDisplay.line;
+                const partial = l.msg.slice(0, typingDisplay.pos);
+                let kwLen = 0, kwColor = "";
+                for (const [kw, c] of ACTION_COLORS) {
+                  if (partial.startsWith(kw) || l.msg.startsWith(kw)) { kwLen = Math.min(kw.length, typingDisplay.pos); kwColor = c; break; }
+                }
+                return <>
+                  {kwLen > 0 && <span style={{ color: kwColor }}>{partial.slice(0, kwLen)}</span>}
+                  {l.bountyKey && partial.slice(kwLen).includes(l.bountyKey)
+                    ? (() => {
+                        const r = partial.slice(kwLen);
+                        const bi = r.indexOf(l.bountyKey);
+                        return <>
+                          <span className="text-zinc-300">{r.slice(0, bi)}</span>
+                          <span style={{ color: l.accent }}>{l.bountyKey}</span>
+                          <span className="text-zinc-300">{r.slice(bi + l.bountyKey.length)}</span>
+                        </>;
+                      })()
+                    : <span className="text-zinc-300">{partial.slice(kwLen)}</span>
+                  }
+                  <span className="text-zinc-200">█</span>
+                </>;
+              })()}
+            </>
+          ) : (
+            <span className={`text-zinc-500 transition-opacity duration-75 ${cursorBlink ? "opacity-100" : "opacity-0"}`}>█</span>
           )}
         </span>
-        <div className="flex items-center gap-4">
-          <button
-            onClick={run}
-            disabled={runState === "running"}
-            className={`text-[12px] transition-colors disabled:opacity-30 ${
-              runState === "running" ? "text-teal-400" :
-              runState === "done"    ? "text-emerald-400" :
-              runState === "copied"  ? "text-amber-400" :
-              "text-zinc-600 hover:text-white"
-            }`}>
-            {btnLabel}
-          </button>
-          <button
-            onClick={() => {
-              const cur = getAgentServer();
-              const next = window.prompt("Agent server address:", cur);
-              if (next?.trim()) {
-                const addr = next.trim().startsWith("http") ? next.trim() : `http://${next.trim()}`;
-                localStorage.setItem("tls_agent_server", addr);
-                setServerAddr(addr);
-              }
-            }}
-            title={`Agent server: ${serverAddr}`}
-            className="text-zinc-800 hover:text-zinc-500 transition-colors text-xs">
-            ⚙
-          </button>
-        </div>
       </div>
-      {/* feed — newest at top, no scrollbar, fades at bottom */}
-      <div
-        className="tls-scroll space-y-1 pr-2"
-        style={{
-          height: "calc(100vh - 220px)",
-          WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 88%, transparent 100%)",
-          maskImage:        "linear-gradient(to bottom, black 0%, black 88%, transparent 100%)",
-        }}
-      >
-        {lines.length === 0 && (
-          <p className="tls-feed text-zinc-700 py-1 select-none">— waiting for activity —</p>
+
+      {/* ── History — newest at top ────────────────────────────────────── */}
+      <div className="space-y-1 pr-2">
+        {lines.length === 0 && !typingDisplay && (
+          <p className="tls-feed text-zinc-800 py-1 select-none pl-[52px]">— waiting for activity —</p>
         )}
         {[...lines].reverse().map((l, idx) => {
           let kwLen = 0, kwColor = "";
@@ -924,10 +965,10 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
             restNode = <span className="text-zinc-300">{rest}</span>;
           }
 
-          const isNew = idx === 0;
           return (
-            <div key={l.id} className={`flex gap-3 tls-feed leading-[1.65] ${isNew ? "fade-down" : ""}`}>
+            <div key={l.id} className={`flex gap-3 tls-feed leading-[1.65] ${idx === 0 ? "fade-down" : ""}`}>
               <span className="text-zinc-700 shrink-0 tabular-nums font-mono text-[11px] mt-[3px]">{l.ts}</span>
+              <span className="text-zinc-700 shrink-0 font-mono text-[11px] mt-[3px] select-none">·</span>
               <span className="break-words min-w-0">
                 {kwLen > 0 && <span style={{ color: kwColor }}>{kwText}</span>}
                 {restNode}
