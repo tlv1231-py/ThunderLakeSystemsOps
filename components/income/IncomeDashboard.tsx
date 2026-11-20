@@ -459,6 +459,43 @@ function getAgentServer() {
 
 type FeedLine = { id: string; ts: string; type: string; msg: string; color: string };
 
+function formatFeedEntry(action: string, detail: string): { type: string; msg: string; color: string } {
+  const d = detail.slice(0, 72);
+  switch (action) {
+    case "discovery_run":
+      return { type: "SCAN",       msg: d,                                              color: "#2dd4bf" };
+    case "agent_pr_opened": {
+      const [title, url] = detail.split(" → ");
+      const prNum = url?.match(/pull\/(\d+)/)?.[1];
+      const repo  = url?.match(/github\.com\/[^/]+\/([^/]+)/)?.[1];
+      const msg   = prNum && repo ? `#${prNum} on ${repo} — ${(title || "").slice(0, 38)}` : d;
+      return { type: "PR OPENED",  msg,                                                 color: "#38bdf8" };
+    }
+    case "pr_merged":
+      return { type: "MERGED",     msg: d,                                              color: "#4ade80" };
+    case "pr_closed":
+      return { type: "PR CLOSED",  msg: d,                                              color: "#a1a1aa" };
+    case "agent_no_changes":
+      return { type: "NO CHANGE",  msg: `Claude ran, made no changes — ${(detail || "").slice(0, 42)}`, color: "#fbbf24" };
+    case "agent_skip":
+      return { type: "SKIPPED",    msg: d,                                              color: "#52525b" };
+    case "agent_error":
+      return { type: "ERROR",      msg: d,                                              color: "#f87171" };
+    case "opportunity_queued":
+      return { type: "STAGED",     msg: `Queued: ${(detail || "").slice(0, 55)}`,       color: "#a1a1aa" };
+    case "opportunity_dismissed":
+      return { type: "DISMISSED",  msg: d,                                              color: "#3f3f46" };
+    case "earning_logged":
+      return { type: "EARNED",     msg: d,                                              color: "#4ade80" };
+    case "approval_approved":
+      return { type: "APPROVED",   msg: d,                                              color: "#4ade80" };
+    case "pr_check_run":
+      return { type: "CI",         msg: d,                                              color: "#52525b" };
+    default:
+      return { type: action.replace(/_/g, " ").toUpperCase().slice(0, 10), msg: d,     color: "#52525b" };
+  }
+}
+
 function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCount: number; projected: number }) {
   const [lines, setLines] = useState<FeedLine[]>([]);
   const [runState, setRunState] = useState<"idle" | "running" | "done" | "copied">("idle");
@@ -488,14 +525,8 @@ function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCo
         if (!data?.length) return;
         const history: FeedLine[] = data.reverse().map((e: any) => {
           const ts = new Date(e.created_at).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-          const [type, color] =
-            e.action === "discovery_run"  ? ["SCAN",      "#2dd4bf"] :
-            e.action === "pr_submitted"   ? ["SUBMITTED", "#38bdf8"] :
-            e.action === "pr_merged"      ? ["MERGED",    "#4ade80"] :
-            e.action === "work_started"   ? ["WORKING",   "#2dd4bf"] :
-            e.action === "work_failed"    ? ["FAILED",    "#f87171"] :
-                                            ["LOG",       "#52525b"];
-          return { id: e.id, ts, type, msg: (e.detail || e.action || "").slice(0, 60), color };
+            const { type, msg, color } = formatFeedEntry(e.action, e.detail || "");
+          return { id: e.id, ts, type, msg, color };
         });
         setLines(history);
       });
@@ -525,9 +556,8 @@ function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCo
 
     const ch2 = (sb as any).channel(`lf_log_${userId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "income_activity_log", filter: `user_id=eq.${userId}` }, (p: any) => {
-        const d = p.new;
-        if (d.action === "discovery_run") add("SCAN", (d.detail || "").slice(0, 60), "#2dd4bf");
-        else add("LOG", (d.detail || d.action || "").slice(0, 60), "#52525b");
+        const { type, msg, color } = formatFeedEntry(p.new.action, p.new.detail || "");
+        add(type, msg, color);
       })
       .subscribe();
 
