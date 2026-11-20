@@ -18,10 +18,28 @@ import { spawn } from "child_process";
 import { readFileSync, existsSync } from "fs";
 import { resolve, join } from "path";
 import { networkInterfaces } from "os";
+import { createClient } from "@supabase/supabase-js";
 
 const PORT   = 3002;
 const ROOT   = resolve(import.meta.dirname, "..");
 const HTML   = join(ROOT, "scripts", "pipeline.html");
+
+// ── Load env ──────────────────────────────────────────────────────────────────
+const envPath = join(ROOT, ".env.local");
+const env = Object.fromEntries(
+  readFileSync(envPath, "utf8")
+    .split("\n")
+    .filter(l => l.includes("=") && !l.startsWith("#"))
+    .map(l => { const i = l.indexOf("="); return [l.slice(0, i).trim(), l.slice(i + 1).trim().replace(/^["']|["']$/g, "")]; })
+);
+
+const SUPABASE_URL = env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_KEY = env.SUPABASE_SERVICE_ROLE_KEY;
+
+// Look up the first user's ID so the applet can filter by it
+const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+const { data: users } = await db.auth.admin.listUsers({ perPage: 1 });
+const USER_ID = users?.users?.[0]?.id ?? "";
 
 // Allow requests from the Vercel app and local files
 const ALLOWED_ORIGINS = [
@@ -52,11 +70,15 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
 
-  // ── Serve applet HTML ──────────────────────────────────────────────────
+  // ── Serve applet HTML (inject env vars) ───────────────────────────────
   if (req.method === "GET" && req.url === "/") {
     if (!existsSync(HTML)) { res.writeHead(404); res.end("pipeline.html not found"); return; }
+    const html = readFileSync(HTML, "utf8")
+      .replace("'{{SUPABASE_URL}}'", JSON.stringify(SUPABASE_URL))
+      .replace("'{{SUPABASE_KEY}}'", JSON.stringify(SUPABASE_KEY))
+      .replace("'{{USER_ID}}'",      JSON.stringify(USER_ID));
     res.writeHead(200, { "Content-Type": "text/html" });
-    res.end(readFileSync(HTML));
+    res.end(html);
     return;
   }
 
