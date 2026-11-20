@@ -77,7 +77,7 @@ const server = http.createServer((req, res) => {
       .replace("'{{SUPABASE_URL}}'", JSON.stringify(SUPABASE_URL))
       .replace("'{{SUPABASE_KEY}}'", JSON.stringify(SUPABASE_KEY))
       .replace("'{{USER_ID}}'",      JSON.stringify(USER_ID));
-    res.writeHead(200, { "Content-Type": "text/html" });
+    res.writeHead(200, { "Content-Type": "text/html", "Cache-Control": "no-store" });
     res.end(html);
     return;
   }
@@ -147,8 +147,39 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // ── Stop server ────────────────────────────────────────────────────────
+  if (req.method === "POST" && req.url === "/stop") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+    console.log("🛑  Server stopped by user");
+    setTimeout(() => process.exit(0), 100);
+    return;
+  }
+
   res.writeHead(404); res.end("Not found");
 });
+
+async function autoRun() {
+  if (agentProc) { console.log("⏭  Auto-run skipped — agent already running"); return; }
+  const { data } = await db.from("income_work_queue").select("id").eq("status", "pending").limit(1);
+  if (!data?.length) { console.log("⏭  Auto-run skipped — queue empty"); return; }
+  console.log("⏰  Auto-run triggered");
+  agentProc = spawn("node", ["scripts/income-agent.mjs"], { cwd: ROOT, env: process.env });
+  agentProc.stdout.on("data", chunk => {
+    chunk.toString().split("\n").forEach(line => { if (line.trim()) { console.log(line); broadcast({ line: line.trim() }); } });
+  });
+  agentProc.stderr.on("data", chunk => {
+    const line = chunk.toString().trim();
+    if (line) { console.error(line); broadcast({ line, error: true }); }
+  });
+  agentProc.on("close", code => {
+    console.log(`✅  Auto-run exited (code ${code})`);
+    broadcast({ done: true, code });
+    agentProc = null;
+  });
+}
+
+const AUTO_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
 server.listen(PORT, "0.0.0.0", () => {
   const nets = Object.values(networkInterfaces()).flat()
@@ -158,5 +189,9 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`\n🚀  TLS Agent Server running on port ${PORT}`);
   console.log(`\n   Local:    http://localhost:${PORT}`);
   nets.forEach(ip => console.log(`   Network:  http://${ip}:${PORT}`));
-  console.log(`\n   Open in browser — RUN button fires the agent here\n`);
+  console.log(`\n   Auto-pipeline: every 30 min if queue has items\n`);
+
+  // Run once shortly after startup, then every 30 min
+  setTimeout(autoRun, 60_000);
+  setInterval(autoRun, AUTO_INTERVAL_MS);
 });
