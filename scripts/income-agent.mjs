@@ -268,16 +268,26 @@ for (const item of queuedItems) {
       continue;
     }
 
-    // ── 1a. Pre-check competition — skip if already saturated with open PRs ──
+    // Extract issue number early — needed for competition check below and later steps
+    const issueNumEarly = issueUrl?.match(/\/issues\/(\d+)/)?.[1] ?? null;
+
+    // ── 1a. Pre-check competition — skip if this specific issue is already saturated ──
+    // Check PRs that mention "closes/fixes/resolves #N" in their body, not ALL repo PRs.
+    // Counting all repo PRs was wrong: active repos with 10+ unrelated PRs would block
+    // every bounty issue even if none of those PRs targeted this specific issue.
     await progress(workId, 6, "Checking open PR competition…");
     try {
-      const openPRs = JSON.parse(run(`gh api "repos/${ghRepo}/pulls?state=open&per_page=10" --jq "length"`));
-      if (openPRs >= 4) {
-        await progress(workId, 0, `Too many competing PRs (${openPRs}) — skipping`);
-        await db.from("income_work_queue").update({ status: "failed", progress_note: `Saturated: ${openPRs} open PRs already targeting this issue` }).eq("id", workId);
-        await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
-        await log(userId, "agent_skip", `${issueTitle}|||${openPRs} open PRs — saturated`, "warning");
-        continue;
+      if (issueNumEarly) {
+        const issuePRs = JSON.parse(run(
+          `gh api "repos/${ghRepo}/pulls?state=open&per_page=100" --jq "[.[] | select(.body != null and (.body | ascii_downcase | (contains(\\"closes #${issueNumEarly}\\") or contains(\\"fixes #${issueNumEarly}\\") or contains(\\"resolves #${issueNumEarly}\\"))))] | length"`
+        ));
+        if (issuePRs >= 2) {
+          await progress(workId, 0, `${issuePRs} PRs already targeting this issue — skipping`);
+          await db.from("income_work_queue").update({ status: "failed", progress_note: `Saturated: ${issuePRs} PRs already close #${issueNumEarly}` }).eq("id", workId);
+          await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
+          await log(userId, "agent_skip", `${issueTitle}|||${issuePRs} PRs target this issue — saturated`, "warning");
+          continue;
+        }
       }
     } catch {}
 
