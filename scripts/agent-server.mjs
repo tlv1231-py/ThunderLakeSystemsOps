@@ -159,28 +159,6 @@ const server = http.createServer((req, res) => {
   res.writeHead(404); res.end("Not found");
 });
 
-async function autoRun() {
-  if (agentProc) { console.log("⏭  Auto-run skipped — agent already running"); return; }
-  const { data } = await db.from("income_work_queue").select("id").eq("status", "pending").limit(1);
-  if (!data?.length) { console.log("⏭  Auto-run skipped — queue empty"); return; }
-  console.log("⏰  Auto-run triggered");
-  agentProc = spawn("node", ["scripts/income-agent.mjs"], { cwd: ROOT, env: process.env });
-  agentProc.stdout.on("data", chunk => {
-    chunk.toString().split("\n").forEach(line => { if (line.trim()) { console.log(line); broadcast({ line: line.trim() }); } });
-  });
-  agentProc.stderr.on("data", chunk => {
-    const line = chunk.toString().trim();
-    if (line) { console.error(line); broadcast({ line, error: true }); }
-  });
-  agentProc.on("close", code => {
-    console.log(`✅  Auto-run exited (code ${code})`);
-    broadcast({ done: true, code });
-    agentProc = null;
-  });
-}
-
-const AUTO_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
-
 server.listen(PORT, "0.0.0.0", () => {
   const nets = Object.values(networkInterfaces()).flat()
     .filter(i => i.family === "IPv4" && !i.internal)
@@ -189,9 +167,5 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`\n🚀  TLS Agent Server running on port ${PORT}`);
   console.log(`\n   Local:    http://localhost:${PORT}`);
   nets.forEach(ip => console.log(`   Network:  http://${ip}:${PORT}`));
-  console.log(`\n   Auto-pipeline: every 30 min if queue has items\n`);
-
-  // Run once shortly after startup, then every 30 min
-  setTimeout(autoRun, 60_000);
-  setInterval(autoRun, AUTO_INTERVAL_MS);
+  console.log(`\n   Open in browser — RUN button fires the agent here\n`);
 });
