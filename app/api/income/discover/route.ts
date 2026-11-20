@@ -2,31 +2,41 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { discoverAllOpportunities } from "@/lib/income/discovery";
-import { scoreOpportunity } from "@/lib/income/scoring";
+import { scoreOpportunity, isAntiTopic, isNonCodeTask } from "@/lib/income/scoring";
 
 // Callable via GET with CRON_SECRET header (cron) or from dashboard (session-auth).
 // Finds new opportunities, scores them, upserts into income_opportunities.
 export const maxDuration = 60;
 
+// Repos that are spam/aggregator bounty boards — no real maintainer pays out
+const REPO_BLOCKLIST = [
+  "bounty-plaza", "bounty-board", "bounty-list", "bounties-list",
+  "crypto-bounty", "web3-bounty", "defi-bounty",
+  "bountyscout", "bounty-scout", "bug-bounty-list", "bug-bounties",
+  "/bug-bounty/",
+];
+
+// Extended non-code title patterns
+const NON_CODE_TITLE_PATTERNS = [
+  /\bpoem\b/i, /\bcontent creation\b/i, /\bwrite a\b/i, /\bgenerate text\b/i,
+  /\blogo\b/i, /\bdesign\b.*\bmockup\b/i, /\bartwork\b/i,
+  /\btweet\b/i, /\bblog post\b/i, /\bcopywriting\b/i,
+  /\bgenerate.*content\b/i, /\bcreative writing\b/i,
+  /\btutorial\b/i, /\bavailability inquiry\b/i, /\bpayment inquiry\b/i,
+  /\bopen bounties right now\b/i, /\bbounty discovery\b/i,
+];
+
 export async function GET(req: Request) {
-  // Allow both cron auth and dashboard trigger (unauthenticated cron bearer)
   const auth = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret && auth !== `Bearer ${cronSecret}`) {
-    // Could also be a manual trigger from the dashboard — verify via Supabase session
-    const db = createAdminClient() as any;
-    // For now allow any authenticated call; the dashboard passes no bearer token
-    // but we still want to block unauthenticated public calls
     if (auth !== null) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    // No auth header = likely a direct cron ping on Vercel without custom secret
-    // We allow it; the endpoint itself does no harmful writes beyond our own DB
   }
 
   const db = createAdminClient() as any;
 
-  // Try session first (browser-triggered), fall back to admin list (cron)
   let userId: string | null = null;
   try {
     const userClient = await createClient();
@@ -34,7 +44,6 @@ export async function GET(req: Request) {
     userId = user?.id ?? null;
   } catch {}
   if (!userId) {
-    // Use the pinned admin user for cron-triggered calls (avoids listUsers returning wrong account)
     userId = process.env.INCOME_AGENT_USER_ID ?? null;
   }
   if (!userId) {
@@ -43,9 +52,6 @@ export async function GET(req: Request) {
   }
 
   // ── Idempotency guard ─────────────────────────────────────────────────────
-  // Prevents duplicate scans from concurrent triggers (Vercel cron + pg_cron collision,
-  // dashboard manual trigger during in-flight scan, etc.). 12-minute window ensures
-  // any legit 15-min slot passes through while killing same-slot duplicates.
   const guardWindow = new Date(Date.now() - 12 * 60 * 1000).toISOString();
   const { data: recentScan } = await db
     .from("income_activity_log")
@@ -61,16 +67,58 @@ export async function GET(req: Request) {
 
   const startMs = Date.now();
 
+  // ── Retroactive queue cleanup ─────────────────────────────────────────────
+  // On every scan, sweep the existing queue and dismiss any items that match
+  // the current blocklist/anti-topic filters. Catches items queued before
+  // filter logic existed and removes stale anti-fit targets automatically.
+  let cleanedCount = 0;
+  try {
+    const { data: activeQueue } = await db
+      .from("income_opportunities")
+      .select("id, title, repo_url, url, description, language, tags")
+      .eq("user_id", userId)
+      .in("status", ["queued", "discovered"])
+      .limit(200);
+
+    if (activeQueue?.length) {
+      const toClean = (activeQueue as any[]).filter(item => {
+        const repoLow = ((item.repo_url ?? "") + (item.url ?? "")).toLowerCase();
+        const isBlocklisted = REPO_BLOCKLIST.some(p => repoLow.includes(p));
+        const isTitleNonCode = NON_CODE_TITLE_PATTERNS.some(p => p.test(item.title ?? ""));
+        const isAntiTopicItem = isAntiTopic({
+          title: item.title, description: item.description,
+          tags: item.tags, language: item.language,
+          source: "github", external_id: item.id,
+        } as any);
+        const isNonCodeItem = isNonCodeTask({
+          title: item.title, description: item.description,
+          tags: item.tags, language: item.language,
+          source: "github", external_id: item.id,
+        } as any);
+        return isBlocklisted || isTitleNonCode || isAntiTopicItem || isNonCodeItem;
+      });
+
+      if (toClean.length > 0) {
+        const ids = toClean.map((i: any) => i.id);
+        await db.from("income_opportunities")
+          .update({ status: "dismissed", progress_note: "Auto-dismissed: anti-fit target (web3/hardware/meta)" })
+          .in("id", ids)
+          .eq("user_id", userId);
+        cleanedCount = toClean.length;
+      }
+    }
+  } catch {}
+
   // ── Log scan start ─────────────────────────────────────────────────────────
   await db.from("income_activity_log").insert({
     engine:  "bounty",
     action:  "scan_start",
-    detail:  "Discovery scan starting — querying algora, issuehunt, opire, github",
+    detail:  `Discovery scan starting — querying algora, issuehunt, opire, github${cleanedCount > 0 ? ` (swept ${cleanedCount} stale items)` : ""}`,
     status:  "ok",
     user_id: userId,
   });
 
-  // ── Run discovery (logs per-source as each completes) ──────────────────────
+  // ── Run discovery ──────────────────────────────────────────────────────────
   const { opportunities, log } = await discoverAllOpportunities({ onSourceComplete: async (source, count, err) => {
     await db.from("income_activity_log").insert({
       engine:  "bounty",
@@ -87,31 +135,17 @@ export async function GET(req: Request) {
   let newCount  = 0;
   let skipCount = 0;
 
-  const REPO_BLOCKLIST = [
-    "bounty-plaza", "bounty-board", "bounty-list", "bounties-list",
-    "crypto-bounty", "web3-bounty", "defi-bounty",
-    "bountyscout", "bounty-scout", "bug-bounty-list", "bug-bounties",
-    "/bug-bounty/",
-  ];
-
-  const NON_CODE_TITLE_PATTERNS = [
-    /\bpoem\b/i, /\bcontent creation\b/i, /\bwrite a\b/i, /\bgenerate text\b/i,
-    /\blogo\b/i, /\bdesign\b.*\bmockup\b/i, /\bartwork\b/i,
-    /\btweet\b/i, /\bblog post\b/i, /\bcopywriting\b/i,
-    /\bgenerate.*content\b/i, /\bcreative writing\b/i,
-  ];
-
   for (const opp of opportunities) {
     if (!opp.external_id) continue;
 
-    // Drop known fake bounty aggregator repos before storing
+    // ── Hard filters: skip before touching the DB ─────────────────────────
     const repoLower = (opp.repo_url ?? opp.url ?? "").toLowerCase();
     if (REPO_BLOCKLIST.some(p => repoLower.includes(p))) { skipCount++; continue; }
-
-    // Drop non-code tasks before storing
     if (NON_CODE_TITLE_PATTERNS.some(p => p.test(opp.title ?? ""))) { skipCount++; continue; }
+    if (isAntiTopic(opp)) { skipCount++; continue; }
+    if (isNonCodeTask(opp)) { skipCount++; continue; }
 
-    // Check if already dismissed or in-progress
+    // Check if already tracked
     const { data: existing } = await db
       .from("income_opportunities")
       .select("id, status")
@@ -146,7 +180,6 @@ export async function GET(req: Request) {
       open_prs:        opp.open_prs,
       deadline:        opp.deadline,
       user_id:         userId,
-      // Only set status to 'discovered' if not already tracked
       ...(existing ? {} : { status: "discovered" }),
     };
 
@@ -158,23 +191,23 @@ export async function GET(req: Request) {
         .select("id").single();
       newCount++;
 
-      // Auto-queue high-quality bounties: score >= 65, < 3 open PRs (reward not required — scorer already penalises missing reward)
+      // Auto-queue: score >= 65, < 3 open PRs (scorer already penalises missing/low reward)
       if (score >= 65 && (opp.open_prs ?? 0) < 3 && inserted && userId) {
         await db.from("income_opportunities").update({ status: "queued" }).eq("id", inserted.id);
         await db.from("income_work_queue").insert({
-          engine:          "bounty",
-          title:           opp.title,
-          description:     opp.description,
-          status:          "pending",
-          priority:        score >= 85 ? 1 : score >= 60 ? 2 : 3,
-          expected_usd:    opp.reward_usd,
-          estimated_hours: estimated_hours,
-          opportunity_id:  inserted.id,
-          repo_url:        opp.repo_url,
+          engine:            "bounty",
+          title:             opp.title,
+          description:       opp.description,
+          status:            "pending",
+          priority:          score >= 85 ? 1 : score >= 70 ? 2 : 3,
+          expected_usd:      opp.reward_usd,
+          estimated_hours:   estimated_hours,
+          opportunity_id:    inserted.id,
+          repo_url:          opp.repo_url,
           requires_approval: false,
-          progress_note:   `Auto-queued (score ${score}, $${opp.reward_usd}) — waiting for agent`,
-          progress_pct:    0,
-          user_id:         userId,
+          progress_note:     `Auto-queued (score ${score}, $${opp.reward_usd ?? 0}) — waiting for agent`,
+          progress_pct:      0,
+          user_id:           userId,
         });
       }
     }
@@ -182,11 +215,10 @@ export async function GET(req: Request) {
 
   const durationMs = Date.now() - startMs;
 
-  // ── Log activity ──────────────────────────────────────────────────────────
   await db.from("income_activity_log").insert({
     engine:  "bounty",
     action:  "discovery_run",
-    detail:  `Found ${opportunities.length} bounties (${newCount} new, ${skipCount} skipped)`,
+    detail:  `Found ${opportunities.length} bounties (${newCount} new, ${skipCount} skipped${cleanedCount > 0 ? `, ${cleanedCount} swept` : ""})`,
     status:  "ok",
     metadata: { log, duration_ms: durationMs, sources: log.map(l => l.source) },
     user_id:  userId,
@@ -197,6 +229,7 @@ export async function GET(req: Request) {
     total:    opportunities.length,
     new:      newCount,
     skipped:  skipCount,
+    cleaned:  cleanedCount,
     duration: durationMs,
     sources:  log,
   });
