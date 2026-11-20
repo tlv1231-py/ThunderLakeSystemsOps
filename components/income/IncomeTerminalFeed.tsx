@@ -58,7 +58,7 @@ interface Props {
   lastDiscoveryRun: string | null; // kept for API compat; countdown uses UTC cron slots instead
 }
 
-export function IncomeTerminalFeed({ initialEntries }: Props) {
+export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun }: Props) {
   const [lines, setLines] = useState<TermLine[]>(() =>
     [...initialEntries].reverse().slice(0, 80).map(toTermLine)
   );
@@ -66,8 +66,9 @@ export function IncomeTerminalFeed({ initialEntries }: Props) {
   const [blink, setBlink] = useState(true);
   const [now, setNow] = useState(() => Date.now());
 
-  // Last scan timestamp — derived from entries, updated as new ones arrive
+  // Last scan timestamp — seed from dedicated lastDiscoveryRun prop (immune to entry list limits)
   const [lastScanTs, setLastScanTs] = useState<number | null>(() => {
+    if (lastDiscoveryRun) return new Date(lastDiscoveryRun).getTime();
     const e = initialEntries.find(e => e.action === "discovery_run" || e.action === "scan_start");
     return e ? new Date(e.created_at).getTime() : null;
   });

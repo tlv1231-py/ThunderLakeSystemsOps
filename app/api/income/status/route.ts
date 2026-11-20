@@ -26,6 +26,7 @@ export async function GET() {
     { data: approvals },
     { data: activity },
     { data: assets },
+    { data: lastDiscoveryRow },
   ] = await Promise.all([
     db.from("income_earnings")
       .select("*")
@@ -65,6 +66,15 @@ export async function GET() {
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(50),
+
+    // Dedicated last-scan query — immune to pipeline activity volume
+    db.from("income_activity_log")
+      .select("created_at")
+      .eq("user_id", user.id)
+      .eq("action", "discovery_run")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   const earningsList = earnings ?? [];
@@ -109,8 +119,8 @@ export async function GET() {
 
   const effectiveHourly = totalHours > 0 ? collected30 / totalHours : null;
 
-  // Last discovery run
-  const lastDiscovery = (activity ?? []).find((a: any) => a.action === "discovery_run");
+  // Use dedicated query — not vulnerable to activity feed volume pushing it out of limit(30)
+  const lastDiscovery = lastDiscoveryRow ?? (activity ?? []).find((a: any) => a.action === "discovery_run");
 
   const summary: IncomeSummary = {
     collectedThisWeek:  collectedWeek,
