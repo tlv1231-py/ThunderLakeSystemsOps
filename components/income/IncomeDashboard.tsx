@@ -56,9 +56,18 @@ const CSS = `
   0%,100%{opacity:1}50%{opacity:.4}
 }
 @keyframes tileEnter {
-  0%  { opacity:0; transform:scale(0.3) rotate(-8deg); }
-  65% { transform:scale(1.08) rotate(1deg); }
-  100%{ opacity:1; transform:scale(1) rotate(0deg); }
+  0%  { opacity:0; transform:translateX(48px) scale(0.82); }
+  55% { transform:translateX(-5px) scale(1.04); }
+  100%{ opacity:1; transform:translateX(0) scale(1); }
+}
+@keyframes countPunch {
+  0%  { transform:scale(1); }
+  35% { transform:scale(1.55); color:#fbbf24; }
+  100%{ transform:scale(1); }
+}
+@keyframes cardGlow {
+  0%,100%{ box-shadow:none; }
+  40%    { box-shadow:0 0 22px 4px var(--cg,#fff3); }
 }
 @keyframes tileSubmit {
   0%,100%{ opacity:1; }
@@ -83,9 +92,11 @@ const CSS = `
 .fade-up     { animation: fadeUp .35s ease-out both }
 .slow-fade   { animation: slowFade 2.5s ease-in-out infinite }
 .scan-prog   { transform-origin:left; animation: scanProg 55s linear forwards }
-.tile-enter  { animation: tileEnter .32s cubic-bezier(0.34,1.56,0.64,1) both }
+.tile-enter  { animation: tileEnter .42s cubic-bezier(0.22,1.2,0.36,1) both }
 .tile-submit { animation: tileSubmit .5s ease-out, tilePulse 1.5s ease-in-out 2 }
 .tile-active { animation: tileActive 1.8s ease-in-out infinite }
+.count-punch { animation: countPunch .38s cubic-bezier(0.34,1.56,0.64,1) both }
+.card-glow   { animation: cardGlow .6s ease-out both }
 .tls-feed { font-family:'Geist','Inter','Segoe UI Variable',system-ui,-apple-system,sans-serif; font-size:15px; letter-spacing:-0.01em; }
 .fade-down { animation: fadeDown .3s ease-out both }
 .tls-scroll { overflow-y:auto; scrollbar-width:none; }
@@ -260,33 +271,72 @@ function BoardColumn({ label, colorLabel, items, fresh, submitted, active }: {
   );
 }
 
-function SideColumn({ label, color, items, fresh, submitted, active }: {
-  label: string; color: string;
-  items: { id: string; title: string; usdAmt: number; url?: string | null }[];
-  fresh?: Set<string>; submitted?: Set<string>; active?: Set<string>;
+function WaitingColumn({ items, fresh, active }: {
+  items: { id: string; title: string; usdAmt: number; url?: string | null; score?: number | null }[];
+  fresh?: Set<string>; active?: Set<string>;
 }) {
+  const [prevCount, setPrevCount] = useState(items.length);
+  const [punch, setPunch] = useState(false);
+  useEffect(() => {
+    if (items.length > prevCount) { setPunch(true); setTimeout(() => setPunch(false), 420); }
+    setPrevCount(items.length);
+  }, [items.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const totalUsd = items.reduce((s, i) => s + (i.usdAmt ?? 0), 0);
+
   return (
-    <div>
-      <div className="flex items-center gap-1.5 mb-2">
-        <span className="text-[9px] uppercase tracking-widest" style={{ color }}>{label}</span>
-        <span className={`text-[11px] font-semibold tabular-nums ${items.length > 0 ? "text-amber-400" : "text-zinc-700"}`}>
-          {items.length}
-        </span>
+    <div className="w-44">
+      {/* Header */}
+      <div className="mb-3 flex items-baseline justify-between">
+        <span className="text-[9px] uppercase tracking-widest text-amber-500/50">Waiting</span>
+        <div className="flex items-baseline gap-2">
+          {totalUsd > 0 && <span className="text-[11px] text-zinc-600 tabular-nums">{usd(totalUsd)}</span>}
+          <span className={`text-sm font-bold tabular-nums leading-none ${punch ? "count-punch" : ""} ${items.length > 0 ? "text-amber-400" : "text-zinc-700"}`}>
+            {items.length}
+          </span>
+        </div>
       </div>
-      <div className="flex flex-col gap-1.5">
-        {items.map(item => (
-          <BountyTile
-            key={item.id}
-            id={item.id}
-            title={item.title}
-            usdAmt={item.usdAmt}
-            url={item.url}
-            fresh={fresh?.has(item.id)}
-            submitted={submitted?.has(item.id)}
-            active={active?.has(item.id)}
-          />
-        ))}
+
+      {/* Cards */}
+      <div className="flex flex-col gap-2.5">
         {items.length === 0 && <span className="text-[11px] text-zinc-800">—</span>}
+        {items.map(item => {
+          const accent = bountyAccent(item.title);
+          const isFresh = fresh?.has(item.id);
+          const isActive = active?.has(item.id);
+          const amtLabel = item.usdAmt >= 1000
+            ? `$${(item.usdAmt / 1000 % 1 === 0 ? (item.usdAmt / 1000).toFixed(0) : (item.usdAmt / 1000).toFixed(1))}k`
+            : item.usdAmt > 0 ? `$${Math.round(item.usdAmt)}`
+            : item.score != null ? `${item.score}` : "?";
+          return (
+            <div
+              key={item.id}
+              className={`${isFresh ? "tile-enter" : ""} cursor-pointer select-none`}
+              onClick={() => item.url && window.open(item.url, "_blank")}
+            >
+              <div
+                className={`p-3 border ${isFresh ? "card-glow" : ""} ${isActive ? "tile-active" : ""} transition-all duration-200 hover:brightness-125`}
+                style={{
+                  borderColor: isActive ? "rgba(45,212,191,0.5)" : `${accent}44`,
+                  background: `${accent}09`,
+                  ["--cg" as any]: `${accent}55`,
+                }}
+              >
+                <div className="text-[24px] font-mono font-bold tabular-nums leading-none" style={{ color: accent }}>
+                  {amtLabel}
+                </div>
+                <div className="text-[10px] text-zinc-500 mt-1.5 leading-snug" style={{
+                  display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+                }}>
+                  {item.title}
+                </div>
+                {item.score != null && (
+                  <div className="text-[9px] text-zinc-700 mt-1.5 font-mono">score {item.score}</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1128,14 +1178,18 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
           <div className="flex-1 min-w-0">
             <LiveFeed userId={userId} stagedCount={pendingQueue.length} projected={summary.queueProjectedUsd} onScan={ts => setLastScanTs(ts)} onRun={syncQueue} />
           </div>
-          {/* WAITING — slim right column */}
+          {/* WAITING */}
           <div className="shrink-0 pt-9">
-            <SideColumn
-              label="Waiting"
-              color="#fbbf24"
+            <WaitingColumn
               items={liveItems
                 .filter(i => ["pending","in_progress","review"].includes(i.status))
-                .map(i => ({ id: i.id, title: i.title, usdAmt: i.expected_usd ?? 0, url: i.income_opportunities?.url ?? null }))}
+                .map(i => ({
+                  id: i.id,
+                  title: i.title,
+                  usdAmt: i.expected_usd ?? 0,
+                  url: i.income_opportunities?.url ?? null,
+                  score: i.income_opportunities?.score ?? null,
+                }))}
               fresh={fresh}
               active={activeSet}
             />
