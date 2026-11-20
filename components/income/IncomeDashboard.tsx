@@ -566,7 +566,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v13";
+const DASH_VERSION = "v14";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -695,6 +695,34 @@ function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; 
         });
         setLines(history);
       });
+  }, [userId]);
+
+  // Poll feed every 15s — realtime may not fire if income_activity_log isn't in Supabase publication
+  useEffect(() => {
+    const sb = createClient();
+    async function poll() {
+      const { data } = await (sb as any)
+        .from("income_activity_log")
+        .select("id,action,detail,created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (!data?.length) return;
+      setLines(prev => {
+        const known = new Set(prev.map((l: FeedLine) => l.id));
+        const fresh = data.reverse().flatMap((e: any) => {
+          if (known.has(e.id)) return [];
+          const ts = new Date(e.created_at).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+          const { msg, bountyKey, hidden } = formatFeedEntry(e.action, e.detail || "");
+          if (hidden) return [];
+          return [{ id: e.id, ts, msg, accent: bountyKey ? bountyAccent(bountyKey) : "#71717a", bountyKey }];
+        });
+        if (!fresh.length) return prev;
+        return [...prev, ...fresh].slice(-100);
+      });
+    }
+    const t = setInterval(poll, 15_000);
+    return () => clearInterval(t);
   }, [userId]);
 
   useEffect(() => {
