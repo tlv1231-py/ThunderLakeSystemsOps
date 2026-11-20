@@ -87,7 +87,7 @@
   <code id="cmd-text">node scripts/income-agent.mjs</code>
   <button id="copy-btn" onclick="copyCmd()"> · copy</button>
 </div>
-<div id="server-hint">Tip: run <code>node scripts/agent-server.mjs</code> on main computer for one-click run</div>
+<div id="server-hint">Requires <code>node scripts/agent-server.mjs</code> running in background</div>
 
 <hr>
 
@@ -96,8 +96,9 @@
 <div id="log"><div class="line dim">— connecting —</div></div>
 
 <script>
-const SUPABASE_URL = 'https://recjjjepzpfutaxzpgjx.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlY2pqamVwenBmdXRheHpwZ2p4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NDA0ODMsImV4cCI6MjA5NTUxNjQ4M30.h4xKtnnkqEkR_VTm4HnAUhiwoGan0oaezx_3eXAEKSs';
+const SUPABASE_URL = '{{SUPABASE_URL}}';
+const SUPABASE_KEY = '{{SUPABASE_KEY}}';
+const USER_ID      = '{{USER_ID}}';
 const AGENT_SERVER = 'http://localhost:3002';
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -170,19 +171,22 @@ function renderItems() {
 }
 
 async function load() {
-  const { data, error } = await sb.from('income_work_queue')
+  const q = sb.from('income_work_queue')
     .select('id,title,status,expected_usd,pr_url')
     .not('status', 'in', '(failed,cancelled,done)')
     .order('priority')
     .limit(30);
+  if (USER_ID) q.eq('user_id', USER_ID);
+  const { data, error } = await q;
   if (data) { items = data; renderItems(); }
   document.getElementById('status-dot').className = 'live';
   addLog('connected', 'info');
 }
 
 function subscribe() {
+  const filter = USER_ID ? `user_id=eq.${USER_ID}` : undefined;
   sb.channel('pipeline')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'income_work_queue' }, (p) => {
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'income_work_queue', ...(filter ? { filter } : {}) }, (p) => {
       if (p.eventType === 'INSERT') {
         items.unshift(p.new);
         if (p.new.status === 'pending') { chime(); addLog('⚡ new: ' + p.new.title.slice(0, 60), 'ok'); }
