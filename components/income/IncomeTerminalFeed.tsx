@@ -7,6 +7,7 @@ import type { ActivityEntry } from "@/lib/income/types";
 type TermLine = {
   id: string;
   ts: string;
+  tsSortKey: number;
   prefix: string;
   text: string;
   color: string;
@@ -50,7 +51,7 @@ function toTermLine(entry: ActivityEntry): TermLine {
 
   const actionLabel = ACTION_LABELS[entry.action] ?? entry.action.toUpperCase().slice(0, 10).padEnd(10);
   const text = entry.detail ?? entry.action ?? "";
-  return { id: entry.id, ts, prefix: `[${engine}] ${actionLabel}`, text, color };
+  return { id: entry.id, ts, tsSortKey: new Date(entry.created_at).getTime(), prefix: `[${engine}] ${actionLabel}`, text, color };
 }
 
 interface Props {
@@ -105,7 +106,11 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun }: Props) 
           const entry = payload.new as ActivityEntry;
           if (seenIds.has(entry.id)) return;
           seenIds.add(entry.id);
-          setLines(prev => [...prev.slice(-99), toTermLine(entry)]);
+          setLines(prev => {
+            const next = [...prev.slice(-99), toTermLine(entry)];
+            next.sort((a, b) => a.tsSortKey - b.tsSortKey);
+            return next;
+          });
           if (entry.action === "discovery_run" || entry.action === "scan_start") {
             setLastScanTs(new Date(entry.created_at).getTime());
           }
@@ -128,7 +133,7 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun }: Props) 
       if (latestScan) setLastScanTs(new Date(latestScan.created_at).getTime());
       setLines(prev => {
         const next = [...prev, ...fresh.map(toTermLine)];
-        next.sort((a, b) => a.ts < b.ts ? -1 : 1);
+        next.sort((a, b) => a.tsSortKey - b.tsSortKey);
         return next.slice(-100);
       });
     }
