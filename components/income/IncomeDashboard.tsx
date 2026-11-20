@@ -457,42 +457,49 @@ function getAgentServer() {
   return localStorage.getItem("tls_agent_server") || DEFAULT_AGENT_SERVER;
 }
 
-type FeedLine = { id: string; ts: string; type: string; msg: string; color: string };
+type FeedLine = { id: string; ts: string; type: string; typeColor: string; msg: string; accent: string };
 
-function formatFeedEntry(action: string, detail: string): { type: string; msg: string; color: string } {
-  const d = detail.slice(0, 72);
+const BOUNTY_PALETTE = ["#e879f9","#fb923c","#facc15","#a3e635","#34d399","#22d3ee","#818cf8","#f472b6","#ff6b6b","#4ecdc4"];
+
+function bountyAccent(key: string): string {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (Math.imul(31, h) + key.charCodeAt(i)) | 0;
+  return BOUNTY_PALETTE[Math.abs(h) % BOUNTY_PALETTE.length];
+}
+
+function formatFeedEntry(action: string, detail: string): { type: string; typeColor: string; msg: string; bountyKey?: string } {
   switch (action) {
     case "discovery_run":
-      return { type: "SCAN",       msg: d,                                              color: "#2dd4bf" };
+      return { type: "SCAN",       typeColor: "#2dd4bf", msg: detail };
     case "agent_pr_opened": {
       const [title, url] = detail.split(" → ");
       const prNum = url?.match(/pull\/(\d+)/)?.[1];
       const repo  = url?.match(/github\.com\/[^/]+\/([^/]+)/)?.[1];
-      const msg   = prNum && repo ? `#${prNum} on ${repo} — ${(title || "").slice(0, 38)}` : d;
-      return { type: "PR OPENED",  msg,                                                 color: "#38bdf8" };
+      const msg   = prNum && repo ? `#${prNum} on ${repo} — ${title || ""}` : detail;
+      return { type: "PR OPENED",  typeColor: "#38bdf8", msg, bountyKey: title };
     }
     case "pr_merged":
-      return { type: "MERGED",     msg: d,                                              color: "#4ade80" };
+      return { type: "MERGED",     typeColor: "#4ade80", msg: detail, bountyKey: detail };
     case "pr_closed":
-      return { type: "PR CLOSED",  msg: d,                                              color: "#a1a1aa" };
+      return { type: "PR CLOSED",  typeColor: "#a1a1aa", msg: detail, bountyKey: detail };
     case "agent_no_changes":
-      return { type: "NO CHANGE",  msg: `Claude ran, made no changes — ${(detail || "").slice(0, 42)}`, color: "#fbbf24" };
+      return { type: "NO CHANGE",  typeColor: "#fbbf24", msg: `No changes made — ${detail}`, bountyKey: detail };
     case "agent_skip":
-      return { type: "SKIPPED",    msg: d,                                              color: "#52525b" };
+      return { type: "SKIPPED",    typeColor: "#52525b", msg: detail };
     case "agent_error":
-      return { type: "ERROR",      msg: d,                                              color: "#f87171" };
+      return { type: "ERROR",      typeColor: "#f87171", msg: detail };
     case "opportunity_queued":
-      return { type: "STAGED",     msg: `Queued: ${(detail || "").slice(0, 55)}`,       color: "#a1a1aa" };
+      return { type: "STAGED",     typeColor: "#a1a1aa", msg: detail, bountyKey: detail };
     case "opportunity_dismissed":
-      return { type: "DISMISSED",  msg: d,                                              color: "#3f3f46" };
+      return { type: "DISMISSED",  typeColor: "#3f3f46", msg: detail };
     case "earning_logged":
-      return { type: "EARNED",     msg: d,                                              color: "#4ade80" };
+      return { type: "EARNED",     typeColor: "#4ade80", msg: detail };
     case "approval_approved":
-      return { type: "APPROVED",   msg: d,                                              color: "#4ade80" };
+      return { type: "APPROVED",   typeColor: "#4ade80", msg: detail };
     case "pr_check_run":
-      return { type: "CI",         msg: d,                                              color: "#52525b" };
+      return { type: "CI",         typeColor: "#52525b", msg: detail };
     default:
-      return { type: action.replace(/_/g, " ").toUpperCase().slice(0, 10), msg: d,     color: "#52525b" };
+      return { type: action.replace(/_/g, " ").toUpperCase().slice(0, 10), typeColor: "#52525b", msg: detail };
   }
 }
 
@@ -504,9 +511,9 @@ function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCo
 
   useEffect(() => { setServerAddr(getAgentServer()); }, []);
 
-  function add(type: string, msg: string, color: string) {
+  function add(type: string, typeColor: string, msg: string, accent: string) {
     const ts = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    setLines(prev => [...prev.slice(-99), { id: `${Date.now()}-${Math.random()}`, ts, type, msg, color }]);
+    setLines(prev => [...prev.slice(-99), { id: `${Date.now()}-${Math.random()}`, ts, type, typeColor, msg, accent }]);
   }
 
   useEffect(() => {
@@ -525,8 +532,8 @@ function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCo
         if (!data?.length) return;
         const history: FeedLine[] = data.reverse().map((e: any) => {
           const ts = new Date(e.created_at).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-            const { type, msg, color } = formatFeedEntry(e.action, e.detail || "");
-          return { id: e.id, ts, type, msg, color };
+            const { type, typeColor, msg, bountyKey } = formatFeedEntry(e.action, e.detail || "");
+          return { id: e.id, ts, type, typeColor, msg, accent: bountyKey ? bountyAccent(bountyKey) : "#71717a" };
         });
         setLines(history);
       });
@@ -539,7 +546,7 @@ function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCo
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "income_work_queue", filter: `user_id=eq.${userId}` }, (p: any) => {
         const title = (p.new.title || "").slice(0, 48);
         const st = p.new.status;
-        const [label, color] =
+        const [label, typeColor] =
           st === "in_progress" ? ["WORKING",   "#2dd4bf"] :
           st === "submitted"   ? ["SUBMITTED", "#38bdf8"] :
           st === "done"        ? ["MERGED",    "#4ade80"] :
@@ -547,17 +554,18 @@ function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCo
           st === "review"      ? ["REVIEW",    "#fbbf24"] :
           st === "pending"     ? ["STAGED",    "#a1a1aa"] :
                                  [st.toUpperCase(), "#52525b"];
-        add(label, title, color);
+        add(label, typeColor, title, bountyAccent(title));
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "income_work_queue", filter: `user_id=eq.${userId}` }, (p: any) => {
-        add("QUEUED", (p.new.title || "").slice(0, 48), "#a1a1aa");
+        const t = p.new.title || "";
+        add("QUEUED", "#a1a1aa", t, bountyAccent(t));
       })
       .subscribe();
 
     const ch2 = (sb as any).channel(`lf_log_${userId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "income_activity_log", filter: `user_id=eq.${userId}` }, (p: any) => {
-        const { type, msg, color } = formatFeedEntry(p.new.action, p.new.detail || "");
-        add(type, msg, color);
+        const { type, typeColor, msg, bountyKey } = formatFeedEntry(p.new.action, p.new.detail || "");
+        add(type, typeColor, msg, bountyKey ? bountyAccent(bountyKey) : "#71717a");
       })
       .subscribe();
 
@@ -567,7 +575,7 @@ function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCo
   async function run() {
     if (runState === "running") return;
     setRunState("running");
-    add("RUN", "pipeline triggered", "#fbbf24");
+    add("RUN", "#fbbf24", "pipeline triggered", "#fbbf24");
     try {
       const r = await fetch(`${serverAddr}/run`, { method: "POST", signal: AbortSignal.timeout(4000) });
       if (!r.ok) throw new Error();
@@ -575,7 +583,7 @@ function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCo
       setTimeout(() => setRunState("idle"), 3000);
     } catch {
       await navigator.clipboard.writeText("node scripts/income-agent.mjs");
-      add("RUN", "server offline — command copied to clipboard", "#f87171");
+      add("RUN", "#f87171", "server offline — command copied to clipboard", "#f87171");
       setRunState("copied");
       setTimeout(() => setRunState("idle"), 2500);
     }
@@ -637,8 +645,8 @@ function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCo
         {lines.map(l => (
           <div key={l.id} className="flex gap-3 text-[11px] leading-5">
             <span className="text-zinc-700 shrink-0 tabular-nums">{l.ts}</span>
-            <span className="shrink-0 w-16 tabular-nums" style={{ color: l.color }}>{l.type}</span>
-            <span className="text-zinc-400 truncate">{l.msg}</span>
+            <span className="shrink-0 w-16 tabular-nums" style={{ color: l.typeColor }}>{l.type}</span>
+            <span className="break-words min-w-0" style={{ color: l.accent }}>{l.msg}</span>
           </div>
         ))}
         <div ref={bottomRef} />
