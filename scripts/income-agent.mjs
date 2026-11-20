@@ -76,7 +76,7 @@ const NON_CODE_TITLE_PATTERNS = [
 const MIN_REWARD_USD = 15;
 
 // Minimum score — below this, historical abandon rate is too high to be worth running
-const MIN_SCORE = 65;
+const MIN_SCORE = 60;
 
 const SUPABASE_URL      = env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY      = env.SUPABASE_SERVICE_ROLE_KEY;

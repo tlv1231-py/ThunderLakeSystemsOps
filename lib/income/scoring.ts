@@ -15,6 +15,7 @@ const PREFERRED_TECH = [
   "typescript", "javascript", "js", "ts", "react", "next.js", "nextjs",
   "node", "python", "css", "tailwind", "supabase", "postgres", "sql",
   "html", "svelte", "vue", "prisma", "graphql", "rest", "api",
+  "go", "golang", "ruby", "rails", "php", "java", "kotlin", "swift",
 ];
 
 // ── Things that look like bounties but require expertise Claude can't win ──────
@@ -41,7 +42,7 @@ const ANTI_FIT_TOPICS = [
 // ── Languages where Claude's win rate will be very low — penalise heavily ──────
 const ANTI_FIT_LANGS = [
   "rust", "c", "c++", "cpp", "assembly", "asm", "haskell",
-  "erlang", "elixir", "ocaml", "fortran", "cobol", "ada", "clojure",
+  "erlang", "ocaml", "fortran", "cobol", "ada",
 ];
 
 // ── Meta/research tasks that are not code implementations ─────────────────────

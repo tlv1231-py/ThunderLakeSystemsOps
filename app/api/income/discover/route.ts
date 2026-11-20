@@ -117,7 +117,7 @@ export async function GET(req: Request) {
     }
   } catch {}
 
-  // ── Re-queue sweep: promote discovered→queued if score>=65 and no active WQ entry ──
+  // ── Re-queue sweep: promote discovered→queued if score>=60 and no active WQ entry ──
   // Runs every scan so improvements to the scorer automatically promote good items
   // that were scored before the threshold or before a scorer upgrade.
   let requeueCount = 0;
@@ -127,7 +127,7 @@ export async function GET(req: Request) {
       .select("id, title, description, score, reward_usd, estimated_hours, repo_url, open_prs")
       .eq("user_id", userId)
       .in("status", ["discovered", "queued"])
-      .gte("score", 65)
+      .gte("score", 60)
       .lt("open_prs", 3)
       .limit(50);
 
@@ -246,15 +246,15 @@ export async function GET(req: Request) {
         .select("id").single();
       newCount++;
 
-      // Auto-queue: score >= 65, < 3 open PRs (scorer already penalises missing/low reward)
-      if (score >= 65 && (opp.open_prs ?? 0) < 3 && inserted && userId) {
+      // Auto-queue: score >= 60, < 3 open PRs (scorer already penalises missing/low reward)
+      if (score >= 60 && (opp.open_prs ?? 0) < 3 && inserted && userId) {
         await db.from("income_opportunities").update({ status: "queued" }).eq("id", inserted.id);
         await db.from("income_work_queue").insert({
           engine:            "bounty",
           title:             opp.title,
           description:       opp.description,
           status:            "pending",
-          priority:          score >= 85 ? 1 : score >= 70 ? 2 : 3,
+          priority:          score >= 80 ? 1 : score >= 65 ? 2 : 3,
           expected_usd:      opp.reward_usd,
           estimated_hours:   estimated_hours,
           opportunity_id:    inserted.id,

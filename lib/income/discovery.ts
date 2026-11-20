@@ -7,9 +7,11 @@ const TIMEOUT = 12_000;
 export async function fetchGitHubBounties(): Promise<DiscoveredOpportunity[]> {
   // stars:>50 is critical — eliminates fake/trap repos, bounty aggregator cross-posts,
   // and crypto repos with no real maintainer payout history.
-  // Fresh date threshold: issues created in the last 30 days have far less competition
-  const d = new Date(); d.setDate(d.getDate() - 30);
-  const freshDate = d.toISOString().slice(0, 10); // YYYY-MM-DD
+  // Fresh date thresholds — recency is the key edge: get in before competition builds
+  const d7 = new Date(); d7.setDate(d7.getDate() - 7);
+  const d30 = new Date(); d30.setDate(d30.getDate() - 30);
+  const fresh7  = d7.toISOString().slice(0, 10);
+  const fresh30 = d30.toISOString().slice(0, 10);
 
   const queries = [
     // Label-based — quality repos only (>50 stars filters 90% of fake/trap repos)
@@ -20,6 +22,8 @@ export async function fetchGitHubBounties(): Promise<DiscoveredOpportunity[]> {
     "language:typescript+label:bounty+is:open+is:issue+stars:>30",
     "language:javascript+label:bounty+is:open+is:issue+stars:>30",
     "language:python+label:bounty+is:open+is:issue+stars:>30",
+    // Go — solid win rate, less crowded than TS
+    "language:go+label:bounty+is:open+is:issue+stars:>20",
     // Opire-funded (Opire pays on merge — most reliable payout)
     "opire+in:body+is:open+is:issue+stars:>20",
     // Algora cross-posts
@@ -28,16 +32,16 @@ export async function fetchGitHubBounties(): Promise<DiscoveredOpportunity[]> {
     "%22%24%22+bounty+in:title+is:open+is:issue+stars:>50",
     // Good-first-issue = bounded, easy entry — high agent win rate
     "label:good-first-issue+label:bounty+is:open+is:issue+stars:>20",
-    // ── Fresh bounties (created in last 30 days) — far less competition ──────
-    // Recency is the key edge: get in before other devs find it
-    `label:bounty+is:open+is:issue+stars:>10+created:>${freshDate}`,
-    `label:opire+is:open+is:issue+created:>${freshDate}`,
-    `algora+in:body+is:open+is:issue+created:>${freshDate}`,
-    `language:typescript+label:bounty+is:open+is:issue+created:>${freshDate}`,
-    `language:python+label:bounty+is:open+is:issue+created:>${freshDate}`,
-    // Go and Rust — less crowded, good hourly rate
-    "language:go+label:bounty+is:open+is:issue+stars:>20",
-    "language:rust+label:bounty+is:open+is:issue+stars:>20",
+    // ── FRESH (last 7 days) — highest priority: least competition ───────────
+    `label:bounty+is:open+is:issue+created:>${fresh7}`,
+    `label:opire+is:open+is:issue+created:>${fresh7}`,
+    `algora+in:body+is:open+is:issue+created:>${fresh7}`,
+    `opire+in:body+is:open+is:issue+created:>${fresh7}`,
+    // ── RECENT (last 30 days) ────────────────────────────────────────────────
+    `label:bounty+is:open+is:issue+stars:>10+created:>${fresh30}`,
+    `language:typescript+label:bounty+is:open+is:issue+created:>${fresh30}`,
+    `language:python+label:bounty+is:open+is:issue+created:>${fresh30}`,
+    `language:go+label:bounty+is:open+is:issue+created:>${fresh30}`,
   ];
   const token = process.env.GITHUB_TOKEN;
   const headers: Record<string, string> = {
