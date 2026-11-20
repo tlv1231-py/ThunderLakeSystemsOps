@@ -524,7 +524,9 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   const [stagedCollapsed, setStagedCollapsed] = useState(true);
   const [, startT] = useTransition();
 
-  useEffect(() => { window.scrollTo(0, 0); }, []);
+  useEffect(() => {
+    if (typeof window !== "undefined" && document.documentElement.scrollTop > 100) return;
+  }, []);
 
   const pendingQueue    = summary.workQueue.filter(w => w.status === "pending");
   const submittedCount  = pipelineItems.filter(w => w.status === "submitted").length;
@@ -555,7 +557,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   }
 
   return (
-    <div className="bg-black text-white font-mono -mx-4 -mt-6 -mb-6 min-h-screen relative overflow-hidden">
+    <div className="bg-black text-white font-mono -mx-4 -mt-6 -mb-6 min-h-screen relative">
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
 
       <div className="max-w-[960px] mx-auto px-6 py-6 relative z-10">
@@ -625,7 +627,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
 
         {/* ── detail tabs ─────────────────────────────────────────────── */}
         <div className="border-t border-zinc-900 pt-6">
-          <div className="flex gap-5 mb-6">
+          <div className="flex gap-5 mb-6 sticky top-0 bg-black py-2 z-20">
             {tabs.map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
                 className={`text-sm transition-colors ${tab === t.id ? "text-white" : "text-zinc-600 hover:text-zinc-300"}`}>

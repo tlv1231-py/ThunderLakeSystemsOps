@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TLS Pipeline</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #000; color: #e4e4e7;
+    font-family: 'Courier New', monospace;
+    font-size: 13px; line-height: 1.6;
+    padding: 20px; max-width: 640px; margin: 0 auto;
+  }
+  h1 { font-size: 11px; color: #52525b; letter-spacing: .2em; text-transform: uppercase; margin-bottom: 16px; }
+  .stat { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+  .stat-val { font-size: 22px; font-weight: 600; tabular-nums; }
+  .stat-lbl { color: #52525b; font-size: 11px; }
+  .green { color: #4ade80; }
+  .sky { color: #38bdf8; }
+  .amber { color: #fbbf24; }
+  .dim { color: #3f3f46; }
+  .teal { color: #2dd4bf; }
+  .red { color: #f87171; }
+  hr { border: none; border-top: 1px solid #18181b; margin: 16px 0; }
+  #run-btn {
+    width: 100%; padding: 12px; background: #000; border: 1px solid #3f3f46;
+    color: #e4e4e7; font-family: inherit; font-size: 13px; cursor: pointer;
+    text-transform: uppercase; letter-spacing: .15em; transition: all .15s;
+    margin-bottom: 8px;
+  }
+  #run-btn:hover:not(:disabled) { border-color: #fff; color: #fff; }
+  #run-btn:disabled { opacity: .4; cursor: default; }
+  #run-btn.running { border-color: #2dd4bf; color: #2dd4bf; }
+  #run-btn.done { border-color: #4ade80; color: #4ade80; }
+  #copy-btn {
+    background: none; border: none; color: #52525b; cursor: pointer;
+    font-family: inherit; font-size: 11px; padding: 0;
+  }
+  #copy-btn:hover { color: #a1a1aa; }
+  .cmd { color: #71717a; font-size: 11px; margin-bottom: 12px; }
+  #log {
+    background: #09090b; border: 1px solid #18181b;
+    padding: 10px; height: 200px; overflow-y: auto;
+    font-size: 11px; color: #52525b; margin-top: 12px;
+  }
+  #log .line { margin-bottom: 2px; white-space: pre-wrap; word-break: break-all; }
+  #log .ok { color: #4ade80; }
+  #log .err { color: #f87171; }
+  #log .info { color: #38bdf8; }
+  .item { border-left: 2px solid #27272a; padding: 6px 0 6px 10px; margin-bottom: 2px; display: flex; gap: 10px; align-items: baseline; }
+  .item.working { border-color: #2dd4bf; }
+  .item.submitted { border-color: #38bdf8; }
+  .item.done { border-color: #4ade80; }
+  .item.failed { border-color: #18181b; }
+  .item-status { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; min-width: 60px; color: #3f3f46; }
+  .item-status.working { color: #2dd4bf; }
+  .item-status.submitted { color: #38bdf8; }
+  .item-status.done { color: #4ade80; }
+  .item-title { flex: 1; color: #a1a1aa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item-usd { color: #4ade80; font-size: 12px; white-space: nowrap; }
+  .pulse { animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  #status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #27272a; margin-right: 6px; }
+  #status-dot.live { background: #4ade80; animation: pulse 2s ease-in-out infinite; }
+  #server-hint { font-size: 10px; color: #3f3f46; margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<h1><span id="status-dot"></span>TLS Pipeline</h1>
+
+<div class="stat">
+  <span class="stat-val green" id="staged-count">—</span>
+  <span class="stat-lbl">staged</span>
+  <span class="stat-val sky" id="active-count" style="margin-left:16px">—</span>
+  <span class="stat-lbl">active</span>
+  <span class="stat-val amber" id="open-prs" style="margin-left:16px">—</span>
+  <span class="stat-lbl">open PRs</span>
+</div>
+
+<hr>
+
+<button id="run-btn" onclick="runPipeline()">▶ Run Pipeline</button>
+<div class="cmd">
+  <code id="cmd-text">node scripts/income-agent.mjs</code>
+  <button id="copy-btn" onclick="copyCmd()"> · copy</button>
+</div>
+<div id="server-hint">Tip: run <code>node scripts/agent-server.mjs</code> on main computer for one-click run</div>
+
+<hr>
+
+<div id="pipeline-items"></div>
+
+<div id="log"><div class="line dim">— connecting —</div></div>
+
+<script>
+const SUPABASE_URL = 'https://recjjjepzpfutaxzpgjx.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlY2pqamVwenBmdXRheHpwZ2p4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NDA0ODMsImV4cCI6MjA5NTUxNjQ4M30.h4xKtnnkqEkR_VTm4HnAUhiwoGan0oaezx_3eXAEKSs';
+const AGENT_SERVER = 'http://localhost:3002';
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let items = [];
+let running = false;
+
+function usd(n) { return n > 0 ? '$' + Number(n).toFixed(0) : ''; }
+
+function chime() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [523.25, 659.25, 783.99, 1046.50].forEach((f, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = 'square'; o.frequency.value = f;
+      const t = ctx.currentTime + i * 0.09;
+      g.gain.setValueAtTime(0.07, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+      o.start(t); o.stop(t + 0.12);
+    });
+  } catch(e) {}
+}
+
+function beep(type) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const freqs = type === 'done' ? [783.99, 1046.50] : type === 'error' ? [220, 185] : [659.25];
+    freqs.forEach((f, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = 'square'; o.frequency.value = f;
+      const t = ctx.currentTime + i * 0.1;
+      g.gain.setValueAtTime(0.07, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+      o.start(t); o.stop(t + 0.15);
+    });
+  } catch(e) {}
+}
+
+function addLog(msg, cls = '') {
+  const log = document.getElementById('log');
+  const line = document.createElement('div');
+  line.className = 'line' + (cls ? ' ' + cls : '');
+  line.textContent = new Date().toLocaleTimeString() + ' ' + msg;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+function renderItems() {
+  const active = items.filter(i => !['failed','cancelled'].includes(i.status));
+  const staged = items.filter(i => i.status === 'pending').length;
+  const activePipeline = items.filter(i => ['in_progress','review','submitted'].includes(i.status)).length;
+  const openPRs = items.filter(i => i.status === 'submitted').length;
+
+  document.getElementById('staged-count').textContent = staged;
+  document.getElementById('active-count').textContent = activePipeline;
+  document.getElementById('open-prs').textContent = openPRs;
+
+  const container = document.getElementById('pipeline-items');
+  container.innerHTML = '';
+  const show = active.slice(0, 12);
+  show.forEach(item => {
+    const st = item.status || 'pending';
+    const stLabel = { pending: 'waiting', in_progress: 'working', review: 'review', submitted: 'submitted', done: 'merged' }[st] || st;
+    const div = document.createElement('div');
+    div.className = 'item ' + (['in_progress'].includes(st) ? 'working' : st);
+    div.innerHTML = `<span class="item-status ${['in_progress'].includes(st)?'working':st}">${stLabel}</span><span class="item-title">${item.title || ''}</span><span class="item-usd">${usd(item.expected_usd)}</span>`;
+    container.appendChild(div);
+  });
+}
+
+async function load() {
+  const { data, error } = await sb.from('income_work_queue')
+    .select('id,title,status,expected_usd,pr_url')
+    .not('status', 'in', '(failed,cancelled,done)')
+    .order('priority')
+    .limit(30);
+  if (data) { items = data; renderItems(); }
+  document.getElementById('status-dot').className = 'live';
+  addLog('connected', 'info');
+}
+
+function subscribe() {
+  sb.channel('pipeline')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'income_work_queue' }, (p) => {
+      if (p.eventType === 'INSERT') {
+        items.unshift(p.new);
+        if (p.new.status === 'pending') { chime(); addLog('⚡ new: ' + p.new.title.slice(0, 60), 'ok'); }
+      } else if (p.eventType === 'UPDATE') {
+        const i = items.findIndex(x => x.id === p.new.id);
+        if (i >= 0) items[i] = { ...items[i], ...p.new };
+        else items.unshift(p.new);
+        if (p.new.status === 'submitted') { beep('done'); addLog('✓ PR: ' + (p.new.pr_url || p.new.title.slice(0,50)), 'ok'); }
+        else if (p.new.status === 'in_progress') addLog('▶ working: ' + p.new.title.slice(0, 50), 'info');
+        else if (p.new.status === 'failed') addLog('✗ failed: ' + p.new.title.slice(0, 50), 'err');
+      }
+      renderItems();
+    })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'income_activity_log' }, (p) => {
+      const d = p.new;
+      if (d.action === 'discovery_run') addLog('scan: ' + d.detail.slice(0, 80), 'info');
+    })
+    .subscribe();
+}
+
+async function runPipeline() {
+  if (running) return;
+  const btn = document.getElementById('run-btn');
+  running = true;
+  btn.disabled = true;
+  btn.className = 'running';
+  btn.textContent = '⟳ running…';
+  addLog('trigger sent', 'info');
+
+  try {
+    const r = await fetch(AGENT_SERVER + '/run', { method: 'POST', signal: AbortSignal.timeout(5000) });
+    if (r.ok) {
+      addLog('agent started on main computer', 'ok');
+      streamOutput();
+    } else {
+      throw new Error('server returned ' + r.status);
+    }
+  } catch(e) {
+    addLog('agent server not reachable — copy command and run manually', 'err');
+    copyCmd();
+    btn.disabled = false;
+    btn.className = '';
+    btn.textContent = '▶ Run Pipeline';
+    running = false;
+  }
+}
+
+function streamOutput() {
+  const btn = document.getElementById('run-btn');
+  const es = new EventSource(AGENT_SERVER + '/stream');
+  es.onmessage = (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.done) {
+        es.close();
+        btn.textContent = '✓ Done';
+        btn.className = 'done';
+        beep('done');
+        setTimeout(() => {
+          btn.disabled = false; btn.className = ''; btn.textContent = '▶ Run Pipeline'; running = false;
+        }, 2000);
+      } else if (d.line) {
+        addLog(d.line);
+      }
+    } catch(err) {}
+  };
+  es.onerror = () => {
+    es.close();
+    btn.disabled = false; btn.className = ''; btn.textContent = '▶ Run Pipeline'; running = false;
+  };
+}
+
+function copyCmd() {
+  navigator.clipboard.writeText('node scripts/income-agent.mjs').then(() => {
+    const b = document.getElementById('copy-btn');
+    b.textContent = ' · copied!';
+    setTimeout(() => { b.textContent = ' · copy'; }, 1500);
+  });
+}
+
+load().then(subscribe);
+</script>
+</body>
+</html>
