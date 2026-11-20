@@ -501,6 +501,29 @@ function playBountyChime() {
   } catch {}
 }
 
+function playPipelineSound() {
+  if (_muted) return;
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    // Low thud + ascending sawtooth run — "engine starting"
+    const sub = ctx.createOscillator(); const sg = ctx.createGain();
+    sub.connect(sg); sg.connect(ctx.destination);
+    sub.type = "sawtooth"; sub.frequency.value = 80;
+    sg.gain.setValueAtTime(0.14, ctx.currentTime);
+    sg.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
+    sub.start(ctx.currentTime); sub.stop(ctx.currentTime + 0.28);
+    [65, 98, 131, 165, 196, 262].forEach((freq, i) => {
+      const osc = ctx.createOscillator(); const g = ctx.createGain();
+      osc.connect(g); g.connect(ctx.destination);
+      osc.type = "sawtooth"; osc.frequency.value = freq;
+      const t = ctx.currentTime + 0.12 + i * 0.075;
+      g.gain.setValueAtTime(0.09, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.11);
+      osc.start(t); osc.stop(t + 0.11);
+    });
+  } catch {}
+}
+
 function playTick() {
   if (_muted) return;
   try {
@@ -769,7 +792,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v23";
+const DASH_VERSION = "v24";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -927,7 +950,9 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
           const ts = new Date(e.created_at).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
           const { msg, bountyKey, hidden } = formatFeedEntry(e.action, e.detail || "");
           if (hidden) return [];
-          return [{ id: e.id, ts, msg, accent: bountyKey ? bountyAccent(bountyKey) : "#71717a", bountyKey }];
+          const accent = e.action === "pipeline_start" ? "#fbbf24"
+            : bountyKey ? bountyAccent(bountyKey) : "#71717a";
+          return [{ id: e.id, ts, msg, accent, bountyKey }];
         });
         setLines(history);
       });
@@ -951,7 +976,10 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
           const ts = new Date(e.created_at).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
           const { msg, bountyKey, hidden } = formatFeedEntry(e.action, e.detail || "");
           if (hidden) return [];
-          return [{ id: e.id, ts, msg, accent: bountyKey ? bountyAccent(bountyKey) : "#71717a", bountyKey }];
+          if (e.action === "pipeline_start") playPipelineSound();
+          const accent = e.action === "pipeline_start" ? "#fbbf24"
+            : bountyKey ? bountyAccent(bountyKey) : "#71717a";
+          return [{ id: e.id, ts, msg, accent, bountyKey }];
         });
         if (!fresh.length) return prev;
         return [...prev, ...fresh].slice(-100);
@@ -990,11 +1018,16 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
     const ch2 = (sb as any).channel(`lf_log_${userId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "income_activity_log", filter: `user_id=eq.${userId}` }, (p: any) => {
         const { msg, bountyKey, hidden } = formatFeedEntry(p.new.action, p.new.detail || "");
-        add(msg, bountyKey ? bountyAccent(bountyKey) : "#71717a", bountyKey, hidden);
+        const accent = p.new.action === "pipeline_start" ? "#fbbf24"
+          : bountyKey ? bountyAccent(bountyKey) : "#71717a";
+        add(msg, accent, bountyKey, hidden);
         if (p.new.action === "discovery_run") {
           playScanSound();
           notifyScan(p.new.detail || "");
           onScan?.(p.new.created_at || new Date().toISOString());
+        }
+        if (p.new.action === "pipeline_start") {
+          playPipelineSound();
         }
       })
       .subscribe();
