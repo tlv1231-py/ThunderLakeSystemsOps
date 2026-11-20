@@ -792,7 +792,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v26";
+const DASH_VERSION = "v27";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -1271,7 +1271,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
           <div>
             <h1 className="text-base font-semibold text-white tracking-wide">
               Bounty Engine<span className="cursor ml-0.5 text-zinc-600">_</span>
-              <span className="ml-2 text-[10px] text-zinc-700 font-mono font-normal">{DASH_VERSION}</span>
+              <span className="ml-2 text-[10px] text-white font-mono font-normal">{DASH_VERSION}</span>
             </h1>
             <HeaderStats allTimeUsd={allTimeUsd} inFlightUsd={inFlightUsd} submittedAllTime={submittedAllTime} acceptedCount={acceptedCount} rejectedCount={rejectedCount} winRate={winRate} totalScanned={summary.totalBountyCount} />
           </div>
