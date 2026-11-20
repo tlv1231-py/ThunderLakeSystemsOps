@@ -5,18 +5,25 @@ const TIMEOUT = 12_000;
 
 // ── GitHub — search for bounty-labelled issues ────────────────────────────────
 export async function fetchGitHubBounties(): Promise<DiscoveredOpportunity[]> {
+  // stars:>50 is critical — eliminates fake/trap repos, bounty aggregator cross-posts,
+  // and crypto repos with no real maintainer payout history.
   const queries = [
-    // Label-based
-    "label:bounty+is:open+is:issue",
-    "label:funded+is:open+is:issue",
-    "label:%22Bounty+Hunter%22+is:open+is:issue",
-    "label:opire+is:open+is:issue",
-    // Opire-funded issues (mention opire in body)
-    "opire+in:body+is:open+is:issue",
-    // Dollar amount in title — usually explicit bounty posts
-    "%22%24%22+bounty+in:title+is:open+is:issue",
-    // Algora cross-posts on GitHub
-    "algora+bounty+in:body+is:open+is:issue",
+    // Label-based — quality repos only (>50 stars filters 90% of fake/trap repos)
+    "label:bounty+is:open+is:issue+stars:>50",
+    "label:funded+is:open+is:issue+stars:>50",
+    "label:opire+is:open+is:issue+stars:>20",
+    // TypeScript/JS language-specific — our highest win-rate domain
+    "language:typescript+label:bounty+is:open+is:issue+stars:>30",
+    "language:javascript+label:bounty+is:open+is:issue+stars:>30",
+    "language:python+label:bounty+is:open+is:issue+stars:>30",
+    // Opire-funded (Opire pays on merge — most reliable payout)
+    "opire+in:body+is:open+is:issue+stars:>20",
+    // Algora cross-posts
+    "algora+bounty+in:body+is:open+is:issue+stars:>20",
+    // Explicit dollar amount + quality repos
+    "%22%24%22+bounty+in:title+is:open+is:issue+stars:>50",
+    // Good-first-issue = bounded, easy entry — high agent win rate
+    "label:good-first-issue+label:bounty+is:open+is:issue+stars:>20",
   ];
   const token = process.env.GITHUB_TOKEN;
   const headers: Record<string, string> = {
@@ -50,7 +57,7 @@ export async function fetchGitHubBounties(): Promise<DiscoveredOpportunity[]> {
           source: "github",
           external_id: extId,
           title: item.title,
-          description: (item.body ?? "").slice(0, 1000),
+          description: (item.body ?? "").slice(0, 3000),
           url: item.html_url,
           repo_url: item.repository_url?.replace("https://api.github.com/repos/", "https://github.com/") ?? null,
           reward_usd: reward,
@@ -106,7 +113,7 @@ export async function fetchAlgoraBounties(): Promise<DiscoveredOpportunity[]> {
       source: "algora",
       external_id: String(b.id ?? b.bountyId ?? b.number ?? ""),
       title: b.title ?? b.issue?.title ?? "Untitled",
-      description: (b.body ?? b.issue?.body ?? b.description ?? "").slice(0, 1000),
+      description: (b.body ?? b.issue?.body ?? b.description ?? "").slice(0, 3000),
       url: b.url ?? b.htmlUrl ?? b.issue?.url ?? `https://console.algora.io/bounties/${b.id}`,
       repo_url: b.repoUrl ?? b.issue?.repoUrl ?? null,
       reward_usd: parseFloat(b.amount ?? b.reward ?? "0") || null,
@@ -141,7 +148,7 @@ export async function fetchIssueHuntBounties(): Promise<DiscoveredOpportunity[]>
       source: "issuehunt",
       external_id: String(b.id ?? b.issue_id ?? ""),
       title: b.title ?? "Untitled",
-      description: (b.body ?? b.description ?? "").slice(0, 1000),
+      description: (b.body ?? b.description ?? "").slice(0, 3000),
       url: b.html_url ?? `https://issuehunt.io/r/${b.full_name}/${b.number}`,
       repo_url: b.repo_url ?? null,
       reward_usd: parseFloat(b.funded_by_sum ?? b.amount ?? "0") || null,
@@ -183,7 +190,7 @@ export async function fetchOpireBounties(): Promise<DiscoveredOpportunity[]> {
           source:          "opire",
           external_id:     String(r.id ?? r._id ?? issueUrl),
           title:           r.issue?.title ?? r.title ?? issueUrl,
-          description:     (r.issue?.body ?? r.description ?? "").slice(0, 1000),
+          description:     (r.issue?.body ?? r.description ?? "").slice(0, 3000),
           url:             issueUrl,
           repo_url:        issueUrl.replace(/\/issues\/\d+$/, "") ?? null,
           reward_usd:      amount,

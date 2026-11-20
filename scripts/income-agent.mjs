@@ -48,11 +48,15 @@ const env = Object.fromEntries(
     .map(l => { const i = l.indexOf("="); return [l.slice(0, i).trim(), l.slice(i + 1).trim().replace(/^["']|["']$/g, "")]; })
 );
 
-// Repos/patterns known to be fake bounty aggregators or scam listings
+// Repos/orgs known to be fake bounty aggregators, bot traps, or crypto-only
 const REPO_BLOCKLIST = [
   "bounty-plaza", "bounty-board", "bounty-list", "bounties-list",
   "crypto-bounty", "web3-bounty", "defi-bounty",
   "bountyscout", "bounty-scout", "bug-bounty-list", "bug-bounties",
+  "bot-trap", "trap-benchmark", "oss-bot-trap",
+  "zhangjiayang6835-cyber", "ariahendrawan-sudo",
+  "ClankerNation", "IES-BoilerRoom", "Roxonn-FutureTech",
+  "oss-bot-trap-benchmark",
 ];
 
 // Keywords in issue titles that signal non-code tasks (content, design, creative, admin)
@@ -184,15 +188,11 @@ for (const item of queuedItems) {
     continue;
   }
 
-  // Skip items with no monetary reward — not worth agent time
-  if (!opp.reward_usd || opp.reward_usd <= 0) {
-    console.log(`  ⚠  No reward attached — skipping`);
-    await db.from("income_work_queue").update({ status: "failed", progress_note: "No reward_usd — skipped" }).eq("id", item.id);
-    continue;
-  }
-
-  // Skip below minimum reward — pipeline time per run exceeds expected return at this value
-  if (opp.reward_usd < MIN_REWARD_USD) {
+  // Skip if reward is explicitly known AND below minimum.
+  // null reward = platform did not report amount in our DB (Algora/Opire pay on merge
+  // regardless of whether we scraped the $ amount). Allow those through — they scored
+  // >= 65 which means strong tech match + auto-pay platform + clarity signals.
+  if (opp.reward_usd != null && opp.reward_usd > 0 && opp.reward_usd < MIN_REWARD_USD) {
     console.log(`  ⚠  Reward $${opp.reward_usd} below minimum $${MIN_REWARD_USD} — skipping`);
     await db.from("income_work_queue").update({ status: "failed", progress_note: `Below minimum reward ($${opp.reward_usd} < $${MIN_REWARD_USD})` }).eq("id", item.id);
     await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);

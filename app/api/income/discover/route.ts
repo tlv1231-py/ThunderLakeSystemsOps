@@ -8,12 +8,18 @@ import { scoreOpportunity, isAntiTopic, isNonCodeTask } from "@/lib/income/scori
 // Finds new opportunities, scores them, upserts into income_opportunities.
 export const maxDuration = 60;
 
-// Repos that are spam/aggregator bounty boards — no real maintainer pays out
+// Repos/orgs that post fake, trap, or aggregator bounties — no real payout
 const REPO_BLOCKLIST = [
   "bounty-plaza", "bounty-board", "bounty-list", "bounties-list",
   "crypto-bounty", "web3-bounty", "defi-bounty",
   "bountyscout", "bounty-scout", "bug-bounty-list", "bug-bounties",
   "/bug-bounty/",
+  // Known bot-trap and research repos
+  "bot-trap", "trap-benchmark", "oss-bot-trap",
+  // Known fake-bounty operators (cross-post fake issues everywhere)
+  "zhangjiayang6835-cyber", "ariahendrawan-sudo",
+  // Crypto/DeFi orgs that post huge USDC bounties requiring Solidity expertise
+  "ClankerNation", "IES-BoilerRoom", "Roxonn-FutureTech",
 ];
 
 // Extended non-code title patterns
@@ -24,6 +30,8 @@ const NON_CODE_TITLE_PATTERNS = [
   /\bgenerate.*content\b/i, /\bcreative writing\b/i,
   /\btutorial\b/i, /\bavailability inquiry\b/i, /\bpayment inquiry\b/i,
   /\bopen bounties right now\b/i, /\bbounty discovery\b/i,
+  /\bbounty scout\b/i, /\bbounty report\b/i, /\bbounty tracker\b/i,
+  /\blist \d+ \w/i, /^order-\d+/i, /atm phase/i,
 ];
 
 export async function GET(req: Request) {
