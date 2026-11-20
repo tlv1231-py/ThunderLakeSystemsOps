@@ -51,6 +51,21 @@ const CSS = `
 @keyframes slowFade {
   0%,100%{opacity:1}50%{opacity:.4}
 }
+@keyframes tileEnter {
+  0%  { opacity:0; transform:scale(0.3) rotate(-8deg); }
+  65% { transform:scale(1.08) rotate(1deg); }
+  100%{ opacity:1; transform:scale(1) rotate(0deg); }
+}
+@keyframes tileSubmit {
+  0%,100%{ opacity:1; }
+  25%    { transform:scale(1.18); }
+  50%    { transform:scale(1); }
+  75%    { transform:scale(1.08); }
+}
+@keyframes tilePulse {
+  0%,100%{ box-shadow:none; }
+  50%    { box-shadow:0 0 14px 2px var(--ta,#fff4); }
+}
 
 .text-glow   { animation: textGlow 3s ease-in-out infinite }
 .green-glow  { animation: greenGlow 3s ease-in-out infinite }
@@ -60,6 +75,8 @@ const CSS = `
 .fade-up     { animation: fadeUp .35s ease-out both }
 .slow-fade   { animation: slowFade 2.5s ease-in-out infinite }
 .scan-prog   { transform-origin:left; animation: scanProg 55s linear forwards }
+.tile-enter  { animation: tileEnter .32s cubic-bezier(0.34,1.56,0.64,1) both }
+.tile-submit { animation: tileSubmit .5s ease-out, tilePulse 1.5s ease-in-out 2 }
 `;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -159,6 +176,70 @@ const S_BAR_CLS: Record<string, string> = {
   cancelled:   "bg-zinc-900",
 };
 
+// ── bounty tile (pixel square) ───────────────────────────────────────────────
+
+function BountyTile({ id, title, usdAmt, url, fresh, submitted }: {
+  id: string; title: string; usdAmt: number; url?: string | null; fresh?: boolean; submitted?: boolean;
+}) {
+  const accent = bountyAccent(title);
+  const [tip, setTip] = useState(false);
+  const label = usdAmt >= 1000
+    ? `$${(usdAmt / 1000 % 1 === 0 ? (usdAmt / 1000).toFixed(0) : (usdAmt / 1000).toFixed(1))}k`
+    : usdAmt > 0 ? `$${Math.round(usdAmt)}`
+    : "—";
+
+  return (
+    <div className="relative" onMouseEnter={() => setTip(true)} onMouseLeave={() => setTip(false)}>
+      <div
+        className={`w-14 h-14 flex items-center justify-center cursor-pointer select-none transition-all duration-150 ${fresh ? (submitted ? "tile-submit" : "tile-enter") : ""}`}
+        style={{
+          border: `1px solid ${accent}`,
+          background: `color-mix(in srgb, ${accent} 10%, transparent)`,
+          ["--ta" as any]: accent + "66",
+          boxShadow: tip ? `0 0 12px 1px ${accent}44` : "none",
+        }}
+        onClick={() => url && window.open(url, "_blank")}
+      >
+        <span className="text-[11px] font-mono font-semibold tabular-nums" style={{ color: accent }}>{label}</span>
+      </div>
+      {tip && (
+        <div className="absolute bottom-full left-0 mb-2 z-50 w-52 bg-zinc-950 border border-zinc-700 p-2 pointer-events-none" style={{ borderLeftColor: accent, borderLeftWidth: 2 }}>
+          <p className="text-[11px] text-white leading-snug mb-1">{title}</p>
+          {url && <p className="text-[10px] text-zinc-600 truncate">{url.replace("https://github.com/", "")}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BoardColumn({ label, colorLabel, items, fresh, submitted }: {
+  label: string; colorLabel: string; items: { id: string; title: string; usdAmt: number; url?: string | null }[];
+  fresh?: Set<string>; submitted?: Set<string>;
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-[10px] uppercase tracking-widest" style={{ color: colorLabel }}>{label}</span>
+        {items.length > 0 && <span className="text-[10px] text-zinc-700">{items.length}</span>}
+      </div>
+      <div className="flex flex-wrap gap-2 content-start min-h-[3.5rem]">
+        {items.map(item => (
+          <BountyTile
+            key={item.id}
+            id={item.id}
+            title={item.title}
+            usdAmt={item.usdAmt}
+            url={item.url}
+            fresh={fresh?.has(item.id)}
+            submitted={submitted?.has(item.id)}
+          />
+        ))}
+        {items.length === 0 && <span className="text-[11px] text-zinc-800 self-center">—</span>}
+      </div>
+    </div>
+  );
+}
+
 // ── mission card ──────────────────────────────────────────────────────────────
 
 function MissionCard({ item, fresh }: { item: any; fresh: boolean }) {
@@ -232,7 +313,31 @@ function MissionCard({ item, fresh }: { item: any; fresh: boolean }) {
   );
 }
 
-// ── 8-bit new-bounty chime ────────────────────────────────────────────────────
+// ── audio cues ────────────────────────────────────────────────────────────────
+
+function playScanSound() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    // Radar sweep: rising sine + short tail
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(300, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.25);
+    gain.gain.setValueAtTime(0.09, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.6);
+  } catch {}
+}
+
+async function notifyScan(detail: string) {
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "default") await Notification.requestPermission();
+  if (Notification.permission === "granted") {
+    new Notification("TLS — Scan complete", { body: detail || "Discovery run finished", icon: "/icon.png" });
+  }
+}
 
 function playBountyChime() {
   try {
@@ -294,8 +399,8 @@ function QueueList({ items }: { items: any[] }) {
 
 function Dot() { return <span className="text-zinc-800 text-lg select-none">·</span>; }
 
-function HeaderStats({ summary, winRate, allTimeUsd, openPRs, totalSubmissions }: {
-  summary: IncomeSummary; winRate: number; allTimeUsd: number; openPRs: number; totalSubmissions: number;
+function HeaderStats({ summary, winRate, allTimeUsd, openPRs, totalSubmissions, lastScanTs }: {
+  summary: IncomeSummary; winRate: number; allTimeUsd: number; openPRs: number; totalSubmissions: number; lastScanTs: string | null;
 }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
@@ -476,7 +581,7 @@ function formatFeedEntry(action: string, detail: string): { type: string; typeCo
       const prNum = url?.match(/pull\/(\d+)/)?.[1];
       const repo  = url?.match(/github\.com\/[^/]+\/([^/]+)/)?.[1];
       const msg   = prNum && repo ? `#${prNum} on ${repo} — ${title || ""}` : detail;
-      return { type: "PR OPENED",  typeColor: "#38bdf8", msg, bountyKey: title };
+      return { type: "SUBMITTED",  typeColor: "#38bdf8", msg, bountyKey: title };
     }
     case "pr_merged":
       return { type: "MERGED",     typeColor: "#4ade80", msg: detail, bountyKey: detail };
@@ -498,12 +603,16 @@ function formatFeedEntry(action: string, detail: string): { type: string; typeCo
       return { type: "APPROVED",   typeColor: "#4ade80", msg: detail };
     case "pr_check_run":
       return { type: "CI",         typeColor: "#52525b", msg: detail };
+    case "pipeline_start":
+      return { type: "PIPELINE",   typeColor: "#52525b", msg: detail };
+    case "pipeline_end":
+      return { type: "PIPELINE",   typeColor: "#4ade80", msg: detail };
     default:
       return { type: action.replace(/_/g, " ").toUpperCase().slice(0, 10), typeColor: "#52525b", msg: detail };
   }
 }
 
-function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCount: number; projected: number }) {
+function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; stagedCount: number; projected: number; onScan?: (ts: string) => void }) {
   const [lines, setLines] = useState<FeedLine[]>([]);
   const [runState, setRunState] = useState<"idle" | "running" | "done" | "copied">("idle");
   const [serverAddr, setServerAddr] = useState(DEFAULT_AGENT_SERVER);
@@ -566,6 +675,11 @@ function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCo
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "income_activity_log", filter: `user_id=eq.${userId}` }, (p: any) => {
         const { type, typeColor, msg, bountyKey } = formatFeedEntry(p.new.action, p.new.detail || "");
         add(type, typeColor, msg, bountyKey ? bountyAccent(bountyKey) : "#71717a", bountyKey);
+        if (p.new.action === "discovery_run") {
+          playScanSound();
+          notifyScan(p.new.detail || "");
+          onScan?.(p.new.created_at || new Date().toISOString());
+        }
       })
       .subscribe();
 
@@ -638,7 +752,7 @@ function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCo
         </div>
       </div>
       {/* feed */}
-      <div className="h-40 overflow-y-auto px-4 py-2 space-y-px bg-black">
+      <div className="h-[42vh] overflow-y-auto px-4 py-2 space-y-px bg-black">
         {lines.length === 0 && (
           <p className="text-[11px] text-zinc-800 py-1 select-none">— waiting for activity —</p>
         )}
@@ -650,9 +764,9 @@ function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCo
             const before = l.msg.slice(0, idx);
             const after  = l.msg.slice(idx + l.bountyKey.length);
             msgNode = <>
-              {before && <span className="text-zinc-400">{before}</span>}
+              {before && <span className="text-white">{before}</span>}
               <span style={{ color: l.accent }}>{l.bountyKey}</span>
-              {after && <span className="text-zinc-400">{after}</span>}
+              {after && <span className="text-white">{after}</span>}
             </>;
           }
           return (
@@ -689,13 +803,14 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   const [tab, setTab] = useState<Tab>("scan");
   const [discovering, setDiscovering] = useState(false);
   const [discoverResult, setDiscoverResult] = useState<string | null>(null);
-  const [stagedCollapsed, setStagedCollapsed] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [, startT] = useTransition();
 
   // Live pipeline items — realtime subscription keeps these current
   const [liveItems, setLiveItems] = useState<any[]>(pipelineItems);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
+  const [submitted, setSubmitted] = useState<Set<string>>(new Set());
+  const [lastScanTs, setLastScanTs] = useState<string | null>(summary.lastDiscoveryRun);
 
   // Sync when server props refresh (router.refresh() polling)
   useEffect(() => { setLiveItems(pipelineItems); }, [pipelineItems]);
@@ -709,10 +824,18 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
         if (p.eventType === "INSERT") {
           setLiveItems(prev => [p.new, ...prev]);
           setFresh(prev => new Set([...prev, p.new.id]));
-          setTimeout(() => setFresh(prev => { const n = new Set(prev); n.delete(p.new.id); return n; }), 1500);
+          setTimeout(() => setFresh(prev => { const n = new Set(prev); n.delete(p.new.id); return n; }), 800);
           if (p.new.status === "pending") playBountyChime();
         } else if (p.eventType === "UPDATE") {
           setLiveItems(prev => prev.map(i => i.id === p.new.id ? { ...i, ...p.new } : i));
+          if (p.new.status === "submitted") {
+            setFresh(prev => new Set([...prev, p.new.id]));
+            setSubmitted(prev => new Set([...prev, p.new.id]));
+            setTimeout(() => {
+              setFresh(prev => { const n = new Set(prev); n.delete(p.new.id); return n; });
+              setSubmitted(prev => { const n = new Set(prev); n.delete(p.new.id); return n; });
+            }, 1200);
+          }
         } else if (p.eventType === "DELETE") {
           setLiveItems(prev => prev.filter(i => i.id !== p.old.id));
         }
@@ -775,7 +898,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
             <h1 className="text-base font-semibold text-white tracking-wide">
               Bounty Engine<span className="cursor ml-0.5 text-zinc-600">_</span>
             </h1>
-            <HeaderStats summary={summary} winRate={winRate} allTimeUsd={allTimeUsd} openPRs={openPRs} totalSubmissions={totalAttempted} />
+            <HeaderStats summary={summary} winRate={winRate} allTimeUsd={allTimeUsd} openPRs={openPRs} totalSubmissions={totalAttempted} lastScanTs={lastScanTs} />
           </div>
           <div className="flex items-center gap-3 shrink-0 mt-1">
             {discoverResult && (
@@ -804,30 +927,37 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
         </div>
 
         {/* ── live feed ───────────────────────────────────────────────── */}
-        <LiveFeed userId={userId} stagedCount={pendingQueue.length} projected={summary.queueProjectedUsd} />
+        <LiveFeed userId={userId} stagedCount={pendingQueue.length} projected={summary.queueProjectedUsd} onScan={ts => setLastScanTs(ts)} />
 
-        {/* ── active bounties ─────────────────────────────────────────── */}
-        <section className="mb-8">
-          <SectionHeader label="Active" count={activeMissions} />
-          <Missions items={liveItems} fresh={fresh} />
+        {/* ── 3-column bounty board ────────────────────────────────────── */}
+        <section className="mb-8 grid grid-cols-3 gap-6 border-t border-zinc-900 pt-5">
+          <BoardColumn
+            label="Scanned"
+            colorLabel="#2dd4bf"
+            items={(summary.topOpportunities as Opportunity[])
+              .filter(o => !["dismissed","queued","in_progress","submitted","done","paid"].includes(o.status))
+              .slice(0, 20)
+              .map(o => ({ id: o.id, title: o.title, usdAmt: o.reward_usd ?? 0, url: o.url }))}
+            fresh={fresh}
+          />
+          <BoardColumn
+            label="Waiting"
+            colorLabel="#fbbf24"
+            items={liveItems
+              .filter(i => ["pending","in_progress","review"].includes(i.status))
+              .map(i => ({ id: i.id, title: i.title, usdAmt: i.expected_usd ?? 0, url: i.income_opportunities?.url ?? null }))}
+            fresh={fresh}
+          />
+          <BoardColumn
+            label="Submitted"
+            colorLabel="#38bdf8"
+            items={liveItems
+              .filter(i => i.status === "submitted")
+              .map(i => ({ id: i.id, title: i.title, usdAmt: i.expected_usd ?? 0, url: i.pr_url ?? null }))}
+            fresh={fresh}
+            submitted={submitted}
+          />
         </section>
-
-        {/* ── staged ──────────────────────────────────────────────────── */}
-        {pendingQueue.length > 0 && (
-          <section className="mb-8">
-            <div className="flex items-center justify-between mb-3">
-              <button
-                onClick={() => setStagedCollapsed(c => !c)}
-                className="flex items-center gap-2 text-xs text-zinc-500 uppercase tracking-widest hover:text-zinc-400 transition-colors"
-              >
-                staged
-                <span className="text-zinc-600 font-normal normal-case tracking-normal">[{pendingQueue.length}]</span>
-                <span className="text-zinc-700 text-[10px]">{stagedCollapsed ? "▸" : "▾"}</span>
-              </button>
-            </div>
-            {!stagedCollapsed && <QueueList items={pendingQueue} />}
-          </section>
-        )}
 
         {/* ── detail tabs (behind hamburger) ──────────────────────────── */}
         {menuOpen && <div className="border-t border-zinc-900 pt-6">

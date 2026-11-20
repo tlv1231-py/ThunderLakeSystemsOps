@@ -87,6 +87,9 @@ if (!queuedItems?.length) {
 
 console.log(`\n🎯  TLS Income Agent — ${queuedItems.length} bounties queued\n${"─".repeat(60)}`);
 
+const pipelineUserId = queuedItems[0].user_id;
+await log(pipelineUserId, "pipeline_start", `Pipeline started — ${queuedItems.length} bounties queued`);
+
 // ── Work through each item ────────────────────────────────────────────────────
 for (const item of queuedItems) {
   const opp = item.income_opportunities;
@@ -108,6 +111,19 @@ for (const item of queuedItems) {
   if (!opp.reward_usd || opp.reward_usd <= 0) {
     console.log(`  ⚠  No reward attached — skipping`);
     await db.from("income_work_queue").update({ status: "failed", progress_note: "No reward_usd — skipped" }).eq("id", item.id);
+    continue;
+  }
+
+  // Auto-dismiss non-GitHub tasks (design, payout forms, sales kits, etc.)
+  const oppUrl = (opp.url ?? opp.repo_url ?? "").toLowerCase();
+  if (!oppUrl.startsWith("https://github.com/")) {
+    console.log(`  🚫  Non-GitHub task (${opp.source ?? "unknown source"}) — auto-dismissing`);
+    await db.from("income_work_queue").update({
+      status: "failed",
+      progress_note: `Out of scope: non-GitHub task (${opp.source ?? "no source"})`,
+    }).eq("id", item.id);
+    await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
+    await log(userId, "opportunity_dismissed", `${issueTitle} [non-automatable]`, "info");
     continue;
   }
 
@@ -177,8 +193,9 @@ for (const item of queuedItems) {
       }
     } catch (e) {
       await progress(workId, 0, `Fork failed — cannot proceed without push access`);
-      await db.from("income_work_queue").update({ status: "failed" }).eq("id", workId);
-      await log(userId, "agent_skip", `Fork failed for: ${issueTitle}`, "warning");
+      await db.from("income_work_queue").update({ status: "failed", progress_note: "Fork failed — forks may be disabled for this org" }).eq("id", workId);
+      await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
+      await log(userId, "opportunity_dismissed", `${issueTitle} [fork disabled]`, "warning");
       continue;
     }
 
@@ -401,8 +418,8 @@ A clean UNCERTAIN is better than a bad PR.
     console.log(`  ✓  PR: ${prUrl || "failed"}`);
     console.log(`  📝  ${summary.slice(0, 100)}`);
 
-    // Cleanup
-    rmSync(cloneDir, { recursive: true, force: true });
+    // Cleanup — ignore EPERM on Windows (git may still hold handles)
+    try { rmSync(cloneDir, { recursive: true, force: true }); } catch {}
 
   } catch (err) {
     console.error(`  ✗  Error: ${err.message}`);
@@ -416,6 +433,7 @@ A clean UNCERTAIN is better than a bad PR.
 }
 
 console.log(`\n${"─".repeat(60)}\n✅  Agent run complete — check the Pipeline tab in TLS Ops\n`);
+await log(pipelineUserId, "pipeline_end", `Pipeline complete — ${queuedItems.length} processed`);
 process.exit(0);
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
