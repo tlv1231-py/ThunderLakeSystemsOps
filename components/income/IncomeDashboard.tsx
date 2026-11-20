@@ -877,10 +877,11 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
       </div>
       {/* feed — newest at top, no scrollbar, fades at bottom */}
       <div
-        className="h-[55vh] tls-scroll space-y-1 pr-2"
+        className="tls-scroll space-y-1 pr-2"
         style={{
-          WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 60%, transparent 100%)",
-          maskImage:        "linear-gradient(to bottom, black 0%, black 60%, transparent 100%)",
+          height: "calc(100vh - 220px)",
+          WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 88%, transparent 100%)",
+          maskImage:        "linear-gradient(to bottom, black 0%, black 88%, transparent 100%)",
         }}
       >
         {lines.length === 0 && (
@@ -1087,7 +1088,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
             <LiveFeed userId={userId} stagedCount={pendingQueue.length} projected={summary.queueProjectedUsd} onScan={ts => setLastScanTs(ts)} onRun={syncQueue} />
           </div>
           {/* WAITING + SUBMITTED — slim right columns */}
-          <div className="w-[72px] shrink-0 space-y-6 pt-9">
+          <div className="shrink-0 flex flex-row gap-4 pt-9">
             <SideColumn
               label="Waiting"
               color="#fbbf24"
