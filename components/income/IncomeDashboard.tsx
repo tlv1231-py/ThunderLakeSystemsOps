@@ -180,7 +180,7 @@ function MissionCard({ item, fresh }: { item: any; fresh: boolean }) {
           {S_LABEL[st] ?? st}
         </span>
         <div className="flex-1 min-w-0">
-          <p className={`text-sm leading-snug ${S_TITLE_CLS[st] ?? "text-white"}`}>{item.title}</p>
+          <p className="text-sm leading-snug" style={{ color: bountyAccent(item.title || "") }}>{item.title}</p>
 
           {["in_progress", "review"].includes(st) && (
             <div className="mt-2">
@@ -457,7 +457,7 @@ function getAgentServer() {
   return localStorage.getItem("tls_agent_server") || DEFAULT_AGENT_SERVER;
 }
 
-type FeedLine = { id: string; ts: string; type: string; typeColor: string; msg: string; accent: string };
+type FeedLine = { id: string; ts: string; type: string; typeColor: string; msg: string; accent: string; bountyKey?: string };
 
 const BOUNTY_PALETTE = ["#e879f9","#fb923c","#facc15","#a3e635","#34d399","#22d3ee","#818cf8","#f472b6","#ff6b6b","#4ecdc4"];
 
@@ -511,9 +511,9 @@ function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCo
 
   useEffect(() => { setServerAddr(getAgentServer()); }, []);
 
-  function add(type: string, typeColor: string, msg: string, accent: string) {
+  function add(type: string, typeColor: string, msg: string, accent: string, bountyKey?: string) {
     const ts = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    setLines(prev => [...prev.slice(-99), { id: `${Date.now()}-${Math.random()}`, ts, type, typeColor, msg, accent }]);
+    setLines(prev => [...prev.slice(-99), { id: `${Date.now()}-${Math.random()}`, ts, type, typeColor, msg, accent, bountyKey }]);
   }
 
   useEffect(() => {
@@ -533,7 +533,7 @@ function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCo
         const history: FeedLine[] = data.reverse().map((e: any) => {
           const ts = new Date(e.created_at).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
             const { type, typeColor, msg, bountyKey } = formatFeedEntry(e.action, e.detail || "");
-          return { id: e.id, ts, type, typeColor, msg, accent: bountyKey ? bountyAccent(bountyKey) : "#71717a" };
+          return { id: e.id, ts, type, typeColor, msg, accent: bountyKey ? bountyAccent(bountyKey) : "#71717a", bountyKey };
         });
         setLines(history);
       });
@@ -554,18 +554,18 @@ function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCo
           st === "review"      ? ["REVIEW",    "#fbbf24"] :
           st === "pending"     ? ["STAGED",    "#a1a1aa"] :
                                  [st.toUpperCase(), "#52525b"];
-        add(label, typeColor, title, bountyAccent(title));
+        add(label, typeColor, title, bountyAccent(title), title);
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "income_work_queue", filter: `user_id=eq.${userId}` }, (p: any) => {
         const t = p.new.title || "";
-        add("QUEUED", "#a1a1aa", t, bountyAccent(t));
+        add("QUEUED", "#a1a1aa", t, bountyAccent(t), t);
       })
       .subscribe();
 
     const ch2 = (sb as any).channel(`lf_log_${userId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "income_activity_log", filter: `user_id=eq.${userId}` }, (p: any) => {
         const { type, typeColor, msg, bountyKey } = formatFeedEntry(p.new.action, p.new.detail || "");
-        add(type, typeColor, msg, bountyKey ? bountyAccent(bountyKey) : "#71717a");
+        add(type, typeColor, msg, bountyKey ? bountyAccent(bountyKey) : "#71717a", bountyKey);
       })
       .subscribe();
 
@@ -642,13 +642,27 @@ function LiveFeed({ userId, stagedCount, projected }: { userId: string; stagedCo
         {lines.length === 0 && (
           <p className="text-[11px] text-zinc-800 py-1 select-none">— waiting for activity —</p>
         )}
-        {lines.map(l => (
-          <div key={l.id} className="flex gap-3 text-[11px] leading-5">
-            <span className="text-zinc-700 shrink-0 tabular-nums">{l.ts}</span>
-            <span className="shrink-0 w-16 tabular-nums" style={{ color: l.typeColor }}>{l.type}</span>
-            <span className="break-words min-w-0" style={{ color: l.accent }}>{l.msg}</span>
-          </div>
-        ))}
+        {lines.map(l => {
+          // Split message so only the bounty name gets accent color; rest is white
+          let msgNode: React.ReactNode = <span className="text-white">{l.msg}</span>;
+          if (l.bountyKey && l.msg.includes(l.bountyKey)) {
+            const idx = l.msg.indexOf(l.bountyKey);
+            const before = l.msg.slice(0, idx);
+            const after  = l.msg.slice(idx + l.bountyKey.length);
+            msgNode = <>
+              {before && <span className="text-zinc-400">{before}</span>}
+              <span style={{ color: l.accent }}>{l.bountyKey}</span>
+              {after && <span className="text-zinc-400">{after}</span>}
+            </>;
+          }
+          return (
+            <div key={l.id} className="flex gap-3 text-[11px] leading-5">
+              <span className="text-zinc-700 shrink-0 tabular-nums">{l.ts}</span>
+              <span className="shrink-0 w-16 tabular-nums" style={{ color: l.typeColor }}>{l.type}</span>
+              <span className="break-words min-w-0">{msgNode}</span>
+            </div>
+          );
+        })}
         <div ref={bottomRef} />
       </div>
     </div>
