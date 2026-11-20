@@ -294,34 +294,27 @@ function QueueList({ items }: { items: any[] }) {
 
 function Dot() { return <span className="text-zinc-800 text-lg select-none">·</span>; }
 
-function HeaderStats({ summary, winRate, allTimeUsd, openPRs }: {
-  summary: IncomeSummary; winRate: number; allTimeUsd: number; openPRs: number;
+function HeaderStats({ summary, winRate, allTimeUsd, openPRs, totalSubmissions }: {
+  summary: IncomeSummary; winRate: number; allTimeUsd: number; openPRs: number; totalSubmissions: number;
 }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
-  const pct = Math.round(summary.weeklyProgress * 100);
   const remaining = nextHour(now) - now;
 
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-1 mt-2">
       <div>
         <span className="text-lg font-semibold text-white tabular-nums text-glow">{usd(summary.collectedThisWeek)}</span>
-        <span className="text-sm text-zinc-500 ml-1">/ $600</span>
-        <div className="mt-1 relative h-px bg-zinc-800 w-24 overflow-hidden">
-          <div className="absolute inset-y-0 left-0 bg-emerald-400 transition-all duration-500" style={{ width: `${pct}%` }} />
-        </div>
       </div>
       <Dot />
       <div>
-        <span className="text-lg font-semibold text-white tabular-nums">
-          {summary.workQueue.filter(w => !["done","failed","cancelled"].includes(w.status)).length}
-        </span>
-        <span className="text-sm text-zinc-500 ml-1">active</span>
+        <span className="text-lg font-semibold text-white tabular-nums">{totalSubmissions}</span>
+        <span className="text-sm text-zinc-500 ml-1">total submissions</span>
       </div>
       <Dot />
       <div>
         <span className={`text-lg font-semibold tabular-nums ${openPRs > 0 ? "text-sky-400" : "text-zinc-500"}`}>{openPRs}</span>
-        <span className="text-sm text-zinc-500 ml-1">open PRs</span>
+        <span className="text-sm text-zinc-500 ml-1">pending</span>
       </div>
       <Dot />
       <div>
@@ -632,7 +625,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
             <h1 className="text-base font-semibold text-white tracking-wide">
               Bounty Engine<span className="cursor ml-0.5 text-zinc-600">_</span>
             </h1>
-            <HeaderStats summary={summary} winRate={winRate} allTimeUsd={allTimeUsd} openPRs={openPRs} />
+            <HeaderStats summary={summary} winRate={winRate} allTimeUsd={allTimeUsd} openPRs={openPRs} totalSubmissions={totalAttempted} />
           </div>
           <div className="flex items-center gap-3 shrink-0 mt-1">
             {discoverResult && (
