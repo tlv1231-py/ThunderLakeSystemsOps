@@ -158,8 +158,8 @@ export async function GET(req: Request) {
         .select("id").single();
       newCount++;
 
-      // Auto-queue only high-quality bounties: score >= 65, reward >= $15, < 3 open PRs
-      if (opp.reward_usd && opp.reward_usd >= 15 && score >= 65 && (opp.open_prs ?? 0) < 3 && inserted && userId) {
+      // Auto-queue high-quality bounties: score >= 65, < 3 open PRs (reward not required — scorer already penalises missing reward)
+      if (score >= 65 && (opp.open_prs ?? 0) < 3 && inserted && userId) {
         await db.from("income_opportunities").update({ status: "queued" }).eq("id", inserted.id);
         await db.from("income_work_queue").insert({
           engine:          "bounty",

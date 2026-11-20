@@ -789,7 +789,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v30";
+const DASH_VERSION = "v31";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -1350,6 +1350,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
             <IncomeTerminalFeed
               initialEntries={summary.recentActivity}
               lastDiscoveryRun={summary.lastDiscoveryRun}
+              userId={userId}
             />
           </div>
         </div>}
