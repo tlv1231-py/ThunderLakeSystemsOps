@@ -32,6 +32,9 @@ const NON_CODE_TITLE_PATTERNS = [
   /\bopen bounties right now\b/i, /\bbounty discovery\b/i,
   /\bbounty scout\b/i, /\bbounty report\b/i, /\bbounty tracker\b/i,
   /\blist \d+ \w/i, /^order-\d+/i, /atm phase/i,
+  // Meta-bounty aggregator issues (the issue itself is a bounty list, not a code task)
+  /bounty.{0,20}alert/i, /new.{0,20}bounti/i, /\d+\s+new.*bounti/i,
+  /bounti.*found/i, /list.*bounti/i,
 ];
 
 export async function GET(req: Request) {

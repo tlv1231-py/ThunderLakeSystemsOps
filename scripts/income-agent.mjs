@@ -49,13 +49,15 @@ const env = Object.fromEntries(
 );
 
 // Repos/orgs known to be fake bounty aggregators, bot traps, or crypto-only
+// All entries must be lowercase — comparison uses repoLower.includes(p)
 const REPO_BLOCKLIST = [
   "bounty-plaza", "bounty-board", "bounty-list", "bounties-list",
   "crypto-bounty", "web3-bounty", "defi-bounty",
   "bountyscout", "bounty-scout", "bug-bounty-list", "bug-bounties",
+  "/bug-bounty/",
   "bot-trap", "trap-benchmark", "oss-bot-trap",
   "zhangjiayang6835-cyber", "ariahendrawan-sudo",
-  "ClankerNation", "IES-BoilerRoom", "Roxonn-FutureTech",
+  "clankernation", "ies-boilerroom", "roxonn-futuretech",
   "oss-bot-trap-benchmark",
 ];
 
@@ -70,6 +72,10 @@ const NON_CODE_TITLE_PATTERNS = [
   /\bavailability.*inquiry\b/i, /\bpayment inquiry\b/i,
   /\bannouncement\b/i, /\bmarketing\b/i, /\bsocial media\b/i,
   /\bonboarding\b.*\bform\b/i, /\bsurvey\b/i,
+  // Meta-bounty aggregator issue titles (the issue IS a bounty list, not a real fix task)
+  /bounty.{0,20}alert/i, /new.{0,20}bounti/i, /\d+\s+new.*bounti/i,
+  /open bounties/i, /bounty discovery/i, /bounty scout/i, /bounty report/i,
+  /bounty tracker/i, /list.*bounti/i, /bounti.*found/i,
 ];
 
 // Minimum reward in USD — below this, pipeline time per run exceeds expected return
@@ -504,7 +510,10 @@ A clean UNCERTAIN is better than a bad PR.
     // ── 9. Push ───────────────────────────────────────────────────────────────
     await progress(workId, 85, "Pushing branch…");
 
-    run(`git push origin ${branchName} --force-with-lease`, { cwd: cloneDir });
+    // --force: safe on our own fork — overwrite stale branch from a prior pipeline run.
+    // --force-with-lease fails with "stale info" when the branch already exists remotely
+    // but we have no tracking ref for it (shallow clone + fresh branch scenario).
+    run(`git push origin ${branchName} --force`, { cwd: cloneDir });
 
     // ── 10. Open PR ───────────────────────────────────────────────────────────
     await progress(workId, 92, "Opening pull request…");
