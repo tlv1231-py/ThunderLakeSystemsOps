@@ -545,7 +545,16 @@ A clean UNCERTAIN is better than a bad PR.
       prUrl = prOut.match(/https:\/\/github\.com\/[^\s]+/)?.[0] ?? "";
       prNum = parseInt(prUrl.split("/").pop() ?? "0") || null;
     } catch (e) {
-      await progress(workId, 85, `PR creation failed: ${String(e).slice(0, 100)}`);
+      // gh pr create sometimes exits non-zero with warnings even when the PR was created.
+      // Extract the URL from the exception message if present before treating as failure.
+      const errStr = String(e);
+      const urlFromErr = errStr.match(/https:\/\/github\.com\/[^\s'"]+\/pull\/\d+/)?.[0] ?? "";
+      if (urlFromErr) {
+        prUrl = urlFromErr;
+        prNum = parseInt(prUrl.split("/").pop() ?? "0") || null;
+      } else {
+        await progress(workId, 85, `PR creation failed: ${errStr.slice(0, 100)}`);
+      }
     }
 
     // ── 11. Update DB ─────────────────────────────────────────────────────────
