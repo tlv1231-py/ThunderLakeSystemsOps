@@ -473,11 +473,15 @@ function Dot() { return <span className="text-zinc-800 text-lg select-none">·</
 function ScanCountdown({ lastScanTs }: { lastScanTs: string | null }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
-  // Drive from actual last scan time when known; fall back to UTC slot math
-  const nextMs = lastScanTs
-    ? new Date(lastScanTs).getTime() + 15 * 60 * 1000
-    : nextScan(now);
-  const remaining = Math.max(0, nextMs - now);
+  // Drive from last actual scan: advance in 15-min steps until next is in the future
+  let nextMs: number;
+  if (lastScanTs) {
+    nextMs = new Date(lastScanTs).getTime() + 15 * 60 * 1000;
+    while (nextMs <= now) nextMs += 15 * 60 * 1000;
+  } else {
+    nextMs = nextScan(now);
+  }
+  const remaining = nextMs - now;
   return (
     <span className={`text-sm tabular-nums font-mono ${remaining < 120000 ? "text-amber-400" : "text-zinc-600"}`}>
       {countdown(remaining)}
@@ -1103,10 +1107,6 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
           </div>
           <div className="flex items-center gap-3 shrink-0 mt-1">
             <ScanCountdown lastScanTs={lastScanTs} />
-            <button onClick={() => router.refresh()}
-              className="text-sm text-zinc-600 hover:text-zinc-300 transition-colors px-1" title="Refresh">
-              ↺
-            </button>
             <button
               onClick={toggleMute}
               className={`text-sm border px-2.5 py-1 transition-colors ${muted ? "border-zinc-800 text-zinc-700" : "border-zinc-600 text-zinc-300 hover:border-zinc-400"}`}

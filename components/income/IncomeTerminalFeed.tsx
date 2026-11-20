@@ -145,8 +145,9 @@ export function IncomeTerminalFeed({ initialEntries }: Props) {
     else { d.setUTCMinutes(next, 0, 0); }
     return d.getTime();
   }
-  const nextMs = lastScanTs ? lastScanTs + 15 * 60 * 1000 : slotFallback(now);
-  const remaining = Math.max(0, nextMs - now);
+  let nextMs = lastScanTs ? lastScanTs + 15 * 60 * 1000 : slotFallback(now);
+  while (nextMs <= now) nextMs += 15 * 60 * 1000;
+  const remaining = nextMs - now;
   const remM = Math.floor(remaining / 60000);
   const remS = Math.floor((remaining % 60000) / 1000);
   const countdownLabel = `NEXT: ${String(remM).padStart(2,"0")}:${String(remS).padStart(2,"0")}`;
