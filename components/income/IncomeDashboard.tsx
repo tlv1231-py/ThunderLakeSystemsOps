@@ -256,30 +256,7 @@ function playBountyChime() {
 
 // ── realtime missions ─────────────────────────────────────────────────────────
 
-function Missions({ initialItems, userId }: { initialItems: any[]; userId: string }) {
-  const [items, setItems] = useState<any[]>(initialItems);
-  const [fresh, setFresh] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    const sb = createClient();
-    const ch = (sb as any).channel(`m_${userId}`)
-      .on("postgres_changes", {
-        event: "*", schema: "public", table: "income_work_queue", filter: `user_id=eq.${userId}`,
-      }, (p: any) => {
-        if (p.eventType === "INSERT") {
-          setItems(prev => [p.new, ...prev]);
-          setFresh(prev => new Set([...prev, p.new.id]));
-          setTimeout(() => setFresh(prev => { const n = new Set(prev); n.delete(p.new.id); return n; }), 1500);
-          if (p.new.status === "pending") playBountyChime();
-        } else if (p.eventType === "UPDATE") {
-          setItems(prev => prev.map(i => i.id === p.new.id ? { ...i, ...p.new } : i));
-        } else if (p.eventType === "DELETE") {
-          setItems(prev => prev.filter(i => i.id !== p.old.id));
-        }
-      }).subscribe();
-    return () => { sb.removeChannel(ch); };
-  }, [userId]);
-
+function Missions({ items, fresh }: { items: any[]; fresh: Set<string> }) {
   const active = items.filter(i => ["pending","in_progress","review","submitted","done"].includes(i.status));
   if (!active.length) {
     return (
@@ -583,18 +560,39 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   const [menuOpen, setMenuOpen] = useState(false);
   const [, startT] = useTransition();
 
-  useEffect(() => {
-    if (typeof window !== "undefined" && document.documentElement.scrollTop > 100) return;
-  }, []);
+  // Live pipeline items — realtime subscription keeps these current
+  const [liveItems, setLiveItems] = useState<any[]>(pipelineItems);
+  const [fresh, setFresh] = useState<Set<string>>(new Set());
 
-  const pendingQueue    = summary.workQueue.filter(w => w.status === "pending");
-  const submittedCount  = pipelineItems.filter(w => w.status === "submitted").length;
-  const doneCount       = pipelineItems.filter(w => w.status === "done").length;
+  useEffect(() => {
+    const sb = createClient();
+    const ch = (sb as any).channel(`m_${userId}`)
+      .on("postgres_changes", {
+        event: "*", schema: "public", table: "income_work_queue", filter: `user_id=eq.${userId}`,
+      }, (p: any) => {
+        if (p.eventType === "INSERT") {
+          setLiveItems(prev => [p.new, ...prev]);
+          setFresh(prev => new Set([...prev, p.new.id]));
+          setTimeout(() => setFresh(prev => { const n = new Set(prev); n.delete(p.new.id); return n; }), 1500);
+          if (p.new.status === "pending") playBountyChime();
+        } else if (p.eventType === "UPDATE") {
+          setLiveItems(prev => prev.map(i => i.id === p.new.id ? { ...i, ...p.new } : i));
+        } else if (p.eventType === "DELETE") {
+          setLiveItems(prev => prev.filter(i => i.id !== p.old.id));
+        }
+      }).subscribe();
+    return () => { sb.removeChannel(ch); };
+  }, [userId]);
+
+  const pendingQueue    = liveItems.filter(w => w.status === "pending");
+  const submittedCount  = liveItems.filter(w => w.status === "submitted").length;
+  const doneCount       = liveItems.filter(w => w.status === "done").length;
   const paidCount       = allEarnings.filter(e => e.status === "collected").length;
   const allTimeUsd      = allEarnings.filter(e => e.status === "collected").reduce((s, e) => s + e.amount_usd, 0);
   const totalAttempted  = submittedCount + doneCount + paidCount;
   const winRate         = totalAttempted > 0 ? Math.round(((doneCount + paidCount) / totalAttempted) * 100) : 0;
-  const activeMissions  = pipelineItems.filter(w => !["done","failed","cancelled"].includes(w.status)).length;
+  const activeMissions  = liveItems.filter(w => !["done","failed","cancelled"].includes(w.status)).length;
+  const openPRs         = submittedCount;
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "scan",      label: "scan",      count: summary.activeOpportunities || undefined },
@@ -634,7 +632,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
             <h1 className="text-base font-semibold text-white tracking-wide">
               Bounty Engine<span className="cursor ml-0.5 text-zinc-600">_</span>
             </h1>
-            <HeaderStats summary={summary} winRate={winRate} allTimeUsd={allTimeUsd} openPRs={pipelineItems.filter(w => w.status === "submitted").length} />
+            <HeaderStats summary={summary} winRate={winRate} allTimeUsd={allTimeUsd} openPRs={openPRs} />
           </div>
           <div className="flex items-center gap-3 shrink-0 mt-1">
             {discoverResult && (
@@ -670,7 +668,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
         {/* ── active bounties ─────────────────────────────────────────── */}
         <section className="mb-8">
           <SectionHeader label="Active" count={activeMissions} />
-          <Missions userId={userId} initialItems={pipelineItems} />
+          <Missions items={liveItems} fresh={fresh} />
         </section>
 
         {/* ── staged ──────────────────────────────────────────────────── */}
