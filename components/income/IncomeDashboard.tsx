@@ -104,8 +104,14 @@ function countdown(ms: number) {
   return h > 0 ? `${h}h ${m % 60}m` : `${m}m ${s % 60}s`;
 }
 
-function nextHour(now: number) {
-  const d = new Date(now); d.setUTCMinutes(0, 0, 0); d.setUTCHours(d.getUTCHours() + 1);
+function nextScan(now: number) {
+  const d = new Date(now);
+  if (d.getUTCMinutes() < 30) {
+    d.setUTCMinutes(30, 0, 0);
+  } else {
+    d.setUTCMinutes(0, 0, 0);
+    d.setUTCHours(d.getUTCHours() + 1);
+  }
   return d.getTime();
 }
 
@@ -458,7 +464,7 @@ function HeaderStats({ summary, winRate, allTimeUsd, openPRs, totalSubmissions, 
 }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
-  const remaining = nextHour(now) - now;
+  const remaining = nextScan(now) - now;
 
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-1 mt-2">
