@@ -706,7 +706,7 @@ function formatFeedEntry(action: string, detail: string): { msg: string; bountyK
   }
 }
 
-function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; stagedCount: number; projected: number; onScan?: (ts: string) => void }) {
+function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: string; stagedCount: number; projected: number; onScan?: (ts: string) => void; onRun?: () => Promise<void> }) {
   const [lines, setLines] = useState<FeedLine[]>([]);
   const [runState, setRunState] = useState<"idle" | "running" | "done" | "copied">("idle");
   const [serverAddr, setServerAddr] = useState(DEFAULT_AGENT_SERVER);
@@ -811,6 +811,7 @@ function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; 
   async function run() {
     if (runState === "running") return;
     setRunState("running");
+    await onRun?.();
     add("Pipeline triggered", "#fbbf24");
     try {
       const r = await fetch(`${serverAddr}/run`, { method: "POST", signal: AbortSignal.timeout(4000) });
@@ -955,6 +956,17 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   // Sync when server props refresh (router.refresh() polling)
   useEffect(() => { setLiveItems(pipelineItems); }, [pipelineItems]);
 
+  async function syncQueue() {
+    const sb = createClient();
+    const { data } = await (sb as any)
+      .from("income_work_queue")
+      .select("*")
+      .eq("user_id", userId)
+      .not("status", "in", '("done","failed","cancelled")')
+      .order("priority");
+    if (data) setLiveItems(data);
+  }
+
   useEffect(() => {
     const sb = createClient();
     const ch = (sb as any).channel(`m_${userId}`)
@@ -1072,7 +1084,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
         <div className="flex gap-8 items-start mb-8">
           {/* Terminal — no frame, left edge flush */}
           <div className="flex-1 min-w-0">
-            <LiveFeed userId={userId} stagedCount={pendingQueue.length} projected={summary.queueProjectedUsd} onScan={ts => setLastScanTs(ts)} />
+            <LiveFeed userId={userId} stagedCount={pendingQueue.length} projected={summary.queueProjectedUsd} onScan={ts => setLastScanTs(ts)} onRun={syncQueue} />
           </div>
           {/* WAITING + SUBMITTED — slim right columns */}
           <div className="w-[72px] shrink-0 space-y-6 pt-9">
