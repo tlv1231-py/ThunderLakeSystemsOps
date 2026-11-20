@@ -632,21 +632,17 @@ function ScanCountdown({ lastScanTs }: { lastScanTs: string | null }) {
   const [lastScanMs, setLastScanMs] = useState<number | null>(() =>
     lastScanTs ? new Date(lastScanTs).getTime() : null
   );
-  // waitingForScan: true once the slot time passes until a scan_start event confirms the scan landed
-  const [waitingForScan, setWaitingForScan] = useState(false);
   const prevTickSec = useRef<number | null>(null);
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
 
-  // Sync when parent updates lastScanTs (LiveFeed's onScan callback) — most reliable signal
+  // Sync lastScanMs from parent prop (LiveFeed fires onScan on discovery_run)
   useEffect(() => {
     if (!lastScanTs) return;
-    const ts = new Date(lastScanTs).getTime();
-    setLastScanMs(ts);
-    setWaitingForScan(false);
+    setLastScanMs(new Date(lastScanTs).getTime());
   }, [lastScanTs]);
 
-  // Live subscription — update lastScanMs when a scan actually lands
+  // Also sync from subscription as backup
   useEffect(() => {
     const { createClient } = require("@/lib/supabase/client");
     const supabase = createClient();
@@ -659,7 +655,6 @@ function ScanCountdown({ lastScanTs }: { lastScanTs: string | null }) {
         seenScan.add(e.id);
         if (e.action === "discovery_run" || e.action === "scan_start") {
           setLastScanMs(new Date(e.created_at).getTime());
-          setWaitingForScan(false);
         }
       })
       .subscribe();
@@ -672,10 +667,11 @@ function ScanCountdown({ lastScanTs }: { lastScanTs: string | null }) {
   const remM = Math.floor(remaining / 60000);
   const remS = Math.floor((remaining % 60000) / 1000);
 
-  // Enter "scanning…" state when the cron slot arrives — stay until scan_start confirms
-  useEffect(() => {
-    if (remaining < 2000 && !waitingForScan) setWaitingForScan(true);
-  }, [remaining]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Derived: show "scanning…" if we're within 2 min after a slot with no confirmed scan since it.
+  // Self-heals after 2 min even if every subscription missed the event — no stuck state possible.
+  const lastPassedSlot = nextMs - 15 * 60 * 1000;
+  const waitingForScan = (lastScanMs === null || lastPassedSlot > lastScanMs)
+    && (now - lastPassedSlot) < 2 * 60 * 1000;
 
   // Overdue: last confirmed scan > 20 min ago
   const missedMs = lastScanMs ? now - lastScanMs : null;
@@ -856,7 +852,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v38";
+const DASH_VERSION = "v39";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
