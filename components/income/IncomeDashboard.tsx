@@ -308,7 +308,7 @@ function WaitingColumn({ items, fresh, active }: {
       {/* Header */}
       <div className="mb-4 flex items-start justify-between">
         <div className="flex flex-col leading-none">
-          <span className={`text-5xl font-black tabular-nums leading-none ${
+          <span className={`text-4xl font-black tabular-nums leading-none ${
             countDir === "up" ? "num-up" : countDir === "down" ? "num-down" : ""
           } ${items.length === 0 ? "text-zinc-700" : "text-white"}`}>
             {items.length}
@@ -317,7 +317,7 @@ function WaitingColumn({ items, fresh, active }: {
         </div>
         {totalUsd > 0 && (
           <div className="flex flex-col items-end leading-none">
-            <span className={`text-5xl font-black tabular-nums leading-none ${
+            <span className={`text-4xl font-black tabular-nums leading-none ${
               totalDir === "up" ? "num-up" : totalDir === "down" ? "num-down" : "text-white"
             }`}>{usd(totalUsd)}</span>
             <span className="text-[10px] uppercase tracking-widest text-zinc-600 mt-1">total value</span>
@@ -553,6 +553,7 @@ function ScanCountdown({ lastScanTs: initialTs }: { lastScanTs: string | null })
   const [lastScanMs, setLastScanMs] = useState<number | null>(() =>
     initialTs ? new Date(initialTs).getTime() : null
   );
+  const prevTickSec = useRef<number | null>(null);
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
 
@@ -583,11 +584,23 @@ function ScanCountdown({ lastScanTs: initialTs }: { lastScanTs: string | null })
     nextMs = nextScan(now);
   }
   const remaining = nextMs - now;
+  const remM = Math.floor(remaining / 60000);
+  const remS = Math.floor((remaining % 60000) / 1000);
 
   // Overdue: last confirmed scan > 20 min ago
   const missedMs = lastScanMs ? now - lastScanMs : null;
   const isOverdue = missedMs !== null && missedMs > 20 * 60 * 1000;
   const overdueMin = missedMs ? Math.floor(missedMs / 60000) : 0;
+
+  // Tick on last 5 seconds
+  useEffect(() => {
+    if (!isOverdue && remM === 0 && remS >= 1 && remS <= 5) {
+      if (prevTickSec.current !== remS) {
+        prevTickSec.current = remS;
+        playTick();
+      }
+    }
+  }, [now]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isOverdue) {
     return <span className="text-sm tabular-nums font-mono text-red-500 animate-pulse">OVERDUE {overdueMin}m</span>;
@@ -750,7 +763,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v18";
+const DASH_VERSION = "v19";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
