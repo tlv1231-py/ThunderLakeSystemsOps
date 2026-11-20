@@ -59,6 +59,9 @@ const REPO_BLOCKLIST = [
   "zhangjiayang6835-cyber", "ariahendrawan-sudo",
   "clankernation", "ies-boilerroom", "roxonn-futuretech",
   "oss-bot-trap-benchmark",
+  "rustchain-bounties", "rustchain", "elyan-labs", "elyanlabs",
+  "micro-bounty-board", "/bounty-issues/",
+  "dsh-bounty", "furongjun",
 ];
 
 // Keywords in issue titles that signal non-code tasks (content, design, creative, admin)
@@ -76,6 +79,11 @@ const NON_CODE_TITLE_PATTERNS = [
   /bounty.{0,20}alert/i, /new.{0,20}bounti/i, /\d+\s+new.*bounti/i,
   /open bounties/i, /bounty discovery/i, /bounty scout/i, /bounty report/i,
   /bounty tracker/i, /list.*bounti/i, /bounti.*found/i,
+  // Trap/meta-question issues (no real code to fix)
+  /^why did you/i, /^why are you/i, /^who are you/i, /^are you an ai/i,
+  /\[micro-bounty\]/i, /micro.{0,5}bounty/i,
+  // Crypto-token rewards (not USD — no real payout path)
+  /\d+(\.\d+)?\s+(rtc|matic|sol|eth|btc|usdc|usdt)\b/i,
 ];
 
 // Minimum reward in USD — below this, pipeline time per run exceeds expected return
@@ -471,9 +479,12 @@ A clean UNCERTAIN is better than a bad PR.
       agent_log: claudeOutput.slice(-4000),
     }).eq("id", workId);
 
-    // Check if Claude made real changes — exclude BOUNTY_TASK.md which we wrote ourselves
+    // Check if Claude made real changes — exclude pipeline-generated files
+    const PIPELINE_FILES = ["BOUNTY_TASK.md", "AGENT_SUMMARY.md"];
     const diffStat = run("git status --porcelain", { cwd: cloneDir });
-    const realChanges = diffStat.split("\n").filter(l => l.trim() && !l.includes("BOUNTY_TASK.md")).join("\n");
+    const realChanges = diffStat.split("\n")
+      .filter(l => l.trim() && !PIPELINE_FILES.some(f => l.includes(f)))
+      .join("\n");
     const hasChanges = realChanges.trim().length > 0;
 
     // Check for summary
@@ -482,13 +493,15 @@ A clean UNCERTAIN is better than a bad PR.
       ? readFileSync(summaryPath, "utf8").trim()
       : "";
 
-    if (!hasChanges) {
-      const uncertainMatch = summary.match(/^UNCERTAIN:\s*(.+)/i);
+    // Abort if UNCERTAIN, even when there are other changes (e.g. Claude wrote notes but no real fix)
+    const uncertainMatch = summary.match(/^UNCERTAIN:\s*(.+)/i);
+    if (!hasChanges || uncertainMatch) {
       const abandonReason = uncertainMatch
         ? uncertainMatch[1].split("\n")[0].slice(0, 100)
         : "Claude produced no code changes";
       await progress(workId, 0, `Abandoned — ${abandonReason}`);
       await db.from("income_work_queue").update({ status: "failed" }).eq("id", workId);
+      await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
       await log(userId, "agent_no_changes", `${issueTitle}|||${abandonReason}`, "warning");
       try { rmSync(cloneDir, { recursive: true, force: true }); } catch {}
       continue;

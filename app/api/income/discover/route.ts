@@ -20,6 +20,9 @@ const REPO_BLOCKLIST = [
   "zhangjiayang6835-cyber", "ariahendrawan-sudo",
   // Crypto/DeFi orgs that post huge USDC bounties requiring Solidity expertise
   "ClankerNation", "IES-BoilerRoom", "Roxonn-FutureTech",
+  // Crypto micro-bounty aggregators (RTC, MATIC, SOL tokens — no USD payout)
+  "rustchain-bounties", "rustchain", "elyan-labs", "elyanlabs",
+  "dsh-bounty", "furongjun",
 ];
 
 // Extended non-code title patterns
@@ -35,6 +38,11 @@ const NON_CODE_TITLE_PATTERNS = [
   // Meta-bounty aggregator issues (the issue itself is a bounty list, not a code task)
   /bounty.{0,20}alert/i, /new.{0,20}bounti/i, /\d+\s+new.*bounti/i,
   /bounti.*found/i, /list.*bounti/i,
+  // Trap/meta-question issues
+  /^why did you/i, /^why are you/i, /^who are you/i, /^are you an ai/i,
+  /\[micro-bounty\]/i, /micro.{0,5}bounty/i,
+  // Crypto-token rewards (not USD — no real payout path)
+  /\d+(\.\d+)?\s+(rtc|matic|sol|eth|btc|usdc|usdt)\b/i,
 ];
 
 export async function GET(req: Request) {
