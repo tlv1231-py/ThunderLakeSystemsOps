@@ -34,6 +34,7 @@ export default async function IncomePage() {
     { data: assets },
     { data: pipelineItems },
     { data: outcomeOpps },
+    { count: totalScanned },
   ] = await Promise.all([
     db.from("income_earnings").select("*").eq("user_id", user.id)
       .order("earned_date", { ascending: false }).limit(200),
@@ -53,6 +54,8 @@ export default async function IncomePage() {
     // Historical outcomes for win rate by source
     db.from("income_opportunities").select("source, status").eq("user_id", user.id)
       .in("status", ["submitted", "accepted", "paid", "rejected", "done"]),
+    // Total bounties ever scanned (all statuses)
+    db.from("income_opportunities").select("*", { count: "exact", head: true }).eq("user_id", user.id),
   ]);
 
   const earningsList  = earnings ?? [];
@@ -123,6 +126,7 @@ export default async function IncomePage() {
     lastDiscoveryRun:    lastDiscovery?.created_at ?? null,
     queueProjectedUsd,
     winRateBySource,
+    totalBountyCount: totalScanned ?? 0,
     recentEarnings:      earningsList.slice(0, 20),
     topOpportunities:    (opportunities ?? []).slice(0, 50),
     workQueue:           allWork,

@@ -144,6 +144,7 @@ export interface IncomeSummary {
   lastDiscoveryRun: string | null;
   queueProjectedUsd: number;
   winRateBySource: Record<string, WinRateBySource>;
+  totalBountyCount: number;
   recentEarnings: Earning[];
   topOpportunities: Opportunity[];
   workQueue: WorkItem[];

@@ -548,9 +548,10 @@ function StatCell({ value, label, color }: { value: string; label: string; color
   );
 }
 
-function HeaderStats({ allTimeUsd, inFlightUsd, submittedAllTime, acceptedCount, rejectedCount, winRate }: {
-  allTimeUsd: number; inFlightUsd: number; submittedAllTime: number; acceptedCount: number; rejectedCount: number; winRate: number;
+function HeaderStats({ allTimeUsd, inFlightUsd, submittedAllTime, acceptedCount, rejectedCount, winRate, totalScanned }: {
+  allTimeUsd: number; inFlightUsd: number; submittedAllTime: number; acceptedCount: number; rejectedCount: number; winRate: number; totalScanned: number;
 }) {
+  const hasRecord = acceptedCount + rejectedCount > 0;
   return (
     <div className="flex flex-wrap items-end gap-x-7 gap-y-1 mt-2">
       <StatCell value={usd(allTimeUsd)} label="total earned" color={allTimeUsd > 0 ? "text-emerald-400 green-glow" : "text-zinc-500"} />
@@ -559,11 +560,18 @@ function HeaderStats({ allTimeUsd, inFlightUsd, submittedAllTime, acceptedCount,
       <Dot />
       <StatCell value={String(submittedAllTime)} label="submitted" />
       <Dot />
-      <StatCell value={String(acceptedCount)} label="accepted" color={acceptedCount > 0 ? "text-emerald-400" : "text-zinc-500"} />
+      {/* Compact W/L + win% combined cell */}
+      <div className="flex flex-col">
+        <div className="flex items-baseline gap-1 leading-tight">
+          <span className={`text-lg font-semibold tabular-nums ${acceptedCount > 0 ? "text-emerald-400" : "text-zinc-500"}`}>{acceptedCount}W</span>
+          <span className="text-zinc-700 text-sm select-none">·</span>
+          <span className={`text-lg font-semibold tabular-nums ${rejectedCount > 0 ? "text-red-400" : "text-zinc-500"}`}>{rejectedCount}L</span>
+          <span className={`text-sm tabular-nums font-mono ml-1 ${hasRecord ? "text-zinc-400" : "text-zinc-600"}`}>{winRate}%</span>
+        </div>
+        <span className="text-[11px] text-zinc-600 leading-tight">win rate</span>
+      </div>
       <Dot />
-      <StatCell value={String(rejectedCount)} label="rejected" color={rejectedCount > 0 ? "text-red-400" : "text-zinc-500"} />
-      <Dot />
-      <StatCell value={`${winRate}%`} label="win rate" color={winRate > 0 ? "text-white" : "text-zinc-500"} />
+      <StatCell value={totalScanned > 0 ? totalScanned.toLocaleString() : "—"} label="bounties scanned" color={totalScanned > 0 ? "text-zinc-400" : "text-zinc-600"} />
     </div>
   );
 }
@@ -1153,7 +1161,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
               Bounty Engine<span className="cursor ml-0.5 text-zinc-600">_</span>
               <span className="ml-2 text-[10px] text-zinc-700 font-mono font-normal">{DASH_VERSION}</span>
             </h1>
-            <HeaderStats allTimeUsd={allTimeUsd} inFlightUsd={inFlightUsd} submittedAllTime={submittedAllTime} acceptedCount={acceptedCount} rejectedCount={rejectedCount} winRate={winRate} />
+            <HeaderStats allTimeUsd={allTimeUsd} inFlightUsd={inFlightUsd} submittedAllTime={submittedAllTime} acceptedCount={acceptedCount} rejectedCount={rejectedCount} winRate={winRate} totalScanned={summary.totalBountyCount} />
           </div>
           <div className="flex items-center gap-3 shrink-0 mt-1">
             <ScanCountdown lastScanTs={lastScanTs} />
