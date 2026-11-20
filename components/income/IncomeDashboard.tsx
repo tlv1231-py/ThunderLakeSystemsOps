@@ -83,6 +83,17 @@ const CSS = `
   0%,100%{ border-color:rgba(45,212,191,0.4); box-shadow:0 0 8px rgba(45,212,191,0.2); }
   50%    { border-color:rgba(45,212,191,0.9); box-shadow:0 0 18px rgba(45,212,191,0.5); }
 }
+@keyframes tileExitWin {
+  0%  { opacity:1; transform:scale(1) translateY(0); filter:brightness(1); }
+  18% { transform:scale(1.07) translateY(-3px); filter:brightness(1.8); border-color:rgba(74,222,128,0.9); box-shadow:0 0 24px 6px rgba(74,222,128,0.5); }
+  100%{ opacity:0; transform:scale(0.55) translateY(-52px); filter:brightness(0); }
+}
+@keyframes tileExitFail {
+  0%   { opacity:1; transform:scale(1) translateX(0); filter:brightness(1); }
+  10%  { transform:scale(0.97) translateX(-5px); border-color:rgba(248,113,113,0.7); }
+  20%  { transform:scale(0.98) translateX(4px); }
+  100% { opacity:0; transform:scale(0.78) translateY(18px); filter:brightness(0.3) saturate(0); }
+}
 
 .text-glow   { animation: textGlow 3s ease-in-out infinite }
 .green-glow  { animation: greenGlow 3s ease-in-out infinite }
@@ -94,7 +105,9 @@ const CSS = `
 .scan-prog   { transform-origin:left; animation: scanProg 55s linear forwards }
 .tile-enter  { animation: tileEnter .42s cubic-bezier(0.22,1.2,0.36,1) both }
 .tile-submit { animation: tileSubmit .5s ease-out, tilePulse 1.5s ease-in-out 2 }
-.tile-active { animation: tileActive 1.8s ease-in-out infinite }
+.tile-active    { animation: tileActive 1.8s ease-in-out infinite }
+.tile-exit-win  { animation: tileExitWin  .58s cubic-bezier(0.4,0,1,1) forwards; pointer-events:none; }
+.tile-exit-fail { animation: tileExitFail .48s ease-in forwards; pointer-events:none; }
 .count-punch { animation: countPunch .38s cubic-bezier(0.34,1.56,0.64,1) both }
 .card-glow   { animation: cardGlow .6s ease-out both }
 @keyframes numUp   { 0%{transform:translateY(6px);color:#22c55e} 70%{color:#4ade80} 100%{transform:translateY(0);color:#fff} }
@@ -276,9 +289,10 @@ function BoardColumn({ label, colorLabel, items, fresh, submitted, active }: {
   );
 }
 
-function WaitingColumn({ items, fresh, active }: {
+function WaitingColumn({ items, fresh, active, exiting }: {
   items: { id: string; title: string; usdAmt: number; url?: string | null; score?: number | null }[];
   fresh?: Set<string>; active?: Set<string>;
+  exiting?: Map<string, { type: "win" | "fail"; item: any }>;
 }) {
   const [prevCount, setPrevCount] = useState(items.length);
   const [countDir, setCountDir] = useState<"up"|"down"|null>(null);
@@ -328,7 +342,7 @@ function WaitingColumn({ items, fresh, active }: {
 
       {/* Cards */}
       <div className="flex flex-col gap-2.5">
-        {items.length === 0 && <span className="text-[11px] text-zinc-800">—</span>}
+        {items.length === 0 && (exiting?.size ?? 0) === 0 && <span className="text-[11px] text-zinc-800">—</span>}
         {items.map(item => {
           const accent = bountyAccent(item.title);
           const isFresh = fresh?.has(item.id);
@@ -367,6 +381,41 @@ function WaitingColumn({ items, fresh, active }: {
                   display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
                 }}>
                   {item.title}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {/* Exiting tiles — held in DOM during exit animation, then removed */}
+        {exiting && [...exiting.entries()].map(([id, { type, item: ex }]) => {
+          const accent = bountyAccent(ex.title ?? "");
+          const amtLabel = ex.expected_usd > 0 ? `$${Math.round(ex.expected_usd)}` : "?";
+          const scoreVal: number | null = ex.income_opportunities?.score ?? null;
+          const scoreColor = scoreVal != null ? `hsl(${Math.round(scoreVal * 1.2)},85%,55%)` : null;
+          return (
+            <div key={`exit-${id}`} className={`tile-exit-${type} select-none`}>
+              <div
+                className="p-3 border"
+                style={{
+                  borderColor: type === "win" ? "rgba(74,222,128,0.5)" : "rgba(248,113,113,0.3)",
+                  background: type === "win" ? "rgba(74,222,128,0.07)" : `${accent}09`,
+                }}
+              >
+                <div className="flex items-baseline justify-between gap-1 leading-none">
+                  {scoreColor && (
+                    <span className="text-[20px] font-mono font-bold tabular-nums" style={{ color: scoreColor }}>
+                      {scoreVal}
+                    </span>
+                  )}
+                  <span className="text-[20px] font-mono font-bold tabular-nums ml-auto" style={{ color: type === "win" ? "#4ade80" : "#f87171" }}>
+                    {amtLabel}
+                  </span>
+                </div>
+                <div className="text-[10px] mt-1.5 leading-snug" style={{
+                  color: type === "win" ? "rgba(74,222,128,0.6)" : "rgba(248,113,113,0.4)",
+                  display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+                }}>
+                  {ex.title}
                 </div>
               </div>
             </div>
@@ -789,7 +838,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v34";
+const DASH_VERSION = "v35";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -1185,6 +1234,9 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   const [liveItems, setLiveItems] = useState<any[]>(pipelineItems);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
   const [submitted, setSubmitted] = useState<Set<string>>(new Set());
+  const [exitingTiles, setExitingTiles] = useState<Map<string, { type: "win" | "fail"; item: any }>>(new Map());
+  const liveItemsRef = useRef<any[]>(pipelineItems);
+  useEffect(() => { liveItemsRef.current = liveItems; }, [liveItems]);
   const [lastScanTs, setLastScanTs] = useState<string | null>(summary.lastDiscoveryRun);
 
   // Sync when server props refresh (router.refresh() polling)
@@ -1212,8 +1264,24 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
           setFresh(prev => new Set([...prev, p.new.id]));
           setTimeout(() => setFresh(prev => { const n = new Set(prev); n.delete(p.new.id); return n; }), 800);
         } else if (p.eventType === "UPDATE") {
+          const prevItem = liveItemsRef.current.find(i => i.id === p.new.id);
+          const wasQueued = prevItem && ["pending","in_progress","review"].includes(prevItem.status);
           setLiveItems(prev => prev.map(i => i.id === p.new.id ? { ...i, ...p.new } : i));
-          if (p.new.status === "submitted") {
+          if (wasQueued && p.new.status === "submitted") {
+            // Win exit: flash green, zip upward
+            setExitingTiles(prev => { const n = new Map(prev); n.set(p.new.id, { type: "win", item: { ...prevItem, ...p.new } }); return n; });
+            setTimeout(() => setExitingTiles(prev => { const n = new Map(prev); n.delete(p.new.id); return n; }), 700);
+            setFresh(prev => new Set([...prev, p.new.id]));
+            setSubmitted(prev => new Set([...prev, p.new.id]));
+            setTimeout(() => {
+              setFresh(prev => { const n = new Set(prev); n.delete(p.new.id); return n; });
+              setSubmitted(prev => { const n = new Set(prev); n.delete(p.new.id); return n; });
+            }, 1200);
+          } else if (wasQueued && ["failed","cancelled"].includes(p.new.status)) {
+            // Fail exit: shake red, crumple down
+            setExitingTiles(prev => { const n = new Map(prev); n.set(p.new.id, { type: "fail", item: { ...prevItem, ...p.new } }); return n; });
+            setTimeout(() => setExitingTiles(prev => { const n = new Map(prev); n.delete(p.new.id); return n; }), 600);
+          } else if (!wasQueued && p.new.status === "submitted") {
             setFresh(prev => new Set([...prev, p.new.id]));
             setSubmitted(prev => new Set([...prev, p.new.id]));
             setTimeout(() => {
@@ -1309,6 +1377,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
                 }))}
               fresh={fresh}
               active={activeSet}
+              exiting={exitingTiles}
             />
           </div>
         </div>
