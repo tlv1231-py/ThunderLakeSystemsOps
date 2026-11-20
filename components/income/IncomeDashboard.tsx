@@ -193,13 +193,14 @@ function BountyTile({ id, title, usdAmt, score, url, fresh, submitted }: {
       <div
         className={`w-16 h-16 flex items-center justify-center cursor-pointer select-none transition-all duration-150 ${fresh ? (submitted ? "tile-submit" : "tile-enter") : ""}`}
         style={{
-          background: accent,
+          background: '#000',
+          border: `1px solid rgba(255,255,255,0.3)`,
           ["--ta" as any]: accent + "aa",
-          boxShadow: tip ? `0 0 14px 2px ${accent}66` : "none",
+          boxShadow: tip ? `0 0 14px 2px ${accent}44` : "none",
         }}
         onClick={() => url && window.open(url, "_blank")}
       >
-        <span className="text-[13px] font-mono font-bold tabular-nums text-black">{label}</span>
+        <span className="text-[16px] font-mono font-bold tabular-nums" style={{ color: accent }}>{label}</span>
       </div>
       {tip && (
         <div className="absolute bottom-full left-0 mb-2 z-50 w-52 bg-zinc-950 border border-zinc-700 p-2 pointer-events-none" style={{ borderLeftColor: accent, borderLeftWidth: 2 }}>
@@ -567,6 +568,25 @@ type FeedLine = { id: string; ts: string; msg: string; accent: string; bountyKey
 
 const BOUNTY_PALETTE = ["#e879f9","#fb923c","#facc15","#a3e635","#34d399","#22d3ee","#818cf8","#f472b6","#ff6b6b","#4ecdc4"];
 
+const ACTION_COLORS: [string, string][] = [
+  ["Abandoned",      "#f87171"],
+  ["Error:",         "#f87171"],
+  ["Failed",         "#f87171"],
+  ["Server offline", "#f87171"],
+  ["Merged",         "#4ade80"],
+  ["PR opened",      "#4ade80"],
+  ["Earned",         "#4ade80"],
+  ["Found ",         "#38bdf8"],
+  ["Discovery scan", "#38bdf8"],
+  ["PR closed",      "#71717a"],
+  ["Pipeline",       "#52525b"],
+  ["Skipped",        "#71717a"],
+  ["Staged",         "#71717a"],
+  ["Dismissed",      "#71717a"],
+  ["Working on",     "#2dd4bf"],
+  ["In review",      "#fbbf24"],
+];
+
 function bountyAccent(key: string): string {
   let h = 0;
   for (let i = 0; i < key.length; i++) h = (Math.imul(31, h) + key.charCodeAt(i)) | 0;
@@ -764,21 +784,36 @@ function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; 
           <p className="text-[11px] text-zinc-800 py-1 select-none">— waiting for activity —</p>
         )}
         {lines.map(l => {
-          let msgNode: React.ReactNode = <span className="text-white">{l.msg}</span>;
-          if (l.bountyKey && l.msg.includes(l.bountyKey)) {
-            const idx = l.msg.indexOf(l.bountyKey);
-            const before = l.msg.slice(0, idx);
-            const after  = l.msg.slice(idx + l.bountyKey.length);
-            msgNode = <>
+          // find action keyword at start for P/L color coding
+          let kwLen = 0, kwColor = "";
+          for (const [kw, c] of ACTION_COLORS) {
+            if (l.msg.startsWith(kw)) { kwLen = kw.length; kwColor = c; break; }
+          }
+          const kwText = l.msg.slice(0, kwLen);
+          const rest   = l.msg.slice(kwLen);
+
+          // apply bountyKey accent to the remainder
+          let restNode: React.ReactNode;
+          if (l.bountyKey && rest.includes(l.bountyKey)) {
+            const idx    = rest.indexOf(l.bountyKey);
+            const before = rest.slice(0, idx);
+            const after  = rest.slice(idx + l.bountyKey.length);
+            restNode = <>
               {before && <span className="text-white">{before}</span>}
               <span style={{ color: l.accent }}>{l.bountyKey}</span>
               {after && <span className="text-white">{after}</span>}
             </>;
+          } else {
+            restNode = <span className="text-white">{rest}</span>;
           }
+
           return (
             <div key={l.id} className="flex gap-2 text-[11px] leading-5">
               <span className="text-zinc-600 shrink-0 tabular-nums">{l.ts}</span>
-              <span className="break-words min-w-0">{msgNode}</span>
+              <span className="break-words min-w-0">
+                {kwLen > 0 && <span style={{ color: kwColor }}>{kwText}</span>}
+                {restNode}
+              </span>
             </div>
           );
         })}
@@ -941,6 +976,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
             colorLabel="#2dd4bf"
             items={(summary.topOpportunities as Opportunity[])
               .filter(o => !["dismissed","queued","in_progress","submitted","done","paid"].includes(o.status))
+              .filter(o => (o.reward_usd ?? 0) > 0)
               .slice(0, 20)
               .map(o => ({ id: o.id, title: o.title, usdAmt: o.reward_usd ?? 0, score: o.score, url: o.url }))}
             fresh={fresh}
