@@ -178,15 +178,15 @@ const S_BAR_CLS: Record<string, string> = {
 
 // ── bounty tile (pixel square) ───────────────────────────────────────────────
 
-function BountyTile({ id, title, usdAmt, url, fresh, submitted }: {
-  id: string; title: string; usdAmt: number; url?: string | null; fresh?: boolean; submitted?: boolean;
+function BountyTile({ id, title, usdAmt, score, url, fresh, submitted }: {
+  id: string; title: string; usdAmt: number; score?: number | null; url?: string | null; fresh?: boolean; submitted?: boolean;
 }) {
   const accent = bountyAccent(title);
   const [tip, setTip] = useState(false);
   const label = usdAmt >= 1000
     ? `$${(usdAmt / 1000 % 1 === 0 ? (usdAmt / 1000).toFixed(0) : (usdAmt / 1000).toFixed(1))}k`
     : usdAmt > 0 ? `$${Math.round(usdAmt)}`
-    : "—";
+    : score != null ? `${score}` : "?";
 
   return (
     <div className="relative" onMouseEnter={() => setTip(true)} onMouseLeave={() => setTip(false)}>
@@ -205,6 +205,7 @@ function BountyTile({ id, title, usdAmt, url, fresh, submitted }: {
       {tip && (
         <div className="absolute bottom-full left-0 mb-2 z-50 w-52 bg-zinc-950 border border-zinc-700 p-2 pointer-events-none" style={{ borderLeftColor: accent, borderLeftWidth: 2 }}>
           <p className="text-[11px] text-white leading-snug mb-1">{title}</p>
+          {score != null && <p className="text-[10px] text-zinc-500 mb-0.5">score {score}</p>}
           {url && <p className="text-[10px] text-zinc-600 truncate">{url.replace("https://github.com/", "")}</p>}
         </div>
       )}
@@ -213,7 +214,7 @@ function BountyTile({ id, title, usdAmt, url, fresh, submitted }: {
 }
 
 function BoardColumn({ label, colorLabel, items, fresh, submitted }: {
-  label: string; colorLabel: string; items: { id: string; title: string; usdAmt: number; url?: string | null }[];
+  label: string; colorLabel: string; items: { id: string; title: string; usdAmt: number; score?: number | null; url?: string | null }[];
   fresh?: Set<string>; submitted?: Set<string>;
 }) {
   return (
@@ -229,6 +230,7 @@ function BoardColumn({ label, colorLabel, items, fresh, submitted }: {
             id={item.id}
             title={item.title}
             usdAmt={item.usdAmt}
+            score={item.score}
             url={item.url}
             fresh={fresh?.has(item.id)}
             submitted={submitted?.has(item.id)}
@@ -607,6 +609,10 @@ function formatFeedEntry(action: string, detail: string): { type: string; typeCo
       return { type: "PIPELINE",   typeColor: "#52525b", msg: detail };
     case "pipeline_end":
       return { type: "PIPELINE",   typeColor: "#4ade80", msg: detail };
+    case "scan_start":
+      return { type: "SCAN START", typeColor: "#2dd4bf", msg: detail };
+    case "scan_source":
+      return { type: "SCAN",       typeColor: "#334155", msg: detail };
     default:
       return { type: action.replace(/_/g, " ").toUpperCase().slice(0, 10), typeColor: "#52525b", msg: detail };
   }
@@ -937,7 +943,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
             items={(summary.topOpportunities as Opportunity[])
               .filter(o => !["dismissed","queued","in_progress","submitted","done","paid"].includes(o.status))
               .slice(0, 20)
-              .map(o => ({ id: o.id, title: o.title, usdAmt: o.reward_usd ?? 0, url: o.url }))}
+              .map(o => ({ id: o.id, title: o.title, usdAmt: o.reward_usd ?? 0, score: o.score, url: o.url }))}
             fresh={fresh}
           />
           <BoardColumn
