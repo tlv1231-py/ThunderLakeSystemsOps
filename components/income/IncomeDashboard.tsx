@@ -576,7 +576,7 @@ function bountyAccent(key: string): string {
 function formatFeedEntry(action: string, detail: string): { type: string; typeColor: string; msg: string; bountyKey?: string } {
   switch (action) {
     case "discovery_run":
-      return { type: "SCAN",       typeColor: "#2dd4bf", msg: detail };
+      return { type: "SCAN",       typeColor: "#4ade80", msg: detail };
     case "agent_pr_opened": {
       const [title, url] = detail.split(" → ");
       const prNum = url?.match(/pull\/(\d+)/)?.[1];
@@ -589,7 +589,7 @@ function formatFeedEntry(action: string, detail: string): { type: string; typeCo
     case "pr_closed":
       return { type: "PR CLOSED",  typeColor: "#a1a1aa", msg: detail, bountyKey: detail };
     case "agent_no_changes":
-      return { type: "NO CHANGE",  typeColor: "#fbbf24", msg: `No changes made — ${detail}`, bountyKey: detail };
+      return { type: "SKIPPED",    typeColor: "#3f3f46", msg: detail, bountyKey: detail };
     case "agent_skip":
       return { type: "SKIPPED",    typeColor: "#52525b", msg: detail };
     case "agent_error":
@@ -609,9 +609,9 @@ function formatFeedEntry(action: string, detail: string): { type: string; typeCo
     case "pipeline_end":
       return { type: "PIPELINE",   typeColor: "#4ade80", msg: detail };
     case "scan_start":
-      return { type: "SCAN START", typeColor: "#2dd4bf", msg: detail };
+      return { type: "SCAN",       typeColor: "#4ade80", msg: detail };
     case "scan_source":
-      return { type: "SCAN",       typeColor: "#334155", msg: detail };
+      return { type: "SCAN",       typeColor: "#4ade80", msg: detail };
     default:
       return { type: action.replace(/_/g, " ").toUpperCase().slice(0, 10), typeColor: "#52525b", msg: detail };
   }
@@ -776,7 +776,7 @@ function LiveFeed({ userId, stagedCount, projected, onScan }: { userId: string; 
           return (
             <div key={l.id} className="flex gap-3 text-[11px] leading-5">
               <span className="text-zinc-700 shrink-0 tabular-nums">{l.ts}</span>
-              <span className="shrink-0 w-16 tabular-nums text-white">{l.type}</span>
+              <span className="shrink-0 w-16 tabular-nums" style={{ color: l.typeColor }}>{l.type}</span>
               <span className="break-words min-w-0">{msgNode}</span>
             </div>
           );
