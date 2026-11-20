@@ -42,6 +42,23 @@ export async function GET(req: Request) {
     userId = users?.users?.[0]?.id ?? null;
   }
 
+  // ── Idempotency guard ─────────────────────────────────────────────────────
+  // Prevents duplicate scans from concurrent triggers (Vercel cron + pg_cron collision,
+  // dashboard manual trigger during in-flight scan, etc.). 12-minute window ensures
+  // any legit 15-min slot passes through while killing same-slot duplicates.
+  const guardWindow = new Date(Date.now() - 12 * 60 * 1000).toISOString();
+  const { data: recentScan } = await db
+    .from("income_activity_log")
+    .select("created_at")
+    .eq("user_id", userId)
+    .eq("action", "scan_start")
+    .gt("created_at", guardWindow)
+    .limit(1)
+    .maybeSingle();
+  if (recentScan) {
+    return NextResponse.json({ ok: true, skipped: true, reason: "duplicate_within_12m" });
+  }
+
   const startMs = Date.now();
 
   // ── Log scan start ─────────────────────────────────────────────────────────
