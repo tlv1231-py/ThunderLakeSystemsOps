@@ -20,6 +20,8 @@ const REPO_BLOCKLIST = [
   "zhangjiayang6835-cyber", "ariahendrawan-sudo",
   // Crypto/DeFi orgs that post huge USDC bounties requiring Solidity expertise
   "ClankerNation", "IES-BoilerRoom", "Roxonn-FutureTech",
+  // Stellar blockchain payment apps — bounties pay in XLM/Stellar tokens, not USD
+  "ophirpay",
   // Crypto micro-bounty aggregators (RTC, MATIC, SOL tokens — no USD payout)
   "rustchain-bounties", "rustchain", "elyan-labs", "elyanlabs",
   "dsh-bounty", "furongjun",
@@ -49,6 +51,10 @@ const NON_CODE_TITLE_PATTERNS = [
   /bountycoordinator/i,
   // Maths/data bounties (financial data analysis, not code)
   /\bmaths bounty\b/i,
+  // Stellar blockchain bounty programs (pay in XLM, not USD)
+  /stellar drips/i, /stellar.*bounty/i,
+  // formatStellarAmount and similar Stellar-chain function names in titles
+  /stellar amount/i,
 ];
 
 export async function GET(req: Request) {

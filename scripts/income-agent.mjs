@@ -62,6 +62,8 @@ const REPO_BLOCKLIST = [
   "rustchain-bounties", "rustchain", "elyan-labs", "elyanlabs",
   "micro-bounty-board", "/bounty-issues/",
   "dsh-bounty", "furongjun",
+  // Stellar blockchain payment apps — bounties pay in XLM/Stellar tokens, not USD
+  "ophirpay",
   // Auto-generated training data / AI-task repos — no real payout mechanism
   "misakanet", "ikalus1988",
   // Fake bounty coordinator spam accounts (post crypto USDC bounties on random repos)
@@ -91,6 +93,9 @@ const NON_CODE_TITLE_PATTERNS = [
   // Fake bounty coordinator spam / maths/data bounties
   /bountycoordinator/i,
   /\bmaths bounty\b/i,
+  // Stellar blockchain bounty programs (pay in XLM, not USD)
+  /stellar drips/i, /stellar.*bounty/i,
+  /stellar amount/i,
 ];
 
 // Minimum reward in USD — below this, pipeline time per run exceeds expected return
