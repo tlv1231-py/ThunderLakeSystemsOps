@@ -642,45 +642,20 @@ function ScanCountdown({ lastScanTs }: { lastScanTs: string | null }) {
     setLastScanMs(new Date(lastScanTs).getTime());
   }, [lastScanTs]);
 
-  // Also sync from subscription as backup
-  useEffect(() => {
-    const { createClient } = require("@/lib/supabase/client");
-    const supabase = createClient();
-    const seenScan = new Set<string>();
-    const ch = (supabase as any)
-      .channel("scan_countdown")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "income_activity_log" }, (p: any) => {
-        const e = p.new;
-        if (seenScan.has(e.id)) return;
-        seenScan.add(e.id);
-        if (e.action === "discovery_run" || e.action === "scan_start") {
-          setLastScanMs(new Date(e.created_at).getTime());
-        }
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, []);
-
   let nextMs = nextScan(now);
   while (nextMs <= now) nextMs += 15 * 60 * 1000;
   const remaining = nextMs - now;
   const remM = Math.floor(remaining / 60000);
   const remS = Math.floor((remaining % 60000) / 1000);
 
-  // Derived: show "scanning…" if we're within 2 min after a slot with no confirmed scan since it.
-  // Self-heals after 2 min even if every subscription missed the event — no stuck state possible.
+  // Show "scanning…" for up to 90s after a slot passes (self-heals even if event missed)
   const lastPassedSlot = nextMs - 15 * 60 * 1000;
   const waitingForScan = (lastScanMs === null || lastPassedSlot > lastScanMs)
-    && (now - lastPassedSlot) < 2 * 60 * 1000;
-
-  // Overdue: last confirmed scan > 20 min ago
-  const missedMs = lastScanMs ? now - lastScanMs : null;
-  const isOverdue = missedMs !== null && missedMs > 20 * 60 * 1000;
-  const overdueMin = missedMs ? Math.floor(missedMs / 60000) : 0;
+    && (now - lastPassedSlot) < 90 * 1000;
 
   // Tick on last 5 seconds
   useEffect(() => {
-    if (!waitingForScan && !isOverdue && remM === 0 && remS >= 1 && remS <= 5) {
+    if (!waitingForScan && remM === 0 && remS >= 1 && remS <= 5) {
       if (prevTickSec.current !== remS) {
         prevTickSec.current = remS;
         playTick();
@@ -688,9 +663,6 @@ function ScanCountdown({ lastScanTs }: { lastScanTs: string | null }) {
     }
   }, [now]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (isOverdue) {
-    return <span className="text-sm tabular-nums font-mono text-red-500 animate-pulse">OVERDUE {overdueMin}m</span>;
-  }
   if (waitingForScan) {
     const elapsedSec = Math.floor((now - lastPassedSlot) / 1000);
     return <span className="text-sm tabular-nums font-mono text-amber-400 animate-pulse">scanning… {elapsedSec}s</span>;
@@ -853,7 +825,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v58";
+const DASH_VERSION = "v59";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -862,8 +834,9 @@ function getAgentServer() {
 
 type FeedLine = { id: string; ts: string; msg: string; accent: string; bountyKey?: string; hidden?: boolean };
 
-// No reds, greens, blues, ambers, or teals — those are reserved for system status colors
-const BOUNTY_PALETTE = ["#e879f9","#a78bfa","#818cf8","#f472b6","#c084fc","#d8b4fe","#f9a8d4","#7c3aed","#9333ea","#a855f7"];
+// Status colors reserved: red (error), emerald (success), sky-blue (submitted), amber (warning), teal (working)
+// Bounty palette: spread across spectrum — orange, cyan, lime, rose, indigo, yellow, fuchsia, violet, coral, purple
+const BOUNTY_PALETTE = ["#fb923c","#22d3ee","#a3e635","#f472b6","#818cf8","#eab308","#e879f9","#8b5cf6","#ff6b6b","#06b6d4"];
 
 const ACTION_COLORS: [string, string][] = [
   ["Abandoned",      "#f87171"],
@@ -948,6 +921,7 @@ function formatFeedEntry(action: string, detail: string): { msg: string; bountyK
 
 function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: string; stagedCount: number; projected: number; onScan?: (ts: string) => void; onRun?: () => Promise<void> }) {
   const [lines, setLines] = useState<FeedLine[]>([]);
+  const seenIdsRef = useRef<Set<string>>(new Set());
   const [runState, setRunState] = useState<"idle" | "running" | "done" | "copied">("idle");
   const [serverAddr, setServerAddr] = useState(DEFAULT_AGENT_SERVER);
   useEffect(() => { setServerAddr(getAgentServer()); }, []);
@@ -991,10 +965,15 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
     return () => clearInterval(t);
   }, []);
 
-  function add(msg: string, accent: string, bountyKey?: string, hidden?: boolean) {
+  function add(msg: string, accent: string, bountyKey?: string, hidden?: boolean, id?: string) {
     if (hidden) return;
+    const lineId = id ?? `${Date.now()}-${Math.random()}`;
+    if (id) {
+      if (seenIdsRef.current.has(id)) return;
+      seenIdsRef.current.add(id);
+    }
     const ts = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    typingQueueRef.current.push({ id: `${Date.now()}-${Math.random()}`, ts, msg, accent, bountyKey });
+    typingQueueRef.current.push({ id: lineId, ts, msg, accent, bountyKey });
   }
 
   // Load history from activity log on mount
@@ -1011,6 +990,7 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
           const ts = new Date(e.created_at).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
           const { msg, bountyKey, hidden } = formatFeedEntry(e.action, e.detail || "");
           if (hidden) return [];
+          seenIdsRef.current.add(e.id);
           const accent = e.action === "pipeline_start" ? "#fbbf24"
             : bountyKey ? bountyAccent(bountyKey) : "#71717a";
           return [{ id: e.id, ts, msg, accent, bountyKey }];
@@ -1030,21 +1010,20 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
         .order("created_at", { ascending: false })
         .limit(20);
       if (!data?.length) return;
-      setLines(prev => {
-        const known = new Set(prev.map((l: FeedLine) => l.id));
-        const fresh = data.reverse().flatMap((e: any) => {
-          if (known.has(e.id)) return [];
-          const ts = new Date(e.created_at).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-          const { msg, bountyKey, hidden } = formatFeedEntry(e.action, e.detail || "");
-          if (hidden) return [];
-          if (e.action === "pipeline_start") playPipelineSound();
-          const accent = e.action === "pipeline_start" ? "#fbbf24"
-            : bountyKey ? bountyAccent(bountyKey) : "#71717a";
-          return [{ id: e.id, ts, msg, accent, bountyKey }];
-        });
-        if (!fresh.length) return prev;
-        return [...prev, ...fresh].slice(-100);
+      const freshEntries = data.filter((e: any) => !seenIdsRef.current.has(e.id));
+      if (!freshEntries.length) return;
+      const freshLines: FeedLine[] = freshEntries.reverse().flatMap((e: any) => {
+        seenIdsRef.current.add(e.id);
+        const ts = new Date(e.created_at).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        const { msg, bountyKey, hidden } = formatFeedEntry(e.action, e.detail || "");
+        if (hidden) return [];
+        if (e.action === "pipeline_start") playPipelineSound();
+        const accent = e.action === "pipeline_start" ? "#fbbf24"
+          : bountyKey ? bountyAccent(bountyKey) : "#71717a";
+        return [{ id: e.id, ts, msg, accent, bountyKey }];
       });
+      if (!freshLines.length) return;
+      setLines(prev => [...prev, ...freshLines].slice(-100));
     }
     const t = setInterval(poll, 15_000);
     return () => clearInterval(t);
@@ -1081,7 +1060,7 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
         const { msg, bountyKey, hidden } = formatFeedEntry(p.new.action, p.new.detail || "");
         const accent = p.new.action === "pipeline_start" ? "#fbbf24"
           : bountyKey ? bountyAccent(bountyKey) : "#71717a";
-        add(msg, accent, bountyKey, hidden);
+        add(msg, accent, bountyKey, hidden, p.new.id);
         if (p.new.action === "discovery_run") {
           playScanSound();
           notifyScan(p.new.detail || "");
@@ -1156,14 +1135,14 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
                         const r = partial.slice(kwLen);
                         const bi = r.indexOf(l.bountyKey);
                         return <>
-                          <span className="text-zinc-300">{r.slice(0, bi)}</span>
+                          <span className="text-white">{r.slice(0, bi)}</span>
                           <span style={{ color: l.accent }}>{l.bountyKey}</span>
-                          <span className="text-zinc-300">{r.slice(bi + l.bountyKey.length)}</span>
+                          <span className="text-white">{r.slice(bi + l.bountyKey.length)}</span>
                         </>;
                       })()
-                    : <span className="text-zinc-300">{partial.slice(kwLen)}</span>
+                    : <span className="text-white">{partial.slice(kwLen)}</span>
                   }
-                  <span className="text-zinc-200">█</span>
+                  <span className="text-white">█</span>
                 </>;
               })()}
             </>
@@ -1192,12 +1171,12 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
             const before = rest.slice(0, bkIdx);
             const after  = rest.slice(bkIdx + l.bountyKey.length);
             restNode = <>
-              {before && <span className="text-zinc-300">{before}</span>}
+              {before && <span className="text-white">{before}</span>}
               <span style={{ color: l.accent }}>{l.bountyKey}</span>
-              {after && <span className="text-zinc-300">{after}</span>}
+              {after && <span className="text-white">{after}</span>}
             </>;
           } else {
-            restNode = <span className="text-zinc-300">{rest}</span>;
+            restNode = <span className="text-white">{rest}</span>;
           }
 
           return (
