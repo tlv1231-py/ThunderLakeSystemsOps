@@ -130,7 +130,7 @@ export async function GET(req: Request) {
     userId = user?.id ?? null;
   } catch {}
   if (!userId) {
-    userId = process.env.INCOME_AGENT_USER_ID ?? null;
+    userId = (process.env.INCOME_AGENT_USER_ID ?? "").replace(/^﻿/, "").trim() || null;
   }
   if (!userId) {
     const { data: users } = await db.auth.admin.listUsers({ perPage: 1 });

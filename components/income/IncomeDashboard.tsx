@@ -39,7 +39,7 @@ const CSS = `
   to{opacity:1;transform:translateY(0)}
 }
 @keyframes fadeDown {
-  from{opacity:0;transform:translateY(-8px)}
+  from{opacity:0;transform:translateY(-5px)}
   to{opacity:1;transform:translateY(0)}
 }
 @keyframes blink {
@@ -115,7 +115,7 @@ const CSS = `
 .num-up   { animation: numUp   .55s cubic-bezier(0.22,1,0.36,1) both }
 .num-down { animation: numDown .55s cubic-bezier(0.22,1,0.36,1) both }
 .tls-feed { font-family:'Geist','Inter','Segoe UI Variable',system-ui,-apple-system,sans-serif; font-size:15px; letter-spacing:-0.01em; }
-.fade-down { animation: fadeDown .3s ease-out both }
+.fade-down { animation: fadeDown .2s cubic-bezier(0.16,1,0.3,1) both }
 .tls-scroll { overflow-y:auto; scrollbar-width:none; }
 .tls-scroll::-webkit-scrollbar { display:none; }
 `;
@@ -532,6 +532,22 @@ function playTick() {
   } catch {}
 }
 
+// Soft upward chirp — fires at the moment a message starts typing
+function playReceive() {
+  if (_muted) return;
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = ctx.createOscillator(); const g = ctx.createGain();
+    osc.connect(g); g.connect(ctx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(1100, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1480, ctx.currentTime + 0.04);
+    g.gain.setValueAtTime(0.03, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.055);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.055);
+  } catch {}
+}
+
 // ── realtime missions ─────────────────────────────────────────────────────────
 
 function Missions({ items, fresh }: { items: any[]; fresh: Set<string> }) {
@@ -770,7 +786,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v62m";
+const DASH_VERSION = "v62n";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -940,6 +956,8 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
   const [clockStr, setClockStr] = useState(() =>
     new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })
   );
+  const postQueueRef = useRef<{ line: FeedLine; remainingTicks: number } | null>(null);
+  const [isHolding, setIsHolding] = useState(false);
 
   useEffect(() => {
     const c = setInterval(() => setCursorBlink(b => !b), 530);
@@ -951,21 +969,35 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
 
   useEffect(() => {
     const t = setInterval(() => {
+      // ── Drain post-hold countdown ────────────────────────────────────
+      if (postQueueRef.current) {
+        postQueueRef.current.remainingTicks--;
+        if (postQueueRef.current.remainingTicks <= 0) {
+          const { line } = postQueueRef.current;
+          postQueueRef.current = null;
+          typingActiveRef.current = null;
+          setIsHolding(false);
+          setTypingDisplay(null);
+          setLines(prev => [...prev.slice(-99), line]);
+        }
+        return;
+      }
+      // ── Dequeue next line ────────────────────────────────────────────
       if (!typingActiveRef.current) {
         const next = typingQueueRef.current.shift();
         if (!next) return;
         typingActiveRef.current = { line: next, pos: 0 };
+        playReceive();
       }
+      // ── Advance typing ───────────────────────────────────────────────
       const active = typingActiveRef.current;
       const newPos = Math.min(active.pos + 3, active.line.msg.length);
       active.pos = newPos;
       setTypingDisplay({ line: active.line, pos: newPos });
+      // ── When complete, enter hold phase ──────────────────────────────
       if (newPos >= active.line.msg.length) {
-        const done = active.line;
-        typingActiveRef.current = null;
-        setTypingDisplay(null);
-        setLines(prev => [...prev.slice(-99), done]);
-        playTick();
+        postQueueRef.current = { line: active.line, remainingTicks: 10 }; // ~160ms
+        setIsHolding(true);
       }
     }, 16);
     return () => clearInterval(t);
@@ -1188,7 +1220,7 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
                       })()
                     : <span className="text-white">{partial.slice(kwLen)}</span>
                   }
-                  <span className="text-white">█</span>
+                  <span className={isHolding ? "text-zinc-500" : "text-white"}>█</span>
                 </>;
               })()}
             </>
