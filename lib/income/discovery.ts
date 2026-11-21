@@ -28,11 +28,18 @@ export async function fetchGitHubBounties(): Promise<DiscoveredOpportunity[]> {
     "opire+in:body+is:open+is:issue+stars:>20",
     // Algora cross-posts
     "algora+bounty+in:body+is:open+is:issue+stars:>20",
+    // Polar.sh funded issues — Polar links in issue bodies
+    "polar.sh+in:body+is:open+is:issue+stars:>20",
     // Explicit dollar amount in title — highest-probability real bounties
     "%22%24%22+bounty+in:title+is:open+is:issue+stars:>50",
     "%22%24+50%22+is:open+is:issue+stars:>20",
     "%22%24+100%22+is:open+is:issue+stars:>20",
     "%22%24+200%22+is:open+is:issue+stars:>20",
+    // [$XXX] bracket-style bounty amounts common on some platforms
+    "%22%5B%2450%5D%22+is:open+is:issue+stars:>10",
+    "%22%5B%24100%5D%22+is:open+is:issue+stars:>10",
+    // Explicit reward in body — "reward: $" patterns
+    "%22reward%3A+%24%22+is:open+is:issue+stars:>20",
     // Good-first-issue = bounded, easy entry — high agent win rate
     "label:good-first-issue+label:bounty+is:open+is:issue+stars:>20",
     // Funded label (Polar, IssueHunt, and other platforms use this)

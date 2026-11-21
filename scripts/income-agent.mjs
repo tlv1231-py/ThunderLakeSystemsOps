@@ -68,6 +68,10 @@ const REPO_BLOCKLIST = [
   "misakanet", "ikalus1988",
   // Fake bounty coordinator spam accounts (post crypto USDC bounties on random repos)
   "ayush441-python",
+  // Micro-bounty personal boards ($1–$10 tasks, mostly already claimed/delivered)
+  "frantic-board", "auscaster",
+  // Smart contract bounty-escrow repos (Rust/Solana)
+  "bounty-escrow", "opensacred-game",
 ];
 
 // Keywords in issue titles that signal non-code tasks (content, design, creative, admin)
@@ -104,6 +108,16 @@ const NON_CODE_TITLE_PATTERNS = [
   /\d+\s+open bounties/i, /📋.*bounti/i,
   // AI-generated spam issues posted to fake forks (uniform emoji prefix pattern)
   /^🎯\s/,
+  // Renovate bot auto-generated dependency dashboard (not a code task)
+  /^dependency dashboard$/i,
+  // Sponsor/ecosystem invitation spam
+  /^invitation:/i, /connect your .{0,20} users to/i,
+  // Non-English-only titles (single CJK word, Arabic, etc.) — not actionable
+  /^[一-鿿぀-ヿ؀-ۿ]{1,6}$/,
+  // Blockchain Drips funding requests
+  /^\[drips\]/i,
+  // "Proposal for discussion" meta-issues
+  /^proposal for discussion:/i,
 ];
 
 // Minimum reward in USD — below this, pipeline time per run exceeds expected return
@@ -233,10 +247,14 @@ for (const item of queuedItems) {
     continue;
   }
 
-  // Skip below minimum score — high abandon rate below this threshold
-  if (opp.score != null && opp.score < MIN_SCORE) {
-    console.log(`  ⚠  Score ${opp.score} below minimum ${MIN_SCORE} — skipping`);
-    await db.from("income_work_queue").update({ status: "failed", progress_note: `Below minimum score (${opp.score} < ${MIN_SCORE})` }).eq("id", item.id);
+  // Skip below minimum score — dual threshold mirrors auto-queue logic:
+  //   score >= 60 (quality signal), OR reward >= $20 + score >= 50 (money signal)
+  const isAgentHighScore  = (opp.score ?? 0) >= 60;
+  const isAgentKnownRew   = (opp.reward_usd ?? 0) >= 20 && (opp.score ?? 0) >= 50;
+  const isAgentOpireReady = opp.source === "opire" && (opp.score ?? 0) >= 50;
+  if (opp.score != null && !isAgentHighScore && !isAgentKnownRew && !isAgentOpireReady) {
+    console.log(`  ⚠  Score ${opp.score} / reward $${opp.reward_usd} below threshold — skipping`);
+    await db.from("income_work_queue").update({ status: "failed", progress_note: `Below threshold (score ${opp.score}, $${opp.reward_usd ?? 0})` }).eq("id", item.id);
     await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
     continue;
   }

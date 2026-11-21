@@ -27,6 +27,10 @@ const REPO_BLOCKLIST = [
   "dsh-bounty", "furongjun",
   // Auto-generated training data / AI-task repos — no real payout mechanism
   "misakanet", "ikalus1988",
+  // Micro-bounty personal boards ($1–$10 tasks, mostly already claimed/delivered)
+  "frantic-board", "auscaster",
+  // Smart contract bounty-escrow repos (Rust/Solana, not our expertise)
+  "bounty-escrow", "opensacred-game",
 ];
 
 // Extended non-code title patterns
@@ -63,6 +67,16 @@ const NON_CODE_TITLE_PATTERNS = [
   /\d+\s+open bounties/i, /📋.*bounti/i,
   // AI-generated spam issues posted to fake forks (uniform emoji prefix pattern)
   /^🎯\s/,
+  // Renovate bot auto-generated dependency dashboard (not a code task)
+  /^dependency dashboard$/i,
+  // Sponsor/ecosystem invitation spam
+  /^invitation:/i, /connect your .{0,20} users to/i,
+  // Non-English-only titles (single CJK word, Arabic, etc.) — not actionable
+  /^[一-鿿぀-ヿ؀-ۿ]{1,6}$/,
+  // Blockchain Drips funding requests
+  /^\[drips\]/i,
+  // "Proposal for discussion" meta-issues
+  /^proposal for discussion:/i,
 ];
 
 export async function GET(req: Request) {
@@ -148,22 +162,28 @@ export async function GET(req: Request) {
     }
   } catch {}
 
-  // ── Re-queue sweep: promote discovered→queued if score>=60 and no active WQ entry ──
-  // Runs every scan so improvements to the scorer automatically promote good items
-  // that were scored before the threshold or before a scorer upgrade.
+  // ── Re-queue sweep: promote discovered→queued if eligible and no active WQ entry ──
+  // Runs every scan so improvements to the scorer automatically promote good items.
+  // Dual threshold: score>=60 (quality) OR reward>=$20+score>=50 (confirmed money).
   let requeueCount = 0;
   try {
     const { data: highScored } = await db
       .from("income_opportunities")
-      .select("id, title, description, score, reward_usd, estimated_hours, repo_url, open_prs")
+      .select("id, title, description, score, reward_usd, estimated_hours, repo_url, open_prs, source")
       .eq("user_id", userId)
       .in("status", ["discovered", "queued"])
-      .gte("score", 60)
-      .lt("open_prs", 3)
+      .gte("score", 50)
+      .lt("open_prs", 6)
       .limit(50);
 
     if (highScored?.length) {
       for (const opp of highScored as any[]) {
+        // Apply same dual threshold as auto-queue
+        const sweepHighScore  = opp.score >= 60 && (opp.open_prs ?? 0) < 3;
+        const sweepKnownRew   = (opp.reward_usd ?? 0) >= 20 && opp.score >= 50 && (opp.open_prs ?? 0) < 3;
+        const sweepOpireReady = opp.source === "opire" && opp.score >= 50 && (opp.open_prs ?? 0) < 5;
+        if (!sweepHighScore && !sweepKnownRew && !sweepOpireReady) continue;
+
         const { data: existingWQ } = await db
           .from("income_work_queue")
           .select("id")
@@ -228,6 +248,9 @@ export async function GET(req: Request) {
     const repoLower = (opp.repo_url ?? opp.url ?? "").toLowerCase();
     if (REPO_BLOCKLIST.some(p => repoLower.includes(p))) { skipCount++; continue; }
     if (NON_CODE_TITLE_PATTERNS.some(p => p.test(opp.title ?? ""))) { skipCount++; continue; }
+    // Already-claimed/delivered bounties — labels tell us the bounty is closed
+    const tagLower = (opp.tags ?? []).map(t => t.toLowerCase());
+    if (["delivered", "claimed", "paid", "completed", "accepted"].some(t => tagLower.includes(t))) { skipCount++; continue; }
     // Description-level crypto signals: wallet addresses or USDC/crypto payout mentions
     const descLower = (opp.description ?? "").toLowerCase();
     if (/0x[0-9a-f]{40}/.test(descLower) || /\busdc payout\b/.test(descLower) || /base usdc/.test(descLower) || /\bpayout address\b/.test(descLower)) { skipCount++; continue; }
@@ -280,8 +303,12 @@ export async function GET(req: Request) {
         .select("id").single();
       newCount++;
 
-      // Auto-queue: score >= 60, < 3 open PRs (scorer already penalises missing/low reward)
-      if (score >= 60 && (opp.open_prs ?? 0) < 3 && inserted && userId) {
+      // Auto-queue: score >= 60 (quality signal) OR reward >= $20 with score >= 50 (money signal)
+      // Opire/Algora: allow up to 5 open PRs (merge-based payment is reliable even with competition)
+      const isHighScore = score >= 60 && (opp.open_prs ?? 0) < 3;
+      const isKnownReward = (opp.reward_usd ?? 0) >= 20 && score >= 50 && (opp.open_prs ?? 0) < 3;
+      const isOpireReady = opp.source === "opire" && score >= 50 && (opp.open_prs ?? 0) < 5;
+      if ((isHighScore || isKnownReward || isOpireReady) && inserted && userId) {
         await db.from("income_opportunities").update({ status: "queued" }).eq("id", inserted.id);
         await db.from("income_work_queue").insert({
           engine:            "bounty",
