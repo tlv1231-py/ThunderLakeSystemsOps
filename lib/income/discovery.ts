@@ -33,15 +33,16 @@ export async function fetchGitHubBounties(): Promise<DiscoveredOpportunity[]> {
     // Good-first-issue = bounded, easy entry — high agent win rate
     "label:good-first-issue+label:bounty+is:open+is:issue+stars:>20",
     // ── FRESH (last 7 days) — highest priority: least competition ───────────
-    `label:bounty+is:open+is:issue+created:>${fresh7}`,
-    `label:opire+is:open+is:issue+created:>${fresh7}`,
-    `algora+in:body+is:open+is:issue+created:>${fresh7}`,
-    `opire+in:body+is:open+is:issue+created:>${fresh7}`,
+    // stars:>5 minimum to block spam forks (zero-star fake repos with 🎯 issues)
+    `label:bounty+is:open+is:issue+created:>${fresh7}+stars:>5`,
+    `label:opire+is:open+is:issue+created:>${fresh7}+stars:>5`,
+    `algora+in:body+is:open+is:issue+created:>${fresh7}+stars:>5`,
+    `opire+in:body+is:open+is:issue+created:>${fresh7}+stars:>5`,
     // ── RECENT (last 30 days) ────────────────────────────────────────────────
     `label:bounty+is:open+is:issue+stars:>10+created:>${fresh30}`,
-    `language:typescript+label:bounty+is:open+is:issue+created:>${fresh30}`,
-    `language:python+label:bounty+is:open+is:issue+created:>${fresh30}`,
-    `language:go+label:bounty+is:open+is:issue+created:>${fresh30}`,
+    `language:typescript+label:bounty+is:open+is:issue+created:>${fresh30}+stars:>5`,
+    `language:python+label:bounty+is:open+is:issue+created:>${fresh30}+stars:>5`,
+    `language:go+label:bounty+is:open+is:issue+created:>${fresh30}+stars:>5`,
   ];
   const token = process.env.GITHUB_TOKEN;
   const headers: Record<string, string> = {

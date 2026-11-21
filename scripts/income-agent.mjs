@@ -102,6 +102,8 @@ const NON_CODE_TITLE_PATTERNS = [
   /^\[intake\]/i, /^\[question\]/i,
   // Open bounties aggregator posts
   /\d+\s+open bounties/i, /📋.*bounti/i,
+  // AI-generated spam issues posted to fake forks (uniform emoji prefix pattern)
+  /^🎯\s/,
 ];
 
 // Minimum reward in USD — below this, pipeline time per run exceeds expected return
