@@ -285,7 +285,7 @@ for (const item of queuedItems) {
   //   score >= 60 (quality signal), OR reward >= $20 + score >= 50 (money signal)
   const isAgentHighScore  = (opp.score ?? 0) >= 60;
   const isAgentKnownRew   = (opp.reward_usd ?? 0) >= 20 && (opp.score ?? 0) >= 50;
-  const isAgentOpireReady = opp.source === "opire" && (opp.score ?? 0) >= 50;
+  const isAgentOpireReady = opp.source === "opire" && (opp.score ?? 0) >= 35;
   if (opp.score != null && !isAgentHighScore && !isAgentKnownRew && !isAgentOpireReady) {
     console.log(`  ⚠  Score ${opp.score} / reward $${opp.reward_usd} below threshold — skipping`);
     await db.from("income_work_queue").update({ status: "failed", progress_note: `Below threshold (score ${opp.score}, $${opp.reward_usd ?? 0})` }).eq("id", item.id);

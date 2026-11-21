@@ -215,7 +215,7 @@ export async function GET(req: Request) {
         // Apply same dual threshold as auto-queue (reward_usd > 0 required for high-score path)
         const sweepHighScore  = opp.score >= 60 && (opp.open_prs ?? 0) < 3 && (opp.reward_usd ?? 0) > 0;
         const sweepKnownRew   = (opp.reward_usd ?? 0) >= 20 && opp.score >= 50 && (opp.open_prs ?? 0) < 3;
-        const sweepOpireReady = opp.source === "opire" && opp.score >= 50 && (opp.open_prs ?? 0) < 5;
+        const sweepOpireReady = opp.source === "opire" && opp.score >= 35 && (opp.open_prs ?? 0) < 5;
         if (!sweepHighScore && !sweepKnownRew && !sweepOpireReady) continue;
 
         const { data: existingWQ } = await db
@@ -342,7 +342,7 @@ export async function GET(req: Request) {
       // Opire/Algora: allow up to 5 open PRs (merge-based payment reliable even with competition)
       const isHighScore = score >= 60 && (opp.open_prs ?? 0) < 3 && (opp.reward_usd ?? 0) > 0;
       const isKnownReward = (opp.reward_usd ?? 0) >= 20 && score >= 50 && (opp.open_prs ?? 0) < 3;
-      const isOpireReady = opp.source === "opire" && score >= 50 && (opp.open_prs ?? 0) < 5;
+      const isOpireReady = opp.source === "opire" && score >= 35 && (opp.open_prs ?? 0) < 5;
       if ((isHighScore || isKnownReward || isOpireReady) && inserted && userId) {
         await db.from("income_opportunities").update({ status: "queued" }).eq("id", inserted.id);
         await db.from("income_work_queue").insert({
