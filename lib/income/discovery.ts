@@ -90,7 +90,7 @@ export async function fetchGitHubBounties(): Promise<DiscoveredOpportunity[]> {
           source: "github",
           external_id: extId,
           title: item.title,
-          description: (item.body ?? "").slice(0, 3000),
+          description: (item.body ?? "").slice(0, 6000),
           url: item.html_url,
           repo_url: item.repository_url?.replace("https://api.github.com/repos/", "https://github.com/") ?? null,
           reward_usd: reward,
