@@ -102,7 +102,7 @@ ${contentType === "article" ? "Format as a structured article with intro, body s
 Be informative, engaging, and specific to the sponsor's product/ecosystem.`;
 
       const response = await anthropic.messages.create({
-        model: "claude-opus-4-5",
+        model: "claude-sonnet-5-5",
         max_tokens: 2048,
         messages: [{ role: "user", content: prompt }],
       });

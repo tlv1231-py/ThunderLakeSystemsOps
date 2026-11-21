@@ -265,18 +265,19 @@ export async function fetchOpireBounties(): Promise<DiscoveredOpportunity[]> {
 }
 
 // ── Superteam Earn — explicit agentAccess API ────────────────────────────────
-// Endpoint: GET /api/listings?type=bounty&status=open
+// Endpoint: GET /api/listings?type=bounty&status=open (domain: superteam.fun)
 // agentAccess: "AGENT_ALLOWED" | "AGENT_ONLY" | "HUMAN_ONLY"
-// Only stablecoin rewards (USDC, USDG, USDT, DAI) are valued in USD.
+// Stablecoin tokens valued 1:1 USD. Other tokens (BAOBAO, NOS, etc.) are accepted
+// but reward_usd is set to null — submission still happens, payout uncertain.
 // Submission API (requires SUPERTEAM_API_KEY):
 //   POST https://superteam.fun/api/agents/submissions/create
 //   { listingId, link, eligibilityAnswers }
-const SUPERTEAM_USD_TOKENS = new Set(["USDC", "USDG", "USDT", "DAI"]);
+const SUPERTEAM_STABLE_TOKENS = new Set(["USDC", "USDG", "USDT", "DAI"]);
 
 export async function fetchSuperteamBounties(): Promise<DiscoveredOpportunity[]> {
   try {
     const res = await fetch(
-      "https://earn.superteam.fun/api/listings?type=bounty&status=open&limit=100",
+      "https://superteam.fun/api/listings?type=bounty&status=open&limit=100",
       {
         headers: { "User-Agent": UA, Accept: "application/json" },
         signal: AbortSignal.timeout(TIMEOUT),
@@ -290,9 +291,10 @@ export async function fetchSuperteamBounties(): Promise<DiscoveredOpportunity[]>
       .filter((item: any) => item.agentAccess !== "HUMAN_ONLY")
       .filter((item: any) => item.status === "OPEN")
       .filter((item: any) => !item.isWinnersAnnounced)
-      .filter((item: any) => SUPERTEAM_USD_TOKENS.has(item.token ?? ""))
       .map((item: any): DiscoveredOpportunity => {
-        const reward_usd: number | null = item.rewardAmount > 0 ? item.rewardAmount : null;
+        // Stablecoin = valued 1:1 USD; crypto tokens = unknown USD value
+        const isStable = SUPERTEAM_STABLE_TOKENS.has(item.token ?? "");
+        const reward_usd: number | null = isStable && item.rewardAmount > 0 ? item.rewardAmount : null;
         const submissions: number = item._count?.Submission ?? 0;
         const deadline = item.deadline ? new Date(item.deadline).toISOString() : null;
 
@@ -300,7 +302,7 @@ export async function fetchSuperteamBounties(): Promise<DiscoveredOpportunity[]>
           source:          "superteam",
           external_id:     item.id,
           title:           item.title ?? "Superteam Bounty",
-          description:     `Sponsor: ${item.sponsor?.name ?? "unknown"} | Submissions: ${submissions} | Access: ${item.agentAccess}`,
+          description:     `Sponsor: ${item.sponsor?.name ?? "unknown"} | Submissions: ${submissions} | Access: ${item.agentAccess} | Token: ${item.token}`,
           url:             `https://earn.superteam.fun/listing/${item.slug}`,
           repo_url:        null,
           reward_usd,
@@ -309,12 +311,13 @@ export async function fetchSuperteamBounties(): Promise<DiscoveredOpportunity[]>
           language:        null,
           difficulty:      null,
           estimated_hours: null,
-          tags:            [item.agentAccess, item.type].filter(Boolean) as string[],
+          tags:            [item.agentAccess, item.type, item.token].filter(Boolean) as string[],
           metadata:        {
             slug:         item.slug,
             agentAccess:  item.agentAccess,
             token:        item.token,
             rewardAmount: item.rewardAmount,
+            isStable,
             submissions,
             sponsorName:  item.sponsor?.name,
             sponsorSlug:  item.sponsor?.slug,

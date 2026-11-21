@@ -214,7 +214,7 @@ export async function GET(req: Request) {
         const sweepHighScore    = opp.score >= 60 && (opp.open_prs ?? 0) < 3 && (opp.reward_usd ?? 0) > 0;
         const sweepKnownRew     = (opp.reward_usd ?? 0) >= 20 && opp.score >= 50 && (opp.open_prs ?? 0) < 3;
         const sweepOpireReady   = opp.source === "opire" && opp.score >= 35 && (opp.open_prs ?? 0) < 5;
-        const sweepSuperteamAgt = opp.source === "superteam" && (opp.reward_usd ?? 0) >= 50;
+        const sweepSuperteamAgt = opp.source === "superteam" && (opp.metadata as any)?.agentAccess !== "HUMAN_ONLY";
         if (!sweepHighScore && !sweepKnownRew && !sweepOpireReady && !sweepSuperteamAgt) continue;
 
         const { data: existingWQ } = await db
@@ -350,7 +350,7 @@ export async function GET(req: Request) {
       const isKnownReward = (opp.reward_usd ?? 0) >= 20 && score >= 50 && (opp.open_prs ?? 0) < 3;
       const isOpireReady  = opp.source === "opire" && score >= 35 && (opp.open_prs ?? 0) < 5;
       const agentAccess   = (opp.metadata as any)?.agentAccess ?? "HUMAN_ONLY";
-      const isSuperteamAgent = opp.source === "superteam" && agentAccess !== "HUMAN_ONLY" && (opp.reward_usd ?? 0) >= 50;
+      const isSuperteamAgent = opp.source === "superteam" && agentAccess !== "HUMAN_ONLY";
       if ((isHighScore || isKnownReward || isOpireReady || isSuperteamAgent) && inserted && userId) {
         await db.from("income_opportunities").update({ status: "queued" }).eq("id", inserted.id);
         await db.from("income_work_queue").insert({
@@ -382,6 +382,25 @@ export async function GET(req: Request) {
     metadata: { log, duration_ms: durationMs, sources: log.map(l => l.source) },
     user_id:  userId,
   });
+
+  // ── Fire-and-forget: trigger Superteam submission if any new items were queued ──
+  // Uses VERCEL_URL to build the absolute URL for self-call.
+  // This is intentionally non-blocking — we don't await it.
+  const superteamKey = process.env.SUPERTEAM_API_KEY;
+  const superteamNew = opportunities.filter(o => o.source === "superteam").length;
+  if (superteamKey && superteamNew > 0) {
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:3000";
+    const cronSecret = process.env.CRON_SECRET ?? "";
+    fetch(`${baseUrl}/api/income/submit-superteam`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${cronSecret}`,
+      },
+    }).catch(() => {/* non-fatal fire-and-forget */});
+  }
 
   return NextResponse.json({
     ok:       true,
