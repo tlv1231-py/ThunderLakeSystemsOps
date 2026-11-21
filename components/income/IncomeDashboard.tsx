@@ -802,7 +802,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v62p";
+const DASH_VERSION = "v62q";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -837,7 +837,7 @@ const ACTION_COLORS: [string, string][] = [
   ["Found ",         "#4fc3f7"],
   ["Discovery scan", "#4fc3f7"],  // backward compat
   ["Pipeline",       "#b39ddb"],  // lavender
-  ["Staged",         "#00e5ff"],  // cyan
+  ["Queued",         "#00e5ff"],  // cyan
   ["Working on",     "#80cbc4"],  // teal
   ["In review",      "#fbbf24"],  // amber
   ["Abandoned",      "#ff9800"],  // orange
@@ -911,9 +911,9 @@ function formatFeedEntry(action: string, detail: string): { msg: string; bountyK
       if (m) {
         const title = m[1];
         const reward = detail.match(/\$(\d[\d.]*)/)?.[1];
-        return { msg: reward ? `Staged — $${reward} — ${title}` : `Staged — ${title}`, bountyKey: title };
+        return { msg: reward ? `Queued — $${reward} — ${title}` : `Queued — ${title}`, bountyKey: title };
       }
-      return { msg: `Staged — ${detail}`, bountyKey: detail };
+      return { msg: `Queued — ${detail}`, bountyKey: detail };
     }
     case "opportunity_dismissed": {
       // New: `You archived "${title}" (source) — won't appear again`
