@@ -60,24 +60,50 @@ function scanSummaryDetail(entry: ActivityEntry): string {
   return `${total} total · ${newCount} new${srcParts ? `  [${srcParts}]` : ""}`;
 }
 
+// Action → color. No red (#ff0040), no green (#00ff41 / #00cc33).
+const ACTION_COLORS: Record<string, string> = {
+  // Gold — high-value outcomes
+  pr_merged:             "text-[#ffd54f]",
+  frantic_delivered:     "text-[#ffd54f]",
+  submit_ok:             "text-[#ffd54f]",
+  earning_logged:        "text-[#ffd54f]",
+  approval_approved:     "text-[#ffd54f]",
+  // Sky blue — PR / agent action
+  agent_pr_opened:       "text-[#4fc3f7]",
+  pr_check_run:          "text-[#4fc3f7]",
+  // Purple — scan / discovery
+  discovery_run:         "text-[#ce93d8]",
+  // Cyan — queue events
+  opportunity_queued:    "text-[#00e5ff]",
+  // Lavender — pipeline control
+  active_mode:           "text-[#b39ddb]",
+  // Teal — frantic identity / payout events
+  frantic_signup:        "text-[#80cbc4]",
+  frantic_payout:        "text-[#80cbc4]",
+  // Pink — superteam events
+  submit_error:          "text-[#f48fb1]",
+  frantic_delivery_error:"text-[#f48fb1]",
+  // Orange — skips / dismissals / agent issues
+  opportunity_dismissed: "text-[#ff9800]",
+  agent_skip:            "text-[#ff9800]",
+  agent_no_changes:      "text-[#ff9800]",
+  agent_error:           "text-[#ff9800]",
+  pr_closed:             "text-[#ff9800]",
+};
+
 function toTermLine(entry: ActivityEntry): TermLine {
   const ts = new Date(entry.created_at).toLocaleTimeString("en-US", {
     hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
   });
   const engine = (entry.engine ?? "SYS").toUpperCase().slice(0, 6).padEnd(6);
 
-  let color = "text-[#00cc33]";
-  if (entry.action === "pr_merged")                color = "text-[#00ff41]";
-  else if (entry.action === "frantic_delivered")   color = "text-[#00ff41]";
-  else if (entry.action === "submit_ok")           color = "text-[#00ff41]";
-  else if (entry.status === "error")               color = "text-[#ff0040]";
-  else if (entry.status === "warning")             color = "text-[#ffb800]";
-  else if (entry.action === "agent_pr_opened")     color = "text-[#00ff41]";
-  else if (entry.action === "discovery_run")       color = "text-[#00e5ff]";
-  else if (entry.action === "active_mode")         color = "text-[#ffb800]";
-  else if (entry.action === "opportunity_queued")  color = "text-[#00e5ff]";
-  else if (entry.action === "frantic_signup")      color = "text-[#00e5ff]";
-  else if (entry.action === "frantic_payout")      color = "text-[#00e5ff]";
+  // Look up explicit action color first; fall back to status-based, then default steel-blue
+  let color = ACTION_COLORS[entry.action];
+  if (!color) {
+    if (entry.status === "error")   color = "text-[#ff9800]";   // orange, not red
+    else if (entry.status === "warning") color = "text-[#ffb800]"; // amber
+    else color = "text-[#78909c]"; // default: steel-blue-grey
+  }
 
   const actionLabel = ACTION_LABELS[entry.action] ?? entry.action.toUpperCase().slice(0, 10).padEnd(10);
   const text = entry.action === "discovery_run"
@@ -304,32 +330,32 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun, userId }:
   const isTyping = typingState !== null;
 
   return (
-    <div className="flex flex-col h-full bg-black border border-[#00ff41]/20 font-mono overflow-hidden">
+    <div className="flex flex-col h-full bg-black border border-[#4fc3f7]/20 font-mono overflow-hidden">
       {/* Header row 1 — title + connection status */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#00ff41]/10 bg-[#030603] shrink-0">
-        <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em]">SYS::ACTIVITY_FEED</span>
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#4fc3f7]/10 bg-[#030508] shrink-0">
+        <span className="text-[9px] text-[#37474f] uppercase tracking-[0.2em]">SYS::ACTIVITY_FEED</span>
         <div className="flex items-center gap-1.5">
-          <span className={`inline-block w-1.5 h-1.5 rounded-full ${connected ? "bg-[#00ff41]" : "bg-[#ff0040]"}`} />
-          <span className={`text-[9px] uppercase tracking-widest ${connected ? "text-[#00ff41]" : "text-[#ff0040]"}`}>
+          <span className={`inline-block w-1.5 h-1.5 rounded-full ${connected ? "bg-[#00e5ff]" : "bg-[#ff9800]"}`} />
+          <span className={`text-[9px] uppercase tracking-widest ${connected ? "text-[#00e5ff]" : "text-[#ff9800]"}`}>
             {connected ? "LIVE" : "CONN..."}
           </span>
         </div>
       </div>
 
       {/* Header row 2 — scan counter + timing */}
-      <div className="px-3 py-1.5 border-b border-[#00ff41]/20 bg-[#030603] shrink-0 flex items-center justify-between gap-2">
-        <span className="text-[9px] text-[#004d14] uppercase tracking-widest shrink-0">{lastScanLabel}</span>
+      <div className="px-3 py-1.5 border-b border-[#4fc3f7]/15 bg-[#030508] shrink-0 flex items-center justify-between gap-2">
+        <span className="text-[9px] text-[#37474f] uppercase tracking-widest shrink-0">{lastScanLabel}</span>
 
         {/* Animated scan counter */}
         <div className="flex items-baseline gap-1 min-w-0">
-          <span className="text-[9px] text-[#004d14] uppercase tracking-widest shrink-0">SCANNED</span>
-          <span className="text-[13px] font-bold tabular-nums text-[#00cc33] tracking-tight">
+          <span className="text-[9px] text-[#37474f] uppercase tracking-widest shrink-0">SCANNED</span>
+          <span className="text-[13px] font-bold tabular-nums text-[#ce93d8] tracking-tight">
             {displayTotal.toLocaleString()}
           </span>
         </div>
 
         <span className={`text-[11px] font-bold tabular-nums tracking-widest shrink-0 ${
-          isOverdue ? "text-[#ff0040] animate-pulse" : "text-[#00ff41]"
+          isOverdue ? "text-[#ff9800] animate-pulse" : "text-[#00e5ff]"
         }`}>
           {countdownLabel}
         </span>
@@ -338,31 +364,31 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun, userId }:
       {/* Feed body */}
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-px min-h-0">
         {lines.length === 0 && !isTyping && (
-          <div className="text-[#004d14] text-[11px] py-4">&gt; Awaiting system events…</div>
+          <div className="text-[#37474f] text-[11px] py-4">&gt; Awaiting system events…</div>
         )}
         {lines.map(line => (
           <div key={line.id} className="flex gap-2 text-[10px] leading-[1.6]">
-            <span className="text-[#2a4d2a] shrink-0 tabular-nums w-[52px]">{line.ts}</span>
+            <span className="text-[#2d3f4d] shrink-0 tabular-nums w-[52px]">{line.ts}</span>
             <span className={`shrink-0 font-semibold ${line.color}`}>{line.prefix}</span>
-            <span className="text-[#008f21] truncate">{line.text}</span>
+            <span className="text-[#546e7a] truncate">{line.text}</span>
           </div>
         ))}
         <div ref={bottomRef} />
       </div>
 
       {/* Prompt / typewriter area */}
-      <div className="px-3 py-1 border-t border-[#00ff41]/20 bg-[#030603] shrink-0 min-h-[22px]">
+      <div className="px-3 py-1 border-t border-[#4fc3f7]/15 bg-[#030508] shrink-0 min-h-[22px]">
         {isTyping && typingState ? (
           <div className="flex gap-2 text-[10px] leading-[1.6]">
-            <span className="text-[#2a4d2a] shrink-0 tabular-nums w-[52px]">{typingState.entry.ts}</span>
+            <span className="text-[#2d3f4d] shrink-0 tabular-nums w-[52px]">{typingState.entry.ts}</span>
             <span className={`shrink-0 font-semibold ${typingState.entry.color}`}>{typingState.entry.prefix}</span>
-            <span className="text-[#008f21]">
+            <span className="text-[#546e7a]">
               {typingState.entry.text.slice(0, typingState.pos)}
-              <span className="text-[#00ff41]">█</span>
+              <span className="text-[#00e5ff]">█</span>
             </span>
           </div>
         ) : (
-          <span className="text-[11px] text-[#00ff41]">&gt;_{blink ? "█" : " "}</span>
+          <span className="text-[11px] text-[#00e5ff]">&gt;_{blink ? "█" : " "}</span>
         )}
       </div>
     </div>
