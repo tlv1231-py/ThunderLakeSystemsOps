@@ -114,7 +114,15 @@ const CSS = `
 @keyframes numDown { 0%{transform:translateY(-6px);color:#ef4444} 70%{color:#f87171} 100%{transform:translateY(0);color:#fff} }
 .num-up   { animation: numUp   .55s cubic-bezier(0.22,1,0.36,1) both }
 .num-down { animation: numDown .55s cubic-bezier(0.22,1,0.36,1) both }
-.tls-feed { font-family:'Geist','Inter','Segoe UI Variable',system-ui,-apple-system,sans-serif; font-size:15px; letter-spacing:-0.01em; }
+.tls-feed {
+  font-family: 'Geist', 'Inter', 'Segoe UI Variable', system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  font-weight: 430;
+  letter-spacing: -0.013em;
+  -webkit-font-smoothing: antialiased;
+  font-smoothing: antialiased;
+}
+.tls-msg { line-height: 1.72; }
 .fade-down { animation: fadeDown .2s cubic-bezier(0.16,1,0.3,1) both }
 .tls-scroll { overflow-y:auto; scrollbar-width:none; }
 .tls-scroll::-webkit-scrollbar { display:none; }
@@ -802,7 +810,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v62q";
+const DASH_VERSION = "v62r";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -1209,10 +1217,10 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
       }}
     >
       {/* ── Cursor row — always pinned at top ─────────────────────────── */}
-      <div className="flex gap-3 tls-feed leading-[1.65] mb-1 sticky top-0 bg-black pb-1">
-        <span className="text-zinc-500 shrink-0 tabular-nums font-mono text-[11px] mt-[3px]">{clockStr}</span>
-        <span className="text-zinc-600 shrink-0 font-mono text-[11px] mt-[3px] select-none">›</span>
-        <span className="break-words min-w-0 font-mono">
+      <div className="flex gap-3 tls-feed tls-msg mb-2 sticky top-0 bg-black pb-1">
+        <span className="text-zinc-600 shrink-0 tabular-nums font-mono text-[10px] mt-[4px]">{clockStr}</span>
+        <span className="text-zinc-800 shrink-0 font-mono text-[11px] mt-[3px] select-none">›</span>
+        <span className="break-words min-w-0">
           {typingDisplay ? (
             <>
               {(() => {
@@ -1247,7 +1255,7 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
       </div>
 
       {/* ── History — newest at top ────────────────────────────────────── */}
-      <div className="space-y-1 pr-2">
+      <div className="space-y-2.5 pr-2">
         {lines.length === 0 && !typingDisplay && (
           <p className="tls-feed text-zinc-800 py-1 select-none pl-[52px]">— waiting for activity —</p>
         )}
@@ -1292,9 +1300,8 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
             }
 
             nodes.push(
-              <div key={l.id} className={`flex gap-3 tls-feed leading-[1.65] ${idx === 0 ? "fade-down" : ""}`}>
-                <span className="text-zinc-700 shrink-0 tabular-nums font-mono text-[11px] mt-[3px]">{l.ts}</span>
-                <span className="text-zinc-700 shrink-0 font-mono text-[11px] mt-[3px] select-none">·</span>
+              <div key={l.id} className={`flex gap-3 tls-feed tls-msg ${idx === 0 ? "fade-down" : ""}`}>
+                <span className="text-zinc-700 shrink-0 tabular-nums font-mono text-[10px] mt-[5px]">{l.ts}</span>
                 <span className="break-words min-w-0">
                   {kwLen > 0 && <span className="text-white">{kwText}</span>}
                   {restNode}
