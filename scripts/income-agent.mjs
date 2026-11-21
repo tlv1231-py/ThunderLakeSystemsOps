@@ -74,6 +74,14 @@ const REPO_BLOCKLIST = [
   "bounty-escrow", "opensacred-game", "opensacred",
   // Known fake bounty posters (crypto contract tasks on fake repos)
   "mergemint-mint", "jagadeeshftw",
+  // Bounty aggregator notification repos (post "X new opportunities found" issues)
+  "freedom-winds", "bountyscout",
+  // Fake high-reward non-code missions (in-person repair work)
+  "ledgercorp",
+  // Crypto blockchain SDK (pays in JNZ tokens, not USD)
+  "janzeerorg",
+  // Auto-generated astronomy data QA issues
+  "jwst-gc",
 ];
 
 // Keywords in issue titles that signal non-code tasks (content, design, creative, admin)
@@ -120,6 +128,15 @@ const NON_CODE_TITLE_PATTERNS = [
   /^\[drips\]/i,
   // "Proposal for discussion" meta-issues
   /^proposal for discussion:/i,
+  // Figma design tasks (require Figma account, not pure code)
+  /^figma\s*:/i, /from\s+the\s+figma\b/i,
+  // Research / investigation tasks (non-code)
+  /^(?:market|launch|language|user|community)\s+research\s*:/i,
+  // Marketing / community non-code tasks
+  /^(?:sales|launch|marketing|community)\s+kit\s*:/i,
+  /^community\s+set-?up\s*:/i,
+  // "First-Dollar Mission" style non-code challenges
+  /^first-dollar\s+mission/i,
 ];
 
 // Minimum reward in USD — below this, pipeline time per run exceeds expected return

@@ -33,6 +33,14 @@ const REPO_BLOCKLIST = [
   "bounty-escrow", "opensacred-game", "opensacred",
   // Known fake bounty posters (crypto contract tasks on fake repos)
   "mergemint-mint", "Jagadeeshftw",
+  // Bounty aggregator notification repos (post "X new opportunities found" issues)
+  "freedom-winds", "bountyscout",
+  // Fake high-reward non-code missions (in-person repair work, not software)
+  "ledgercorp",
+  // Crypto blockchain SDK (pays in JNZ tokens, not USD)
+  "janzeerorg",
+  // Auto-generated astronomy data QA issues (not software bounties)
+  "jwst-gc",
 ];
 
 // Extended non-code title patterns
@@ -79,6 +87,15 @@ const NON_CODE_TITLE_PATTERNS = [
   /^\[drips\]/i,
   // "Proposal for discussion" meta-issues
   /^proposal for discussion:/i,
+  // Figma design tasks (require Figma account, not pure code work)
+  /^figma\s*:/i, /from\s+the\s+figma\b/i,
+  // Research / investigation tasks (non-code, human-driven)
+  /^(?:market|launch|language|user|community)\s+research\s*:/i,
+  // Marketing / community non-code tasks
+  /^(?:sales|launch|marketing|community)\s+kit\s*:/i,
+  /^community\s+set-?up\s*:/i,
+  // "First-Dollar Mission" style non-code challenges (in-person or business tasks)
+  /^first-dollar\s+mission/i,
 ];
 
 export async function GET(req: Request) {
@@ -131,7 +148,7 @@ export async function GET(req: Request) {
     const { data: activeQueue } = await db
       .from("income_opportunities")
       .select("id, title, repo_url, url, description, language, tags")
-      .eq("user_id", userId)
+      // No user_id filter — cleanup must run for cron scans (userId=null) too
       .in("status", ["queued", "discovered"])
       .limit(200);
 
@@ -157,8 +174,7 @@ export async function GET(req: Request) {
         const ids = toClean.map((i: any) => i.id);
         await db.from("income_opportunities")
           .update({ status: "dismissed" })
-          .in("id", ids)
-          .eq("user_id", userId);
+          .in("id", ids);
         cleanedCount = toClean.length;
       }
     }
