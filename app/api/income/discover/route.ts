@@ -204,8 +204,8 @@ export async function GET(req: Request) {
 
     if (highScored?.length) {
       for (const opp of highScored as any[]) {
-        // Apply same dual threshold as auto-queue
-        const sweepHighScore  = opp.score >= 60 && (opp.open_prs ?? 0) < 3;
+        // Apply same dual threshold as auto-queue (reward_usd > 0 required for high-score path)
+        const sweepHighScore  = opp.score >= 60 && (opp.open_prs ?? 0) < 3 && (opp.reward_usd ?? 0) > 0;
         const sweepKnownRew   = (opp.reward_usd ?? 0) >= 20 && opp.score >= 50 && (opp.open_prs ?? 0) < 3;
         const sweepOpireReady = opp.source === "opire" && opp.score >= 50 && (opp.open_prs ?? 0) < 5;
         if (!sweepHighScore && !sweepKnownRew && !sweepOpireReady) continue;
@@ -329,9 +329,10 @@ export async function GET(req: Request) {
         .select("id").single();
       newCount++;
 
-      // Auto-queue: score >= 60 (quality signal) OR reward >= $20 with score >= 50 (money signal)
-      // Opire/Algora: allow up to 5 open PRs (merge-based payment is reliable even with competition)
-      const isHighScore = score >= 60 && (opp.open_prs ?? 0) < 3;
+      // Auto-queue: score >= 60 with known reward (profitability-first) OR reward >= $20 with score >= 50
+      // Require reward_usd > 0 for GitHub — prevents $0 issues from clogging the queue
+      // Opire/Algora: allow up to 5 open PRs (merge-based payment reliable even with competition)
+      const isHighScore = score >= 60 && (opp.open_prs ?? 0) < 3 && (opp.reward_usd ?? 0) > 0;
       const isKnownReward = (opp.reward_usd ?? 0) >= 20 && score >= 50 && (opp.open_prs ?? 0) < 3;
       const isOpireReady = opp.source === "opire" && score >= 50 && (opp.open_prs ?? 0) < 5;
       if ((isHighScore || isKnownReward || isOpireReady) && inserted && userId) {
