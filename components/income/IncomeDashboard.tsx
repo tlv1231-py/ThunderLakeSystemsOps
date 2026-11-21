@@ -290,138 +290,134 @@ function BoardColumn({ label, colorLabel, items, fresh, submitted, active }: {
 }
 
 function WaitingColumn({ items, fresh, active, exiting }: {
-  items: { id: string; title: string; usdAmt: number; url?: string | null; score?: number | null }[];
+  items: { id: string; title: string; usdAmt: number; url?: string | null; score?: number | null; status: string }[];
   fresh?: Set<string>; active?: Set<string>;
   exiting?: Map<string, { type: "win" | "fail"; item: any }>;
 }) {
-  const [prevCount, setPrevCount] = useState(items.length);
-  const [countDir, setCountDir] = useState<"up"|"down"|null>(null);
-  const totalUsd = items.reduce((s, i) => s + (i.usdAmt ?? 0), 0);
-  const [prevTotal, setPrevTotal] = useState(totalUsd);
-  const [totalDir, setTotalDir] = useState<"up"|"down"|null>(null);
+  const queued   = items.filter(i => ["pending","in_progress"].includes(i.status));
+  const inFlight = items.filter(i => ["submitted","review"].includes(i.status));
+  const queueUsd  = queued.reduce((s, i) => s + (i.usdAmt ?? 0), 0);
+  const flightUsd = inFlight.reduce((s, i) => s + (i.usdAmt ?? 0), 0);
 
+  const [prevQ, setPrevQ] = useState(queued.length);
+  const [qDir, setQDir]   = useState<"up"|"down"|null>(null);
   useEffect(() => {
-    if (items.length !== prevCount) {
-      setCountDir(items.length > prevCount ? "up" : "down");
-      const t = setTimeout(() => setCountDir(null), 600);
-      setPrevCount(items.length);
-      return () => clearTimeout(t);
-    }
-  }, [items.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (queued.length === prevQ) return;
+    setQDir(queued.length > prevQ ? "up" : "down");
+    const t = setTimeout(() => setQDir(null), 600);
+    setPrevQ(queued.length);
+    return () => clearTimeout(t);
+  }, [queued.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (totalUsd !== prevTotal) {
-      setTotalDir(totalUsd > prevTotal ? "up" : "down");
-      const t = setTimeout(() => setTotalDir(null), 600);
-      setPrevTotal(totalUsd);
-      return () => clearTimeout(t);
-    }
-  }, [totalUsd]); // eslint-disable-line react-hooks/exhaustive-deps
+  function card(item: typeof items[0], accentOverride?: string, badge?: string) {
+    const accent   = accentOverride ?? bountyAccent(item.title);
+    const isFresh  = fresh?.has(item.id);
+    const isActive = active?.has(item.id);
+    const amtLabel = item.usdAmt >= 1000
+      ? `$${(item.usdAmt / 1000 % 1 === 0 ? (item.usdAmt / 1000).toFixed(0) : (item.usdAmt / 1000).toFixed(1))}k`
+      : item.usdAmt > 0 ? `$${Math.round(item.usdAmt)}` : "?";
+    return (
+      <div key={item.id} className={`${isFresh ? "tile-enter" : ""} cursor-pointer select-none`}
+        onClick={() => item.url && window.open(item.url, "_blank")}>
+        <div
+          className={`${isFresh ? "card-glow" : ""} ${isActive ? "tile-active" : ""} transition-all duration-300 hover:brightness-110`}
+          style={{
+            borderLeft: `3px solid ${accent}`,
+            borderTop: `1px solid ${accent}22`, borderRight: `1px solid ${accent}22`, borderBottom: `1px solid ${accent}22`,
+            background: `${accent}09`,
+            boxShadow: isActive ? `0 0 18px ${accent}44, inset 0 0 12px ${accent}10` : `0 0 8px ${accent}1a`,
+            padding: "8px 10px",
+            ["--cg" as any]: `${accent}55`,
+          }}>
+          <div className="flex items-center justify-between gap-1 mb-1">
+            <span className="text-[15px] font-black tabular-nums leading-none" style={{ color: accent }}>{amtLabel}</span>
+            {badge && <span className="text-[8px] uppercase tracking-widest font-semibold" style={{ color: `${accent}99` }}>{badge}</span>}
+          </div>
+          <div className="text-[10px] text-zinc-400 leading-snug" style={{
+            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+          }}>{item.title}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="w-56">
-      {/* Header */}
-      <div className="mb-4 flex items-start justify-between">
-        <div className="flex flex-col leading-none">
-          <span className={`text-4xl font-black tabular-nums leading-none ${
-            countDir === "up" ? "num-up" : countDir === "down" ? "num-down" : ""
-          } ${items.length === 0 ? "text-zinc-700" : "text-white"}`}>
-            {items.length}
-          </span>
-          <span className="text-[10px] uppercase tracking-widest text-zinc-600 mt-1">queued</span>
-        </div>
-        {totalUsd > 0 && (
-          <div className="flex flex-col items-end leading-none">
-            <span className={`text-4xl font-black tabular-nums leading-none ${
-              totalDir === "up" ? "num-up" : totalDir === "down" ? "num-down" : "text-white"
-            }`}>{usd(totalUsd)}</span>
-            <span className="text-[10px] uppercase tracking-widest text-zinc-600 mt-1">total value</span>
+    <div className="w-56 space-y-6">
+
+      {/* ── QUEUE ──────────────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-baseline justify-between mb-3">
+          <div className="flex items-baseline gap-2">
+            <span className={`text-4xl font-black tabular-nums leading-none ${qDir === "up" ? "num-up" : qDir === "down" ? "num-down" : ""} ${queued.length === 0 ? "text-zinc-700" : "text-white"}`}>
+              {queued.length}
+            </span>
+            <span className="text-[9px] uppercase tracking-widest text-zinc-600">queued</span>
           </div>
-        )}
+          {queueUsd > 0 && (
+            <span className="text-[13px] font-bold" style={{ color: "#00e5ff", textShadow: "0 0 10px #00e5ff44" }}>
+              {usd(queueUsd)}
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          {queued.length === 0 && (exiting?.size ?? 0) === 0 && (
+            <span className="text-[10px] text-zinc-800 pl-0.5">— idle —</span>
+          )}
+          {queued.map(item => card(item, undefined, active?.has(item.id) ? "working" : undefined))}
+          {exiting && [...exiting.entries()].map(([id, { type, item: ex }]) => {
+            const accent   = bountyAccent(ex.title ?? "");
+            const winColor = "#ffd54f";
+            const c        = type === "win" ? winColor : accent;
+            const amtLabel = ex.expected_usd > 0 ? `$${Math.round(ex.expected_usd)}` : "?";
+            return (
+              <div key={`exit-${id}`} className={`tile-exit-${type} select-none`}>
+                <div style={{
+                  borderLeft: `3px solid ${c}`, borderTop: `1px solid ${c}22`,
+                  borderRight: `1px solid ${c}22`, borderBottom: `1px solid ${c}22`,
+                  background: `${c}09`, padding: "8px 10px",
+                }}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[15px] font-black tabular-nums" style={{ color: c }}>{amtLabel}</span>
+                    <span className="text-[8px] uppercase tracking-widest" style={{ color: `${c}99` }}>
+                      {type === "win" ? "merged ✓" : "closed"}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-zinc-400 leading-snug line-clamp-2">{ex.title}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Cards */}
-      <div className="flex flex-col gap-2.5">
-        {items.length === 0 && (exiting?.size ?? 0) === 0 && <span className="text-[11px] text-zinc-800">—</span>}
-        {items.map(item => {
-          const accent = bountyAccent(item.title);
-          const isFresh = fresh?.has(item.id);
-          const isActive = active?.has(item.id);
-          const amtLabel = item.usdAmt >= 1000
-            ? `$${(item.usdAmt / 1000 % 1 === 0 ? (item.usdAmt / 1000).toFixed(0) : (item.usdAmt / 1000).toFixed(1))}k`
-            : item.usdAmt > 0 ? `$${Math.round(item.usdAmt)}` : "?";
-          const scoreColor = item.score != null
-            ? `hsl(${Math.round(item.score * 1.2)},85%,55%)`
-            : null;
-          return (
-            <div
-              key={item.id}
-              className={`${isFresh ? "tile-enter" : ""} cursor-pointer select-none`}
-              onClick={() => item.url && window.open(item.url, "_blank")}
-            >
-              <div
-                className={`p-3 border ${isFresh ? "card-glow" : ""} ${isActive ? "tile-active" : ""} transition-all duration-200 hover:brightness-125`}
-                style={{
-                  borderColor: isActive ? "rgba(45,212,191,0.5)" : `${accent}44`,
-                  background: `${accent}09`,
-                  ["--cg" as any]: `${accent}55`,
-                }}
-              >
-                <div className="flex items-baseline justify-between gap-1 leading-none">
-                  {scoreColor && (
-                    <span className="text-[20px] font-mono font-bold tabular-nums" style={{ color: scoreColor }}>
-                      {item.score}
-                    </span>
-                  )}
-                  <span className="text-[20px] font-mono font-bold tabular-nums ml-auto" style={{ color: accent }}>
-                    {amtLabel}
-                  </span>
-                </div>
-                <div className="text-[10px] text-zinc-500 mt-1.5 leading-snug" style={{
-                  display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
-                }}>
-                  {item.title}
-                </div>
-              </div>
+      {/* ── IN FLIGHT ──────────────────────────────────────────────── */}
+      {inFlight.length > 0 && (
+        <div>
+          <div className="flex items-baseline justify-between mb-3">
+            <div className="flex items-baseline gap-2">
+              <span className="text-4xl font-black tabular-nums leading-none" style={{ color: "#00e5ff", textShadow: "0 0 12px #00e5ff55" }}>
+                {inFlight.length}
+              </span>
+              <span className="text-[9px] uppercase tracking-widest text-zinc-600">in flight</span>
             </div>
-          );
-        })}
-        {/* Exiting tiles — held in DOM during exit animation, then removed */}
-        {exiting && [...exiting.entries()].map(([id, { type, item: ex }]) => {
-          const accent = bountyAccent(ex.title ?? "");
-          const amtLabel = ex.expected_usd > 0 ? `$${Math.round(ex.expected_usd)}` : "?";
-          const scoreVal: number | null = ex.income_opportunities?.score ?? null;
-          const scoreColor = scoreVal != null ? `hsl(${Math.round(scoreVal * 1.2)},85%,55%)` : null;
-          return (
-            <div key={`exit-${id}`} className={`tile-exit-${type} select-none`}>
-              <div
-                className="p-3 border"
-                style={{
-                  borderColor: type === "win" ? "rgba(74,222,128,0.5)" : "rgba(248,113,113,0.3)",
-                  background: type === "win" ? "rgba(74,222,128,0.07)" : `${accent}09`,
-                }}
-              >
-                <div className="flex items-baseline justify-between gap-1 leading-none">
-                  {scoreColor && (
-                    <span className="text-[20px] font-mono font-bold tabular-nums" style={{ color: scoreColor }}>
-                      {scoreVal}
-                    </span>
-                  )}
-                  <span className="text-[20px] font-mono font-bold tabular-nums ml-auto" style={{ color: type === "win" ? "#4ade80" : "#f87171" }}>
-                    {amtLabel}
-                  </span>
-                </div>
-                <div className="text-[10px] mt-1.5 leading-snug" style={{
-                  color: type === "win" ? "rgba(74,222,128,0.6)" : "rgba(248,113,113,0.4)",
-                  display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
-                }}>
-                  {ex.title}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            {flightUsd > 0 && (
+              <span className="text-[13px] font-bold text-zinc-500">{usd(flightUsd)}</span>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            {inFlight.slice(0, 10).map(item => {
+              const color = item.status === "review" ? "#fbbf24" : "#00e5ff";
+              const badge = item.status === "review" ? "review" : "pr open";
+              return card(item, color, badge);
+            })}
+            {inFlight.length > 10 && (
+              <p className="text-[10px] text-zinc-700 pl-1">+{inFlight.length - 10} more</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -825,7 +821,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v62i";
+const DASH_VERSION = "v62j";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -835,8 +831,8 @@ function getAgentServer() {
 type FeedLine = { id: string; ts: string; msg: string; accent: string; bountyKey?: string; hidden?: boolean };
 
 // Status colors reserved: red (error), emerald (success), sky-blue (submitted), amber (warning), teal (working)
-// Bounty palette: spread across spectrum — orange, cyan, lime, rose, indigo, yellow, fuchsia, violet, coral, purple
-const BOUNTY_PALETTE = ["#fb923c","#22d3ee","#a3e635","#f472b6","#818cf8","#eab308","#e879f9","#8b5cf6","#ff6b6b","#06b6d4"];
+// Bounty palette: spread across spectrum — no red, no green
+const BOUNTY_PALETTE = ["#fb923c","#22d3ee","#c084fc","#f472b6","#818cf8","#eab308","#e879f9","#8b5cf6","#2dd4bf","#06b6d4"];
 
 const ACTION_COLORS: [string, string][] = [
   ["Accepted",       "#ffd54f"],  // gold
@@ -1453,6 +1449,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
                   usdAmt: i.expected_usd ?? 0,
                   url: i.income_opportunities?.url ?? null,
                   score: i.income_opportunities?.score ?? null,
+                  status: i.status,
                 }))}
               fresh={fresh}
               active={activeSet}
