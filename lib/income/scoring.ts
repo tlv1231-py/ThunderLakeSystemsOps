@@ -117,7 +117,8 @@ export function scoreOpportunity(opp: DiscoveredOpportunity): {
 
   // ── Platform auto-pay reliability (0–20) ─────────────────────────────────
   // Algora & Opire pay automatically on merge via Stripe — zero payout friction.
-  // GitHub requires manual coordination after merge (often never pays).
+  // GitHub issues that carry `opire` or `algora` labels are funded on those platforms
+  // and should score like Opire/Algora, not plain GitHub.
   const platformScores: Record<string, number> = {
     opire:     20,
     algora:    20,
@@ -125,7 +126,13 @@ export function scoreOpportunity(opp: DiscoveredOpportunity): {
     github:    6,
     manual:    8,
   };
-  score += platformScores[opp.source] ?? 4;
+  const tags = (opp.tags ?? []).map(t => t.toLowerCase());
+  const hasOpireTag  = tags.includes("opire")  || (opp.description ?? "").toLowerCase().includes("opire.dev");
+  const hasAlgoraTag = tags.includes("algora") || (opp.description ?? "").toLowerCase().includes("algora.io");
+  const effectiveSource = opp.source === "github" && hasOpireTag  ? "opire"
+    : opp.source === "github" && hasAlgoraTag ? "algora"
+    : opp.source;
+  score += platformScores[effectiveSource] ?? 4;
 
   // ── Scope / estimated hours (0–15) ────────────────────────────────────────
   const hours = estimateHours(opp);
