@@ -30,6 +30,14 @@ const ACTION_LABELS: Record<string, string> = {
   pr_merged:             "██ MERGED ",
   pr_closed:             "PR_CLOSED ",
   pr_check_run:          "PR_CHECK  ",
+  // Superteam
+  submit_ok:             "ST_SUBMIT ",
+  submit_error:          "ST_ERR____",
+  // Frantic
+  frantic_signup:        "FR_SIGNUP ",
+  frantic_payout:        "FR_PAYOUT ",
+  frantic_delivered:     "██ FR_PAID",
+  frantic_delivery_error:"FR_ERR____",
 };
 
 function toTermLine(entry: ActivityEntry): TermLine {
@@ -39,15 +47,19 @@ function toTermLine(entry: ActivityEntry): TermLine {
   const engine = (entry.engine ?? "SYS").toUpperCase().slice(0, 6).padEnd(6);
 
   let color = "text-[#00cc33]";
-  if (entry.action === "pr_merged")              color = "text-[#00ff41]";
-  else if (entry.status === "error")             color = "text-[#ff0040]";
-  else if (entry.status === "warning")           color = "text-[#ffb800]";
-  else if (entry.action === "agent_pr_opened")   color = "text-[#00ff41]";
-  else if (entry.action === "scan_start")        color = "text-[#00e5ff]";
-  else if (entry.action === "scan_source")       color = "text-[#00e5ff]";
-  else if (entry.action?.startsWith("discover")) color = "text-[#00e5ff]";
-  else if (entry.action === "active_mode")       color = "text-[#ffb800]";
-  else if (entry.action === "opportunity_queued") color = "text-[#00e5ff]";
+  if (entry.action === "pr_merged")                color = "text-[#00ff41]";
+  else if (entry.action === "frantic_delivered")   color = "text-[#00ff41]";
+  else if (entry.status === "error")               color = "text-[#ff0040]";
+  else if (entry.status === "warning")             color = "text-[#ffb800]";
+  else if (entry.action === "agent_pr_opened")     color = "text-[#00ff41]";
+  else if (entry.action === "submit_ok")           color = "text-[#00ff41]";
+  else if (entry.action === "scan_start")          color = "text-[#00e5ff]";
+  else if (entry.action === "scan_source")         color = "text-[#00e5ff]";
+  else if (entry.action?.startsWith("discover"))   color = "text-[#00e5ff]";
+  else if (entry.action === "active_mode")         color = "text-[#ffb800]";
+  else if (entry.action === "opportunity_queued")  color = "text-[#00e5ff]";
+  else if (entry.action === "frantic_signup")      color = "text-[#00e5ff]";
+  else if (entry.action === "frantic_payout")      color = "text-[#00e5ff]";
 
   const actionLabel = ACTION_LABELS[entry.action] ?? entry.action.toUpperCase().slice(0, 10).padEnd(10);
   const text = entry.detail ?? entry.action ?? "";
