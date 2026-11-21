@@ -86,6 +86,8 @@ const REPO_BLOCKLIST = [
   "taichung-police-intel",
   // CAPTCHA bypass projects (prohibited)
   "UdioWrapper",
+  // Karma-only bounty projects (no USD payout)
+  "privacy-the-game", "lizTheDeveloper",
 ];
 
 // Keywords in issue titles that signal non-code tasks (content, design, creative, admin)
@@ -145,6 +147,11 @@ const NON_CODE_TITLE_PATTERNS = [
   /\bhcaptcha\b/i, /\bcaptcha.{0,10}bypass\b/i, /\bsolve.{0,10}captcha\b/i,
   // Police/surveillance/military intelligence systems
   /\bpolice.{0,15}(intel|data|system)\b/i, /\b(排程|公安|警察)\b/,
+  // Privacy opt-out/broker check tasks (require human browser research, not code)
+  /^\[opt-?out\s+check\]/i, /\bopt.?out\s+route\b/i,
+  /\bdata\s+broker.{0,20}confirm\b/i, /\bconfirm.{0,20}opt.?out\b/i,
+  // Karma-only bounties (no USD payout)
+  /paid\s+in\s+karma/i, /karma\s+points?\s+only/i,
 ];
 
 // Minimum reward in USD — below this, pipeline time per run exceeds expected return
