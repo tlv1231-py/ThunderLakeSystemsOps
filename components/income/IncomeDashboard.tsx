@@ -299,121 +299,70 @@ function WaitingColumn({ items, fresh, active, exiting }: {
   const queueUsd  = queued.reduce((s, i) => s + (i.usdAmt ?? 0), 0);
   const flightUsd = inFlight.reduce((s, i) => s + (i.usdAmt ?? 0), 0);
 
-  const [prevQ, setPrevQ] = useState(queued.length);
-  const [qDir, setQDir]   = useState<"up"|"down"|null>(null);
-  useEffect(() => {
-    if (queued.length === prevQ) return;
-    setQDir(queued.length > prevQ ? "up" : "down");
-    const t = setTimeout(() => setQDir(null), 600);
-    setPrevQ(queued.length);
-    return () => clearTimeout(t);
-  }, [queued.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  function card(item: typeof items[0], accentOverride?: string, badge?: string) {
-    const accent   = accentOverride ?? bountyAccent(item.title);
-    const isFresh  = fresh?.has(item.id);
-    const isActive = active?.has(item.id);
-    const amtLabel = item.usdAmt >= 1000
-      ? `$${(item.usdAmt / 1000 % 1 === 0 ? (item.usdAmt / 1000).toFixed(0) : (item.usdAmt / 1000).toFixed(1))}k`
-      : item.usdAmt > 0 ? `$${Math.round(item.usdAmt)}` : "?";
-    return (
-      <div key={item.id} className={`${isFresh ? "tile-enter" : ""} cursor-pointer select-none`}
-        onClick={() => item.url && window.open(item.url, "_blank")}>
-        <div
-          className={`${isFresh ? "card-glow" : ""} ${isActive ? "tile-active" : ""} transition-all duration-300 hover:brightness-110`}
-          style={{
-            borderLeft: `3px solid ${accent}`,
-            borderTop: `1px solid ${accent}22`, borderRight: `1px solid ${accent}22`, borderBottom: `1px solid ${accent}22`,
-            background: `${accent}09`,
-            boxShadow: isActive ? `0 0 18px ${accent}44, inset 0 0 12px ${accent}10` : `0 0 8px ${accent}1a`,
-            padding: "8px 10px",
-            ["--cg" as any]: `${accent}55`,
-          }}>
-          <div className="flex items-center justify-between gap-1 mb-1">
-            <span className="text-[15px] font-black tabular-nums leading-none" style={{ color: accent }}>{amtLabel}</span>
-            {badge && <span className="text-[8px] uppercase tracking-widest font-semibold" style={{ color: `${accent}99` }}>{badge}</span>}
-          </div>
-          <div className="text-[10px] text-zinc-400 leading-snug" style={{
-            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
-          }}>{item.title}</div>
-        </div>
-      </div>
-    );
+  function amtStr(n: number) {
+    return n >= 1000 ? `$${(n/1000).toFixed(n % 1000 === 0 ? 0 : 1)}k` : n > 0 ? `$${Math.round(n)}` : "?";
   }
 
   return (
-    <div className="w-56 space-y-6">
+    <div className="w-44 space-y-5">
 
-      {/* ── QUEUE ──────────────────────────────────────────────────── */}
+      {/* QUEUE */}
       <div>
-        <div className="flex items-baseline justify-between mb-3">
-          <div className="flex items-baseline gap-2">
-            <span className={`text-4xl font-black tabular-nums leading-none ${qDir === "up" ? "num-up" : qDir === "down" ? "num-down" : ""} ${queued.length === 0 ? "text-zinc-700" : "text-white"}`}>
-              {queued.length}
-            </span>
-            <span className="text-[9px] uppercase tracking-widest text-zinc-600">queued</span>
-          </div>
-          {queueUsd > 0 && (
-            <span className="text-[13px] font-bold" style={{ color: "#00e5ff", textShadow: "0 0 10px #00e5ff44" }}>
-              {usd(queueUsd)}
-            </span>
-          )}
+        <div className="flex items-baseline justify-between mb-2">
+          <span className={`text-xs uppercase tracking-widest ${queued.length === 0 ? "text-zinc-700" : "text-zinc-500"}`}>
+            queue {queued.length > 0 && <span className="text-white font-bold">{queued.length}</span>}
+          </span>
+          {queueUsd > 0 && <span className="text-xs text-zinc-400 tabular-nums">{usd(queueUsd)}</span>}
         </div>
-
-        <div className="flex flex-col gap-2">
+        <div className="space-y-1">
           {queued.length === 0 && (exiting?.size ?? 0) === 0 && (
-            <span className="text-[10px] text-zinc-800 pl-0.5">— idle —</span>
+            <span className="text-[10px] text-zinc-800">—</span>
           )}
-          {queued.map(item => card(item, undefined, active?.has(item.id) ? "working" : undefined))}
-          {exiting && [...exiting.entries()].map(([id, { type, item: ex }]) => {
-            const accent   = bountyAccent(ex.title ?? "");
-            const winColor = "#ffd54f";
-            const c        = type === "win" ? winColor : accent;
-            const amtLabel = ex.expected_usd > 0 ? `$${Math.round(ex.expected_usd)}` : "?";
+          {queued.map(item => {
+            const accent  = bountyAccent(item.title);
+            const isActive = active?.has(item.id);
             return (
-              <div key={`exit-${id}`} className={`tile-exit-${type} select-none`}>
-                <div style={{
-                  borderLeft: `3px solid ${c}`, borderTop: `1px solid ${c}22`,
-                  borderRight: `1px solid ${c}22`, borderBottom: `1px solid ${c}22`,
-                  background: `${c}09`, padding: "8px 10px",
-                }}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[15px] font-black tabular-nums" style={{ color: c }}>{amtLabel}</span>
-                    <span className="text-[8px] uppercase tracking-widest" style={{ color: `${c}99` }}>
-                      {type === "win" ? "merged ✓" : "closed"}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-zinc-400 leading-snug line-clamp-2">{ex.title}</div>
-                </div>
+              <div key={item.id} className={`${fresh?.has(item.id) ? "tile-enter" : ""} flex items-baseline gap-1.5 cursor-pointer group`}
+                onClick={() => item.url && window.open(item.url, "_blank")}>
+                <span className="text-[11px] tabular-nums font-semibold shrink-0" style={{ color: accent }}>{amtStr(item.usdAmt)}</span>
+                <span className="text-[10px] text-zinc-500 truncate group-hover:text-zinc-300 transition-colors">{item.title}</span>
+                {isActive && <span className="text-[8px] text-teal-500 shrink-0 animate-pulse">●</span>}
               </div>
             );
           })}
+          {exiting && [...exiting.entries()].map(([id, { type, item: ex }]) => (
+            <div key={`exit-${id}`} className={`tile-exit-${type} flex items-baseline gap-1.5`}>
+              <span className="text-[11px] tabular-nums font-semibold" style={{ color: type === "win" ? "#ffd54f" : "#ff9800" }}>
+                {amtStr(ex.expected_usd ?? 0)}
+              </span>
+              <span className="text-[10px] text-zinc-600 truncate">{ex.title}</span>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* ── IN FLIGHT ──────────────────────────────────────────────── */}
+      {/* IN FLIGHT */}
       {inFlight.length > 0 && (
         <div>
-          <div className="flex items-baseline justify-between mb-3">
-            <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-black tabular-nums leading-none" style={{ color: "#00e5ff", textShadow: "0 0 12px #00e5ff55" }}>
-                {inFlight.length}
-              </span>
-              <span className="text-[9px] uppercase tracking-widest text-zinc-600">in flight</span>
-            </div>
-            {flightUsd > 0 && (
-              <span className="text-[13px] font-bold text-zinc-500">{usd(flightUsd)}</span>
-            )}
+          <div className="flex items-baseline justify-between mb-2">
+            <span className="text-xs uppercase tracking-widest text-zinc-500">
+              in flight <span className="text-white font-bold">{inFlight.length}</span>
+            </span>
+            {flightUsd > 0 && <span className="text-xs text-zinc-400 tabular-nums">{usd(flightUsd)}</span>}
           </div>
-
-          <div className="flex flex-col gap-2">
-            {inFlight.slice(0, 10).map(item => {
+          <div className="space-y-1">
+            {inFlight.slice(0, 12).map(item => {
               const color = item.status === "review" ? "#fbbf24" : "#00e5ff";
-              const badge = item.status === "review" ? "review" : "pr open";
-              return card(item, color, badge);
+              return (
+                <div key={item.id} className="flex items-baseline gap-1.5 cursor-pointer group"
+                  onClick={() => item.url && window.open(item.url, "_blank")}>
+                  <span className="text-[11px] tabular-nums font-semibold shrink-0" style={{ color }}>{amtStr(item.usdAmt)}</span>
+                  <span className="text-[10px] text-zinc-500 truncate group-hover:text-zinc-300 transition-colors">{item.title}</span>
+                </div>
+              );
             })}
-            {inFlight.length > 10 && (
-              <p className="text-[10px] text-zinc-700 pl-1">+{inFlight.length - 10} more</p>
+            {inFlight.length > 12 && (
+              <span className="text-[10px] text-zinc-700">+{inFlight.length - 12} more</span>
             )}
           </div>
         </div>
@@ -821,7 +770,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v62j";
+const DASH_VERSION = "v62k";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
