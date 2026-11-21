@@ -770,14 +770,27 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v62l";
+const DASH_VERSION = "v62m";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
   return localStorage.getItem("tls_agent_server") || DEFAULT_AGENT_SERVER;
 }
 
-type FeedLine = { id: string; ts: string; msg: string; accent: string; bountyKey?: string; hidden?: boolean };
+type FeedLine = { id: string; ts: string; epochMs: number; msg: string; accent: string; bountyKey?: string; hidden?: boolean };
+
+// Return cron slot timestamps (ms) that fall strictly between two epoch values, newest-first order
+function cronSlotsBetween(olderMs: number, newerMs: number): number[] {
+  const slots: number[] = [];
+  const STEP = 15 * 60 * 1000;
+  // Find the first slot at or after olderMs
+  let slot = Math.ceil(olderMs / STEP) * STEP;
+  while (slot < newerMs) {
+    if (slot > olderMs) slots.push(slot);
+    slot += STEP;
+  }
+  return slots.reverse();
+}
 
 // Status colors reserved: red (error), emerald (success), sky-blue (submitted), amber (warning), teal (working)
 // Bounty palette: spread across spectrum — no red, no green
@@ -965,8 +978,9 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
       if (seenIdsRef.current.has(id)) return;
       seenIdsRef.current.add(id);
     }
-    const ts = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    typingQueueRef.current.push({ id: lineId, ts, msg, accent, bountyKey });
+    const now = new Date();
+    const ts = now.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    typingQueueRef.current.push({ id: lineId, ts, epochMs: now.getTime(), msg, accent, bountyKey });
   }
 
   // Load history from activity log on mount
@@ -980,13 +994,14 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
       .then(({ data }: any) => {
         if (!data?.length) return;
         const history: FeedLine[] = data.reverse().flatMap((e: any) => {
-          const ts = new Date(e.created_at).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+          const d = new Date(e.created_at);
+          const ts = d.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
           const { msg, bountyKey, hidden } = formatFeedEntry(e.action, e.detail || "");
           if (hidden) return [];
           seenIdsRef.current.add(e.id);
           const accent = e.action === "pipeline_start" ? "#fbbf24"
             : bountyKey ? bountyAccent(bountyKey) : "#71717a";
-          return [{ id: e.id, ts, msg, accent, bountyKey }];
+          return [{ id: e.id, ts, epochMs: d.getTime(), msg, accent, bountyKey }];
         });
         setLines(history);
       });
@@ -1017,13 +1032,14 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
       if (!freshEntries.length) return;
       const freshLines: FeedLine[] = freshEntries.reverse().flatMap((e: any) => {
         seenIdsRef.current.add(e.id);
-        const ts = new Date(e.created_at).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        const d = new Date(e.created_at);
+        const ts = d.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
         const { msg, bountyKey, hidden } = formatFeedEntry(e.action, e.detail || "");
         if (hidden) return [];
         if (e.action === "pipeline_start") playPipelineSound();
         const accent = e.action === "pipeline_start" ? "#fbbf24"
           : bountyKey ? bountyAccent(bountyKey) : "#71717a";
-        return [{ id: e.id, ts, msg, accent, bountyKey }];
+        return [{ id: e.id, ts, epochMs: d.getTime(), msg, accent, bountyKey }];
       });
       if (!freshLines.length) return;
       setLines(prev => [...prev, ...freshLines].slice(-100));
@@ -1187,39 +1203,59 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
         {lines.length === 0 && !typingDisplay && (
           <p className="tls-feed text-zinc-800 py-1 select-none pl-[52px]">— waiting for activity —</p>
         )}
-        {[...lines].reverse().map((l, idx) => {
-          let kwLen = 0, kwColor = "";
-          for (const [kw, c] of ACTION_COLORS) {
-            if (l.msg.startsWith(kw)) { kwLen = kw.length; kwColor = c; break; }
-          }
-          const kwText = l.msg.slice(0, kwLen);
-          const rest   = l.msg.slice(kwLen);
+        {(() => {
+          const reversed = [...lines].reverse();
+          const nodes: React.ReactNode[] = [];
+          reversed.forEach((l, idx) => {
+            // Insert cron-slot markers between this line and the next (older) one
+            if (idx < reversed.length - 1) {
+              const older = reversed[idx + 1];
+              const slots = cronSlotsBetween(older.epochMs, l.epochMs);
+              for (const slotMs of slots) {
+                const slotLabel = new Date(slotMs).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
+                nodes.push(
+                  <div key={`slot-${slotMs}`} className="flex items-center gap-2 my-1 select-none" aria-hidden>
+                    <span className="text-zinc-800 tabular-nums font-mono text-[10px] shrink-0">{slotLabel}</span>
+                    <span className="flex-1 border-t border-zinc-900" />
+                  </div>
+                );
+              }
+            }
 
-          let restNode: React.ReactNode;
-          if (l.bountyKey && rest.includes(l.bountyKey)) {
-            const bkIdx  = rest.indexOf(l.bountyKey);
-            const before = rest.slice(0, bkIdx);
-            const after  = rest.slice(bkIdx + l.bountyKey.length);
-            restNode = <>
-              {before && <span className="text-white">{before}</span>}
-              <span style={{ color: l.accent }}>{l.bountyKey}</span>
-              {after && <span className="text-white">{after}</span>}
-            </>;
-          } else {
-            restNode = <span className="text-white">{rest}</span>;
-          }
+            let kwLen = 0, kwColor = "";
+            for (const [kw, c] of ACTION_COLORS) {
+              if (l.msg.startsWith(kw)) { kwLen = kw.length; kwColor = c; break; }
+            }
+            const kwText = l.msg.slice(0, kwLen);
+            const rest   = l.msg.slice(kwLen);
 
-          return (
-            <div key={l.id} className={`flex gap-3 tls-feed leading-[1.65] ${idx === 0 ? "fade-down" : ""}`}>
-              <span className="text-zinc-700 shrink-0 tabular-nums font-mono text-[11px] mt-[3px]">{l.ts}</span>
-              <span className="text-zinc-700 shrink-0 font-mono text-[11px] mt-[3px] select-none">·</span>
-              <span className="break-words min-w-0">
-                {kwLen > 0 && <span style={{ color: kwColor }}>{kwText}</span>}
-                {restNode}
-              </span>
-            </div>
-          );
-        })}
+            let restNode: React.ReactNode;
+            if (l.bountyKey && rest.includes(l.bountyKey)) {
+              const bkIdx  = rest.indexOf(l.bountyKey);
+              const before = rest.slice(0, bkIdx);
+              const after  = rest.slice(bkIdx + l.bountyKey.length);
+              restNode = <>
+                {before && <span className="text-white">{before}</span>}
+                <span style={{ color: l.accent }}>{l.bountyKey}</span>
+                {after && <span className="text-white">{after}</span>}
+              </>;
+            } else {
+              restNode = <span className="text-white">{rest}</span>;
+            }
+
+            nodes.push(
+              <div key={l.id} className={`flex gap-3 tls-feed leading-[1.65] ${idx === 0 ? "fade-down" : ""}`}>
+                <span className="text-zinc-700 shrink-0 tabular-nums font-mono text-[11px] mt-[3px]">{l.ts}</span>
+                <span className="text-zinc-700 shrink-0 font-mono text-[11px] mt-[3px] select-none">·</span>
+                <span className="break-words min-w-0">
+                  {kwLen > 0 && <span style={{ color: kwColor }}>{kwText}</span>}
+                  {restNode}
+                </span>
+              </div>
+            );
+          });
+          return nodes;
+        })()}
       </div>
     </div>
     </>
