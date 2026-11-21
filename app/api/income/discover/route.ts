@@ -30,7 +30,9 @@ const REPO_BLOCKLIST = [
   // Micro-bounty personal boards ($1–$10 tasks, mostly already claimed/delivered)
   "frantic-board", "auscaster",
   // Smart contract bounty-escrow repos (Rust/Solana, not our expertise)
-  "bounty-escrow", "opensacred-game",
+  "bounty-escrow", "opensacred-game", "opensacred",
+  // Known fake bounty posters (crypto contract tasks on fake repos)
+  "mergemint-mint", "Jagadeeshftw",
 ];
 
 // Extended non-code title patterns
