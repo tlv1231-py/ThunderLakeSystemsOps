@@ -24,7 +24,7 @@ import {
   Dumbbell,
   Terminal,
   TrendingUp,
-  Lightbulb,
+  Bot,
 } from "lucide-react";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { createClient } from "@/lib/supabase/client";
@@ -47,7 +47,7 @@ const OWNER_ITEMS = [
   { href: "/map",     label: "Live Map", icon: Map        },
   { href: "/monitor", label: "Monitor",  icon: Terminal   },
   { href: "/income",  label: "Bounty Engine", icon: TrendingUp },
-  { href: "/nexus",   label: "Profit Nexus",  icon: Lightbulb },
+  { href: "/actor-factory", label: "Actor Factory", icon: Bot },
 ];
 
 const COLLAPSE_DEFAULT_SLUGS = ["mark", "didi", "kelsea"];
