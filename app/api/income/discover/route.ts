@@ -191,7 +191,7 @@ export async function GET(req: Request) {
   await db.from("income_activity_log").insert({
     engine:  "bounty",
     action:  "scan_start",
-    detail:  `Discovery scan starting — querying algora, issuehunt, opire, github${cleanedCount > 0 ? ` (swept ${cleanedCount} stale items)` : ""}${requeueCount > 0 ? ` (re-queued ${requeueCount})` : ""}`,
+    detail:  `Discovery scan starting — querying opire, github${cleanedCount > 0 ? ` (swept ${cleanedCount} stale items)` : ""}${requeueCount > 0 ? ` (re-queued ${requeueCount})` : ""}`,
     status:  "ok",
     user_id: userId,
   });

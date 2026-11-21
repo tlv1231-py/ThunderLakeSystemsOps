@@ -113,87 +113,24 @@ async function fetchRepoLanguage(
   } catch { return null; }
 }
 
-// ── Algora.io — public bounty feed ────────────────────────────────────────────
+// ── Algora.io — REMOVED: company pivoted to recruiting (2025), bounty API dead ─
+// GitHub search queries still capture algora-funded issues via `algora+in:body`
 export async function fetchAlgoraBounties(): Promise<DiscoveredOpportunity[]> {
-  try {
-    // Fetch pages 0 and 1 to get up to 100 bounties
-    const [res0, res1] = await Promise.all([
-      fetch("https://console.algora.io/api/bounties?page=0&pageSize=50&status=OPEN", {
-        headers: { "User-Agent": UA, Accept: "application/json" },
-        signal: AbortSignal.timeout(TIMEOUT),
-      }),
-      fetch("https://console.algora.io/api/bounties?page=1&pageSize=50&status=OPEN", {
-        headers: { "User-Agent": UA, Accept: "application/json" },
-        signal: AbortSignal.timeout(TIMEOUT),
-      }),
-    ]);
-    const d0 = res0.ok ? await res0.json() : null;
-    const d1 = res1.ok ? await res1.json() : null;
-    const p0: any[] = d0 ? (Array.isArray(d0) ? d0 : (d0.items ?? d0.bounties ?? d0.data ?? [])) : [];
-    const p1: any[] = d1 ? (Array.isArray(d1) ? d1 : (d1.items ?? d1.bounties ?? d1.data ?? [])) : [];
-    const items: any[] = [...p0, ...p1];
-    return items.map((b: any): DiscoveredOpportunity => ({
-      source: "algora",
-      external_id: String(b.id ?? b.bountyId ?? b.number ?? ""),
-      title: b.title ?? b.issue?.title ?? "Untitled",
-      description: (b.body ?? b.issue?.body ?? b.description ?? "").slice(0, 3000),
-      url: b.url ?? b.htmlUrl ?? b.issue?.url ?? `https://console.algora.io/bounties/${b.id}`,
-      repo_url: b.repoUrl ?? b.issue?.repoUrl ?? null,
-      reward_usd: parseFloat(b.amount ?? b.reward ?? "0") || null,
-      reward_raw: b.amountFormatted ?? (b.amount ? `$${b.amount}` : null),
-      currency: b.currency ?? "USD",
-      language: b.language ?? b.repo?.language ?? null,
-      difficulty: null,
-      estimated_hours: null,
-      tags: (b.labels ?? b.tags ?? []).map((t: any) => typeof t === "string" ? t : t.name),
-      metadata: { org: b.org ?? b.orgName, repo: b.repo ?? b.repoName },
-      open_prs: b.pullRequestCount ?? b.openPRs ?? 0,
-      deadline: b.deadline ?? null,
-    }));
-  } catch { return []; }
+  return [];
 }
 
-// ── IssueHunt — public REST API ───────────────────────────────────────────────
+// ── IssueHunt — REMOVED: API returns HTTP 200 with empty body (broken as of 2025) ─
 export async function fetchIssueHuntBounties(): Promise<DiscoveredOpportunity[]> {
-  try {
-    const res = await fetch(
-      "https://issuehunt.io/api/v1/issues?page=1&per_page=50&sort=funded_at&state=open",
-      {
-        headers: { "User-Agent": UA, Accept: "application/json" },
-        signal: AbortSignal.timeout(TIMEOUT),
-      },
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    const items: any[] = Array.isArray(data) ? data : (data.issues ?? data.data ?? []);
-
-    return items.map((b: any): DiscoveredOpportunity => ({
-      source: "issuehunt",
-      external_id: String(b.id ?? b.issue_id ?? ""),
-      title: b.title ?? "Untitled",
-      description: (b.body ?? b.description ?? "").slice(0, 3000),
-      url: b.html_url ?? `https://issuehunt.io/r/${b.full_name}/${b.number}`,
-      repo_url: b.repo_url ?? null,
-      reward_usd: parseFloat(b.funded_by_sum ?? b.amount ?? "0") || null,
-      reward_raw: b.funded_by_sum ? `$${b.funded_by_sum}` : null,
-      currency: "USD",
-      language: b.language ?? null,
-      difficulty: null,
-      estimated_hours: null,
-      tags: (b.labels ?? []).map((l: any) => typeof l === "string" ? l : l.name),
-      metadata: { repo: b.full_name, number: b.number },
-      open_prs: b.prs_count ?? 0,
-      deadline: b.paid_at ?? null,
-    }));
-  } catch { return []; }
+  return [];
 }
 
 // ── Opire — dedicated bounty platform (payment guaranteed on merge) ───────────
+// Endpoint: GET /rewards (plain array, no /v1/ prefix)
+// Price field: pendingPrice.value in USD cents → divide by 100
 export async function fetchOpireBounties(): Promise<DiscoveredOpportunity[]> {
   try {
-    // Opire's public reward listing — their API serves funded issues
     const res = await fetch(
-      "https://api.opire.dev/v1/rewards?status=created&per_page=50",
+      "https://api.opire.dev/rewards",
       {
         headers: { "User-Agent": UA, Accept: "application/json" },
         signal: AbortSignal.timeout(TIMEOUT),
@@ -201,30 +138,31 @@ export async function fetchOpireBounties(): Promise<DiscoveredOpportunity[]> {
     );
     if (!res.ok) return [];
     const data = await res.json();
-    const items: any[] = Array.isArray(data) ? data
-      : (data.rewards ?? data.items ?? data.data ?? []);
+    const items: any[] = Array.isArray(data) ? data : [];
 
     return items
-      .filter((r: any) => r.issue_url || r.issueUrl)
+      .filter((r: any) => r.url)
       .map((r: any): DiscoveredOpportunity => {
-        const issueUrl: string = r.issue_url ?? r.issueUrl ?? "";
-        const amount = parseFloat(r.amount ?? r.total_amount ?? r.price ?? "0") || null;
+        const issueUrl: string = r.url ?? "";
+        const rewardCents: number = r.pendingPrice?.value ?? 0;
+        const amount = rewardCents > 0 ? rewardCents / 100 : null;
+        const repoUrl = r.project?.url ?? issueUrl.replace(/\/issues\/\d+$/, "") ?? null;
         return {
           source:          "opire",
-          external_id:     String(r.id ?? r._id ?? issueUrl),
-          title:           r.issue?.title ?? r.title ?? issueUrl,
-          description:     (r.issue?.body ?? r.description ?? "").slice(0, 3000),
+          external_id:     String(r.id ?? issueUrl),
+          title:           r.title ?? issueUrl,
+          description:     "",
           url:             issueUrl,
-          repo_url:        issueUrl.replace(/\/issues\/\d+$/, "") ?? null,
+          repo_url:        repoUrl,
           reward_usd:      amount,
           reward_raw:      amount ? `$${amount}` : null,
           currency:        "USD",
-          language:        r.issue?.language ?? null,
+          language:        (r.programmingLanguages as string[] | undefined)?.[0] ?? null,
           difficulty:      null,
           estimated_hours: null,
           tags:            [],
-          metadata:        { opire_id: r.id },
-          open_prs:        r.trying_count ?? 0,
+          metadata:        { opire_id: r.id, org: r.organization?.name },
+          open_prs:        (r.tryingUsers as unknown[])?.length ?? 0,
           deadline:        null,
         };
       });
