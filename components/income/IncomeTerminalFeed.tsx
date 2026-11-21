@@ -14,19 +14,15 @@ type TermLine = {
 };
 
 const ACTION_LABELS: Record<string, string> = {
-  scan_start:            "SCAN_INIT ",
-  scan_source:           "SCAN_SRC  ",
   agent_pr_opened:       "PR_OPENED ",
   agent_error:           "AGENT_ERR ",
   agent_no_changes:      "NO_CHANGE ",
   agent_skip:            "SKIP______",
-  discovery_run:         "DISCOVERY ",
   opportunity_queued:    "QUEUED____",
   opportunity_dismissed: "DISMISSED ",
   active_mode:           "ACTIVE_MOD",
   approval_approved:     "APPROVED_ ",
   earning_logged:        "EARN_LOG_ ",
-  discover:              "DISCOVERY ",
   pr_merged:             "██ MERGED ",
   pr_closed:             "PR_CLOSED ",
   pr_check_run:          "PR_CHECK  ",
@@ -38,7 +34,31 @@ const ACTION_LABELS: Record<string, string> = {
   frantic_payout:        "FR_PAYOUT ",
   frantic_delivered:     "██ FR_PAID",
   frantic_delivery_error:"FR_ERR____",
+  // Scan summary (replaces all scan_start + scan_source lines)
+  discovery_run:         "SCAN_DONE ",
 };
+
+// Actions that are suppressed — they're collapsed into the discovery_run summary
+const SUPPRESSED_ACTIONS = new Set(["scan_start", "scan_source"]);
+
+function parseScanTotal(entry: ActivityEntry): number {
+  const m = entry.detail?.match(/Found (\d+) bounties/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+function scanSummaryDetail(entry: ActivityEntry): string {
+  const sources: { source: string; count: number; error?: string }[] =
+    (entry.metadata as any)?.log ?? [];
+  const totalMatch = entry.detail?.match(/Found (\d+) bounties/);
+  const newMatch   = entry.detail?.match(/(\d+) new/);
+  const total      = totalMatch?.[1] ?? "?";
+  const newCount   = newMatch?.[1] ?? "0";
+  const srcParts   = sources
+    .filter(s => !s.error && s.count > 0)
+    .map(s => `${s.source}:${s.count}`)
+    .join("  ");
+  return `${total} total · ${newCount} new${srcParts ? `  [${srcParts}]` : ""}`;
+}
 
 function toTermLine(entry: ActivityEntry): TermLine {
   const ts = new Date(entry.created_at).toLocaleTimeString("en-US", {
@@ -49,21 +69,56 @@ function toTermLine(entry: ActivityEntry): TermLine {
   let color = "text-[#00cc33]";
   if (entry.action === "pr_merged")                color = "text-[#00ff41]";
   else if (entry.action === "frantic_delivered")   color = "text-[#00ff41]";
+  else if (entry.action === "submit_ok")           color = "text-[#00ff41]";
   else if (entry.status === "error")               color = "text-[#ff0040]";
   else if (entry.status === "warning")             color = "text-[#ffb800]";
   else if (entry.action === "agent_pr_opened")     color = "text-[#00ff41]";
-  else if (entry.action === "submit_ok")           color = "text-[#00ff41]";
-  else if (entry.action === "scan_start")          color = "text-[#00e5ff]";
-  else if (entry.action === "scan_source")         color = "text-[#00e5ff]";
-  else if (entry.action?.startsWith("discover"))   color = "text-[#00e5ff]";
+  else if (entry.action === "discovery_run")       color = "text-[#00e5ff]";
   else if (entry.action === "active_mode")         color = "text-[#ffb800]";
   else if (entry.action === "opportunity_queued")  color = "text-[#00e5ff]";
   else if (entry.action === "frantic_signup")      color = "text-[#00e5ff]";
   else if (entry.action === "frantic_payout")      color = "text-[#00e5ff]";
 
   const actionLabel = ACTION_LABELS[entry.action] ?? entry.action.toUpperCase().slice(0, 10).padEnd(10);
-  const text = entry.detail ?? entry.action ?? "";
+  const text = entry.action === "discovery_run"
+    ? scanSummaryDetail(entry)
+    : (entry.detail ?? entry.action ?? "");
+
   return { id: entry.id, ts, tsSortKey: new Date(entry.created_at).getTime(), prefix: `[${engine}] ${actionLabel}`, text, color };
+}
+
+// Subtle scan blip — short descending tone, nothing celebratory
+function playScanBlip() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(520, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(360, ctx.currentTime + 0.09);
+    gain.gain.setValueAtTime(0.07, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.14);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.14);
+    setTimeout(() => ctx.close(), 300);
+  } catch {}
+}
+
+// Animate an integer counter from `from` to `to` over ~700ms (ease-out)
+function animateCount(from: number, to: number, setter: (n: number) => void) {
+  if (from === to) return;
+  const duration = 700;
+  const start = performance.now();
+  const diff = to - from;
+  function tick(now: number) {
+    const t = Math.min((now - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - t, 3); // cubic ease-out
+    setter(Math.round(from + diff * eased));
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
 }
 
 interface Props {
@@ -74,48 +129,54 @@ interface Props {
 
 export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun, userId }: Props) {
   const [lines, setLines] = useState<TermLine[]>(() => {
-    // Deduplicate by id, keep most recent 80, ascending order
     const seen = new Set<string>();
     const deduped: ActivityEntry[] = [];
     for (const e of initialEntries) {
-      if (!seen.has(e.id)) { seen.add(e.id); deduped.push(e); }
+      if (!seen.has(e.id) && !SUPPRESSED_ACTIONS.has(e.action)) {
+        seen.add(e.id); deduped.push(e);
+      }
     }
     return deduped.slice(0, 80).reverse().map(toTermLine);
   });
-  const [connected, setConnected] = useState(false);
-  const [blink, setBlink] = useState(true);
-  const [now, setNow] = useState(() => Date.now());
 
-  // Typewriter animation state
+  // Animated scan counter — seeded from most recent discovery_run
+  const [scanTotal, setScanTotal] = useState<number>(() => {
+    const run = initialEntries.find(e => e.action === "discovery_run");
+    return run ? parseScanTotal(run) : 0;
+  });
+  const [displayTotal, setDisplayTotal] = useState<number>(scanTotal);
+  const prevTotalRef = useRef<number>(scanTotal);
+
+  const [connected, setConnected]   = useState(false);
+  const [blink, setBlink]           = useState(true);
+  const [now, setNow]               = useState(() => Date.now());
+
+  // Typewriter state
   const [typingState, setTypingState] = useState<{ entry: TermLine; pos: number } | null>(null);
-  const typingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const typingRef      = useRef<ReturnType<typeof setInterval> | null>(null);
   const typingQueueRef = useRef<TermLine[]>([]);
+  const bottomRef      = useRef<HTMLDivElement>(null);
 
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  // Last scan timestamp
   const [lastScanTs, setLastScanTs] = useState<number | null>(() => {
     if (lastDiscoveryRun) return new Date(lastDiscoveryRun).getTime();
     const e = initialEntries.find(e => e.action === "discovery_run" || e.action === "scan_start");
     return e ? new Date(e.created_at).getTime() : null;
   });
 
-  // Auto-scroll to bottom on new lines or typing
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [lines, typingState]);
+  // Scroll to bottom
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [lines, typingState]);
 
-  // Tick every second for the countdown
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
+  // 1s clock tick
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
 
-  // Blinking cursor (only when not typing)
+  // Cursor blink
+  useEffect(() => { const t = setInterval(() => setBlink(b => !b), 530); return () => clearInterval(t); }, []);
+
+  // Animate counter whenever scanTotal changes
   useEffect(() => {
-    const t = setInterval(() => setBlink(b => !b), 530);
-    return () => clearInterval(t);
-  }, []);
+    animateCount(prevTotalRef.current, scanTotal, setDisplayTotal);
+    prevTotalRef.current = scanTotal;
+  }, [scanTotal]);
 
   // Typewriter engine
   function flushEntry(entry: TermLine) {
@@ -127,47 +188,30 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun, userId }:
   }
 
   function startTyping(entry: TermLine) {
-    if (typingRef.current) {
-      clearInterval(typingRef.current);
-      typingRef.current = null;
-    }
-
+    if (typingRef.current) { clearInterval(typingRef.current); typingRef.current = null; }
     const fullLen = entry.text.length;
     if (fullLen === 0) { flushEntry(entry); return; }
-
     let pos = 0;
     setTypingState({ entry, pos });
-
     typingRef.current = setInterval(() => {
-      pos += 3; // 3 chars per tick at 18ms = fast typewriter
+      pos += 3;
       if (pos >= fullLen) {
-        clearInterval(typingRef.current!);
-        typingRef.current = null;
-        setTypingState(null);
-        flushEntry(entry);
-        // Process next queued entry
+        clearInterval(typingRef.current!); typingRef.current = null;
+        setTypingState(null); flushEntry(entry);
         const next = typingQueueRef.current.shift();
         if (next) startTyping(next);
-      } else {
-        setTypingState({ entry, pos });
-      }
+      } else { setTypingState({ entry, pos }); }
     }, 18);
   }
 
   function enqueueTyping(entry: TermLine) {
-    if (typingRef.current !== null) {
-      typingQueueRef.current.push(entry);
-    } else {
-      startTyping(entry);
-    }
+    if (typingRef.current !== null) typingQueueRef.current.push(entry);
+    else startTyping(entry);
   }
 
-  // Cleanup typing on unmount
-  useEffect(() => {
-    return () => { if (typingRef.current) clearInterval(typingRef.current); };
-  }, []);
+  useEffect(() => { return () => { if (typingRef.current) clearInterval(typingRef.current); }; }, []);
 
-  // Supabase realtime + 10s poll fallback
+  // Realtime + 10s poll
   useEffect(() => {
     const supabase = createClient();
     const seenIds = new Set(lines.map(l => l.id));
@@ -176,25 +220,27 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun, userId }:
       .channel(`income_terminal_feed_${userId}`)
       .on(
         "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "income_activity_log",
-          filter: `user_id=eq.${userId}`,
-        },
+        { event: "INSERT", schema: "public", table: "income_activity_log", filter: `user_id=eq.${userId}` },
         (payload: any) => {
           const entry = payload.new as ActivityEntry;
           if (seenIds.has(entry.id)) return;
           seenIds.add(entry.id);
+
           if (entry.action === "discovery_run" || entry.action === "scan_start") {
             setLastScanTs(new Date(entry.created_at).getTime());
           }
+          if (entry.action === "discovery_run") {
+            const total = parseScanTotal(entry);
+            if (total > 0) setScanTotal(total);
+            playScanBlip();
+          }
+          // Suppress noisy scan sub-messages
+          if (SUPPRESSED_ACTIONS.has(entry.action)) return;
           enqueueTyping(toTermLine(entry));
         }
       )
       .subscribe((status: string) => setConnected(status === "SUBSCRIBED"));
 
-    // Poll every 10s so scans always surface even if Realtime misses them
     async function poll() {
       const { data } = await (supabase as any)
         .from("income_activity_log")
@@ -206,10 +252,16 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun, userId }:
       const fresh = (data as ActivityEntry[]).filter(e => !seenIds.has(e.id));
       if (!fresh.length) return;
       fresh.forEach(e => seenIds.add(e.id));
-      const latestScan = fresh.find(e => e.action === "discovery_run" || e.action === "scan_start");
-      if (latestScan) setLastScanTs(new Date(latestScan.created_at).getTime());
+      const latestRun = fresh.find(e => e.action === "discovery_run");
+      if (latestRun) {
+        setLastScanTs(new Date(latestRun.created_at).getTime());
+        const total = parseScanTotal(latestRun);
+        if (total > 0) setScanTotal(total);
+      }
+      const visible = fresh.filter(e => !SUPPRESSED_ACTIONS.has(e.action));
+      if (!visible.length) return;
       setLines(prev => {
-        const next = [...prev, ...fresh.map(toTermLine)];
+        const next = [...prev, ...visible.map(toTermLine)];
         next.sort((a, b) => a.tsSortKey - b.tsSortKey);
         return next.slice(-100);
       });
@@ -219,7 +271,7 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun, userId }:
     return () => { supabase.removeChannel(channel); clearInterval(pollTimer); };
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Always count to next UTC cron slot (:00/:15/:30/:45)
+  // Next cron slot countdown
   function nextSlot(ts: number) {
     const d = new Date(ts);
     const m = d.getUTCMinutes();
@@ -235,13 +287,13 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun, userId }:
   const remM = Math.floor(remaining / 60000);
   const remS = Math.floor((remaining % 60000) / 1000);
 
-  const missedMs = lastScanTs ? now - lastScanTs : null;
+  const missedMs  = lastScanTs ? now - lastScanTs : null;
   const isOverdue = missedMs !== null && missedMs > 20 * 60 * 1000;
   const overdueMin = missedMs ? Math.floor(missedMs / 60000) : 0;
 
   const countdownLabel = isOverdue
     ? `OVERDUE ${overdueMin}m`
-    : `NEXT: ${String(remM).padStart(2,"0")}:${String(remS).padStart(2,"0")}`;
+    : `NEXT: ${String(remM).padStart(2, "0")}:${String(remS).padStart(2, "0")}`;
 
   const lastScanLabel = (() => {
     if (!lastScanTs) return "LAST: —";
@@ -253,7 +305,7 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun, userId }:
 
   return (
     <div className="flex flex-col h-full bg-black border border-[#00ff41]/20 font-mono overflow-hidden">
-      {/* Header row 1 */}
+      {/* Header row 1 — title + connection status */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#00ff41]/10 bg-[#030603] shrink-0">
         <span className="text-[9px] text-[#007a1f] uppercase tracking-[0.2em]">SYS::ACTIVITY_FEED</span>
         <div className="flex items-center gap-1.5">
@@ -264,10 +316,19 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun, userId }:
         </div>
       </div>
 
-      {/* Header row 2 */}
-      <div className="px-3 py-1.5 border-b border-[#00ff41]/20 bg-[#030603] shrink-0 flex items-center justify-between">
-        <span className="text-[9px] text-[#004d14] uppercase tracking-widest">{lastScanLabel}</span>
-        <span className={`text-[11px] font-bold tabular-nums tracking-widest ${
+      {/* Header row 2 — scan counter + timing */}
+      <div className="px-3 py-1.5 border-b border-[#00ff41]/20 bg-[#030603] shrink-0 flex items-center justify-between gap-2">
+        <span className="text-[9px] text-[#004d14] uppercase tracking-widest shrink-0">{lastScanLabel}</span>
+
+        {/* Animated scan counter */}
+        <div className="flex items-baseline gap-1 min-w-0">
+          <span className="text-[9px] text-[#004d14] uppercase tracking-widest shrink-0">SCANNED</span>
+          <span className="text-[13px] font-bold tabular-nums text-[#00cc33] tracking-tight">
+            {displayTotal.toLocaleString()}
+          </span>
+        </div>
+
+        <span className={`text-[11px] font-bold tabular-nums tracking-widest shrink-0 ${
           isOverdue ? "text-[#ff0040] animate-pulse" : "text-[#00ff41]"
         }`}>
           {countdownLabel}
