@@ -212,6 +212,17 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun, userId }:
   const [blink, setBlink]           = useState(true);
   const [now, setNow]               = useState(() => Date.now());
 
+  // Approval indicator
+  const [pendingApprovals, setPendingApprovals] = useState(0);
+  const [approvalFlash, setApprovalFlash]       = useState<"green" | "red" | null>(null);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function triggerApprovalFlash(color: "green" | "red") {
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    setApprovalFlash(color);
+    flashTimerRef.current = setTimeout(() => setApprovalFlash(null), 1400);
+  }
+
   // Typewriter state
   const [typingState, setTypingState] = useState<{ entry: TermLine; pos: number } | null>(null);
   const typingRef      = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -238,6 +249,48 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun, userId }:
     animateCount(prevTotalRef.current, scanTotal, setDisplayTotal);
     prevTotalRef.current = scanTotal;
   }, [scanTotal]);
+
+  // Approval indicator — realtime subscription + initial count
+  useEffect(() => {
+    const supabase = createClient();
+
+    async function fetchPending() {
+      const { count } = await (supabase as any)
+        .from("income_approvals")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("status", "pending");
+      setPendingApprovals(count ?? 0);
+    }
+    fetchPending();
+
+    const channel = (supabase as any)
+      .channel(`approval_indicator_${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "income_approvals", filter: `user_id=eq.${userId}` },
+        (payload: any) => {
+          if (payload.eventType === "INSERT" && payload.new?.status === "pending") {
+            setPendingApprovals(prev => prev + 1);
+          } else if (payload.eventType === "UPDATE") {
+            const s = payload.new?.status;
+            if (s === "approved" || s === "done") {
+              triggerApprovalFlash("green");
+              setPendingApprovals(prev => Math.max(0, prev - 1));
+            } else if (s === "rejected") {
+              triggerApprovalFlash("red");
+              setPendingApprovals(prev => Math.max(0, prev - 1));
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    };
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Typewriter engine
   function flushEntry(entry: TermLine) {
@@ -377,9 +430,37 @@ export function IncomeTerminalFeed({ initialEntries, lastDiscoveryRun, userId }:
         </div>
       </div>
 
-      {/* Header row 2 — scan counter + timing */}
+      {/* Header row 2 — approval indicator + scan counter + next scan */}
       <div className="px-3 py-1.5 border-b border-[#4fc3f7]/15 bg-[#030508] shrink-0 flex items-center justify-between gap-2">
-        <span className="text-[9px] text-[#37474f] uppercase tracking-widest shrink-0">{lastScanLabel}</span>
+
+        {/* Approval indicator — flashes green/red on decision */}
+        <div
+          className="flex items-center gap-1.5 shrink-0 transition-all duration-300"
+          style={{
+            color: approvalFlash === "green" ? "#00ff41"
+                 : approvalFlash === "red"   ? "#ff3d3d"
+                 : pendingApprovals > 0      ? "#ffb800"
+                 : "#2d3f4d",
+            textShadow: approvalFlash === "green" ? "0 0 10px #00ff4180"
+                      : approvalFlash === "red"   ? "0 0 10px #ff3d3d80"
+                      : "none",
+          }}
+        >
+          <span
+            className={`inline-block w-2 h-2 rounded-full transition-colors duration-300 ${
+              approvalFlash === "green" ? "bg-[#00ff41]"
+            : approvalFlash === "red"  ? "bg-[#ff3d3d]"
+            : pendingApprovals > 0     ? "bg-[#ffb800] animate-pulse"
+            : "bg-[#2d3f4d]"
+            }`}
+          />
+          <span className="text-[9px] uppercase tracking-widest font-semibold">
+            {approvalFlash === "green" ? "APPROVED"
+           : approvalFlash === "red"  ? "REJECTED"
+           : pendingApprovals > 0     ? `${pendingApprovals} PENDING`
+           : "CLEAR"}
+          </span>
+        </div>
 
         {/* Animated scan counter */}
         <div className="flex items-baseline gap-1 min-w-0">
