@@ -250,13 +250,16 @@ export async function GET(req: Request) {
   } catch {}
 
   // ── Log scan start ─────────────────────────────────────────────────────────
-  await db.from("income_activity_log").insert({
+  const dbErrors: string[] = [];
+  const { error: scanStartErr } = await db.from("income_activity_log").insert({
     engine:  "bounty",
     action:  "scan_start",
     detail:  `Discovery scan starting — querying opire, github, superteam, frantic${cleanedCount > 0 ? ` (swept ${cleanedCount} stale items)` : ""}${requeueCount > 0 ? ` (re-queued ${requeueCount})` : ""}`,
     status:  "ok",
     user_id: userId,
   });
+  if (scanStartErr) dbErrors.push(`scan_start: ${scanStartErr.message} (code:${scanStartErr.code})`);
+
 
   // ── Run discovery ──────────────────────────────────────────────────────────
   const { opportunities, log } = await discoverAllOpportunities({ onSourceComplete: async (source, count, err) => {
@@ -385,7 +388,7 @@ export async function GET(req: Request) {
 
   const sweepNote  = cleanedCount > 0 ? `, ${cleanedCount} stale items swept from queue` : "";
   const sourceList = log.map(l => `${l.source}:${l.count}`).join("  ");
-  await db.from("income_activity_log").insert({
+  const { error: discoveryRunErr } = await db.from("income_activity_log").insert({
     engine:  "bounty",
     action:  "discovery_run",
     detail:  `Scan complete — ${opportunities.length} bounties checked, ${newCount} new and queued, ${skipCount} filtered out${sweepNote}  [${sourceList}]`,
@@ -393,6 +396,7 @@ export async function GET(req: Request) {
     metadata: { log, duration_ms: durationMs, sources: log.map(l => l.source) },
     user_id:  userId,
   });
+  if (discoveryRunErr) dbErrors.push(`discovery_run: ${discoveryRunErr.message} (code:${discoveryRunErr.code})`);
 
   // ── Fire-and-forget: trigger Superteam + Frantic submission pipelines ───────
   // Uses VERCEL_URL to build the absolute URL for self-call. Non-blocking.
@@ -428,5 +432,6 @@ export async function GET(req: Request) {
     cleaned:  cleanedCount,
     duration: durationMs,
     sources:  log,
+    ...(dbErrors.length > 0 ? { db_errors: dbErrors } : {}),
   });
 }
