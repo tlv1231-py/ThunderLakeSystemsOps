@@ -211,10 +211,11 @@ export async function GET(req: Request) {
     if (highScored?.length) {
       for (const opp of highScored as any[]) {
         // Apply same dual threshold as auto-queue (reward_usd > 0 required for high-score path)
-        const sweepHighScore  = opp.score >= 60 && (opp.open_prs ?? 0) < 3 && (opp.reward_usd ?? 0) > 0;
-        const sweepKnownRew   = (opp.reward_usd ?? 0) >= 20 && opp.score >= 50 && (opp.open_prs ?? 0) < 3;
-        const sweepOpireReady = opp.source === "opire" && opp.score >= 35 && (opp.open_prs ?? 0) < 5;
-        if (!sweepHighScore && !sweepKnownRew && !sweepOpireReady) continue;
+        const sweepHighScore    = opp.score >= 60 && (opp.open_prs ?? 0) < 3 && (opp.reward_usd ?? 0) > 0;
+        const sweepKnownRew     = (opp.reward_usd ?? 0) >= 20 && opp.score >= 50 && (opp.open_prs ?? 0) < 3;
+        const sweepOpireReady   = opp.source === "opire" && opp.score >= 35 && (opp.open_prs ?? 0) < 5;
+        const sweepSuperteamAgt = opp.source === "superteam" && (opp.reward_usd ?? 0) >= 50;
+        if (!sweepHighScore && !sweepKnownRew && !sweepOpireReady && !sweepSuperteamAgt) continue;
 
         const { data: existingWQ } = await db
           .from("income_work_queue")
@@ -251,7 +252,7 @@ export async function GET(req: Request) {
   await db.from("income_activity_log").insert({
     engine:  "bounty",
     action:  "scan_start",
-    detail:  `Discovery scan starting — querying opire, github${cleanedCount > 0 ? ` (swept ${cleanedCount} stale items)` : ""}${requeueCount > 0 ? ` (re-queued ${requeueCount})` : ""}`,
+    detail:  `Discovery scan starting — querying opire, github, superteam${cleanedCount > 0 ? ` (swept ${cleanedCount} stale items)` : ""}${requeueCount > 0 ? ` (re-queued ${requeueCount})` : ""}`,
     status:  "ok",
     user_id: userId,
   });
@@ -279,15 +280,21 @@ export async function GET(req: Request) {
     // ── Hard filters: skip before touching the DB ─────────────────────────
     const repoLower = (opp.repo_url ?? opp.url ?? "").toLowerCase();
     if (REPO_BLOCKLIST.some(p => repoLower.includes(p))) { skipCount++; continue; }
-    if (NON_CODE_TITLE_PATTERNS.some(p => p.test(opp.title ?? ""))) { skipCount++; continue; }
-    // Already-claimed/delivered bounties — labels tell us the bounty is closed
-    const tagLower = (opp.tags ?? []).map(t => t.toLowerCase());
-    if (["delivered", "claimed", "paid", "completed", "accepted"].some(t => tagLower.includes(t))) { skipCount++; continue; }
-    // Description-level crypto signals: wallet addresses or USDC/crypto payout mentions
-    const descLower = (opp.description ?? "").toLowerCase();
-    if (/0x[0-9a-f]{40}/.test(descLower) || /\busdc payout\b/.test(descLower) || /base usdc/.test(descLower) || /\bpayout address\b/.test(descLower) || /\b\d+\s*(usdc|usdt)\b/.test(descLower)) { skipCount++; continue; }
-    if (isAntiTopic(opp)) { skipCount++; continue; }
-    if (isNonCodeTask(opp)) { skipCount++; continue; }
+
+    // Superteam content bounties are explicitly designed for agents — skip code-only filters
+    const isSuperteam = opp.source === "superteam";
+
+    if (!isSuperteam) {
+      if (NON_CODE_TITLE_PATTERNS.some(p => p.test(opp.title ?? ""))) { skipCount++; continue; }
+      // Already-claimed/delivered bounties — labels tell us the bounty is closed
+      const tagLower = (opp.tags ?? []).map(t => t.toLowerCase());
+      if (["delivered", "claimed", "paid", "completed", "accepted"].some(t => tagLower.includes(t))) { skipCount++; continue; }
+      // Description-level crypto signals: wallet addresses or USDC/crypto payout mentions
+      const descLower = (opp.description ?? "").toLowerCase();
+      if (/0x[0-9a-f]{40}/.test(descLower) || /\busdc payout\b/.test(descLower) || /base usdc/.test(descLower) || /\bpayout address\b/.test(descLower) || /\b\d+\s*(usdc|usdt)\b/.test(descLower)) { skipCount++; continue; }
+      if (isAntiTopic(opp)) { skipCount++; continue; }
+      if (isNonCodeTask(opp)) { skipCount++; continue; }
+    }
 
     // Check if already tracked
     const { data: existing } = await db
@@ -338,10 +345,13 @@ export async function GET(req: Request) {
       // Auto-queue: score >= 60 with known reward (profitability-first) OR reward >= $20 with score >= 50
       // Require reward_usd > 0 for GitHub — prevents $0 issues from clogging the queue
       // Opire/Algora: allow up to 5 open PRs (merge-based payment reliable even with competition)
-      const isHighScore = score >= 60 && (opp.open_prs ?? 0) < 3 && (opp.reward_usd ?? 0) > 0;
+      // Superteam AGENT_ALLOWED: auto-queue stablecoin bounties >$50 (content work, not code)
+      const isHighScore   = score >= 60 && (opp.open_prs ?? 0) < 3 && (opp.reward_usd ?? 0) > 0;
       const isKnownReward = (opp.reward_usd ?? 0) >= 20 && score >= 50 && (opp.open_prs ?? 0) < 3;
-      const isOpireReady = opp.source === "opire" && score >= 35 && (opp.open_prs ?? 0) < 5;
-      if ((isHighScore || isKnownReward || isOpireReady) && inserted && userId) {
+      const isOpireReady  = opp.source === "opire" && score >= 35 && (opp.open_prs ?? 0) < 5;
+      const agentAccess   = (opp.metadata as any)?.agentAccess ?? "HUMAN_ONLY";
+      const isSuperteamAgent = opp.source === "superteam" && agentAccess !== "HUMAN_ONLY" && (opp.reward_usd ?? 0) >= 50;
+      if ((isHighScore || isKnownReward || isOpireReady || isSuperteamAgent) && inserted && userId) {
         await db.from("income_opportunities").update({ status: "queued" }).eq("id", inserted.id);
         await db.from("income_work_queue").insert({
           engine:            "bounty",

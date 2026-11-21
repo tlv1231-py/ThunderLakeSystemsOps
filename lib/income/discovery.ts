@@ -264,6 +264,69 @@ export async function fetchOpireBounties(): Promise<DiscoveredOpportunity[]> {
   } catch { return []; }
 }
 
+// ── Superteam Earn — explicit agentAccess API ────────────────────────────────
+// Endpoint: GET /api/listings?type=bounty&status=open
+// agentAccess: "AGENT_ALLOWED" | "AGENT_ONLY" | "HUMAN_ONLY"
+// Only stablecoin rewards (USDC, USDG, USDT, DAI) are valued in USD.
+// Submission API (requires SUPERTEAM_API_KEY):
+//   POST https://superteam.fun/api/agents/submissions/create
+//   { listingId, link, eligibilityAnswers }
+const SUPERTEAM_USD_TOKENS = new Set(["USDC", "USDG", "USDT", "DAI"]);
+
+export async function fetchSuperteamBounties(): Promise<DiscoveredOpportunity[]> {
+  try {
+    const res = await fetch(
+      "https://earn.superteam.fun/api/listings?type=bounty&status=open&limit=100",
+      {
+        headers: { "User-Agent": UA, Accept: "application/json" },
+        signal: AbortSignal.timeout(TIMEOUT),
+      },
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    const items: any[] = Array.isArray(data) ? data : [];
+
+    return items
+      .filter((item: any) => item.agentAccess !== "HUMAN_ONLY")
+      .filter((item: any) => item.status === "OPEN")
+      .filter((item: any) => !item.isWinnersAnnounced)
+      .filter((item: any) => SUPERTEAM_USD_TOKENS.has(item.token ?? ""))
+      .map((item: any): DiscoveredOpportunity => {
+        const reward_usd: number | null = item.rewardAmount > 0 ? item.rewardAmount : null;
+        const submissions: number = item._count?.Submission ?? 0;
+        const deadline = item.deadline ? new Date(item.deadline).toISOString() : null;
+
+        return {
+          source:          "superteam",
+          external_id:     item.id,
+          title:           item.title ?? "Superteam Bounty",
+          description:     `Sponsor: ${item.sponsor?.name ?? "unknown"} | Submissions: ${submissions} | Access: ${item.agentAccess}`,
+          url:             `https://earn.superteam.fun/listing/${item.slug}`,
+          repo_url:        null,
+          reward_usd,
+          reward_raw:      `${item.rewardAmount} ${item.token}`,
+          currency:        item.token ?? "USDC",
+          language:        null,
+          difficulty:      null,
+          estimated_hours: null,
+          tags:            [item.agentAccess, item.type].filter(Boolean) as string[],
+          metadata:        {
+            slug:         item.slug,
+            agentAccess:  item.agentAccess,
+            token:        item.token,
+            rewardAmount: item.rewardAmount,
+            submissions,
+            sponsorName:  item.sponsor?.name,
+            sponsorSlug:  item.sponsor?.slug,
+            deadline:     item.deadline,
+          },
+          open_prs:        submissions,
+          deadline,
+        };
+      });
+  } catch { return []; }
+}
+
 // ── Run all sources and deduplicate ──────────────────────────────────────────
 type SourceCompleteCallback = (source: string, count: number, error?: string) => Promise<void>;
 
@@ -282,6 +345,7 @@ export async function discoverAllOpportunities(opts?: {
     ["issuehunt", fetchIssueHuntBounties],
     ["opire",     fetchOpireBounties],
     ["github",    fetchGitHubBounties],
+    ["superteam", fetchSuperteamBounties],
   ];
 
   await Promise.all(sources.map(async ([name, fetcher]) => {
