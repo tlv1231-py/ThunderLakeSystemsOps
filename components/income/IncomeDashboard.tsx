@@ -825,7 +825,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v62g";
+const DASH_VERSION = "v62h";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -839,22 +839,24 @@ type FeedLine = { id: string; ts: string; msg: string; accent: string; bountyKey
 const BOUNTY_PALETTE = ["#fb923c","#22d3ee","#a3e635","#f472b6","#818cf8","#eab308","#e879f9","#8b5cf6","#ff6b6b","#06b6d4"];
 
 const ACTION_COLORS: [string, string][] = [
-  ["Abandoned",      "#f87171"],
-  ["Error:",         "#f87171"],
-  ["Failed",         "#f87171"],
-  ["Rejected",       "#f87171"],
-  ["Server offline", "#f87171"],
-  ["Accepted",       "#4ade80"],
-  ["Earned",         "#4ade80"],
-  ["Submitted",      "#38bdf8"],
-  ["Found ",         "#38bdf8"],
-  ["Discovery scan", "#38bdf8"],
-  ["Pipeline",       "#52525b"],
-  ["Skipped",        "#71717a"],
-  ["Staged",         "#71717a"],
-  ["Dismissed",      "#71717a"],
-  ["Working on",     "#2dd4bf"],
-  ["In review",      "#fbbf24"],
+  ["Accepted",       "#ffd54f"],  // gold
+  ["Earned",         "#ffd54f"],
+  ["Approved",       "#ffd54f"],
+  ["Submitted",      "#4fc3f7"],  // sky blue
+  ["Scan complete",  "#ce93d8"],  // purple
+  ["Found ",         "#4fc3f7"],
+  ["Discovery scan", "#4fc3f7"],  // backward compat
+  ["Pipeline",       "#b39ddb"],  // lavender
+  ["Staged",         "#00e5ff"],  // cyan
+  ["Working on",     "#80cbc4"],  // teal
+  ["In review",      "#fbbf24"],  // amber
+  ["Abandoned",      "#ff9800"],  // orange
+  ["Error:",         "#f48fb1"],  // pink
+  ["Failed",         "#ff9800"],
+  ["Rejected",       "#ff9800"],
+  ["Server offline", "#ff9800"],
+  ["Skipped",        "#ff9800"],
+  ["Dismissed",      "#ff9800"],
 ];
 
 function bountyAccent(key: string): string {
@@ -866,13 +868,14 @@ function bountyAccent(key: string): string {
 function formatFeedEntry(action: string, detail: string): { msg: string; bountyKey?: string; hidden?: boolean } {
   switch (action) {
     case "scan_source":
-      return { msg: detail, hidden: true };
     case "scan_start":
-      return { msg: detail };
+      return { msg: detail, hidden: true };
     case "discovery_run":
+      // New: "Scan complete — X bounties checked, Y new, Z filtered  [sources]"
+      // Old: "Found X bounties (Y new, Z skipped) ..."
+      if (detail.startsWith("Scan complete")) return { msg: detail };
       return { msg: detail };
     case "pipeline_start":
-      return { msg: detail };
     case "pipeline_end":
       return { msg: detail };
     case "agent_pr_opened": {
@@ -882,15 +885,27 @@ function formatFeedEntry(action: string, detail: string): { msg: string; bountyK
       const msg   = prNum && repo ? `Submitted — #${prNum} on ${repo} — ${title || ""}` : `Submitted — ${detail}`;
       return { msg, bountyKey: title };
     }
-    case "pr_merged":
+    case "pr_merged": {
+      // New: `PR merged: "${title}"${reward} — payment should arrive via platform`
+      const m = detail.match(/PR merged: "([^"]+)"/);
+      if (m) {
+        const title = m[1];
+        const reward = detail.match(/\$(\d[\d.]*)/)?.[1];
+        return { msg: reward ? `Accepted — ${title} — $${reward} incoming` : `Accepted — ${title}`, bountyKey: title };
+      }
       return { msg: `Accepted — ${detail}`, bountyKey: detail };
-    case "pr_closed":
+    }
+    case "pr_closed": {
+      // New: `PR rejected: "${title}" — closed without merging, no payout`
+      const m = detail.match(/PR rejected: "([^"]+)"/);
+      if (m) return { msg: `Rejected — ${m[1]}`, bountyKey: m[1] };
       return { msg: `Rejected — ${detail}`, bountyKey: detail };
+    }
     case "agent_no_changes": {
       const sep = detail.indexOf("|||");
       const title  = sep > -1 ? detail.slice(0, sep) : detail;
       const reason = sep > -1 ? detail.slice(sep + 3) : "no code changes";
-      return { msg: `Abandoned bounty — ${title} — ${reason}`, bountyKey: title };
+      return { msg: `Abandoned — ${title} — ${reason}`, bountyKey: title };
     }
     case "agent_skip": {
       const sep = detail.indexOf("|||");
@@ -900,9 +915,21 @@ function formatFeedEntry(action: string, detail: string): { msg: string; bountyK
     }
     case "agent_error":
       return { msg: `Error: ${detail}` };
-    case "opportunity_queued":
+    case "opportunity_queued": {
+      // New: `Auto-queued: "${title}" via source — $X (score N)` or `Manually queued: "${title}" — $X`
+      const m = detail.match(/"([^"]+)"/);
+      if (m) {
+        const title = m[1];
+        const reward = detail.match(/\$(\d[\d.]*)/)?.[1];
+        return { msg: reward ? `Staged — $${reward} — ${title}` : `Staged — ${title}`, bountyKey: title };
+      }
       return { msg: `Staged — ${detail}`, bountyKey: detail };
+    }
     case "opportunity_dismissed": {
+      // New: `You archived "${title}" (source) — won't appear again`
+      const newM = detail.match(/You archived "([^"]+)"/);
+      if (newM) return { msg: `Dismissed — ${newM[1]}`, bountyKey: newM[1] };
+      // Old "||| format"
       const sep = detail.indexOf("|||");
       const title  = sep > -1 ? detail.slice(0, sep) : detail;
       const reason = sep > -1 ? detail.slice(sep + 3) : "";
@@ -912,6 +939,18 @@ function formatFeedEntry(action: string, detail: string): { msg: string; bountyK
       return { msg: `Earned — ${detail}`, bountyKey: detail };
     case "approval_approved":
       return { msg: `Approved — ${detail}` };
+    case "submit_ok": {
+      // New: `Submitted to Superteam: "${title}" — $X USDC ...`
+      const m = detail.match(/"([^"]+)"/);
+      if (m) {
+        const title = m[1];
+        const reward = detail.match(/\$(\d[\d.]*)/)?.[1];
+        return { msg: reward ? `Submitted — $${reward} — ${title}` : `Submitted — ${title}`, bountyKey: title };
+      }
+      return { msg: `Submitted — ${detail}` };
+    }
+    case "submit_error":
+      return { msg: `Failed — ${detail}` };
     case "pr_check_run":
       return { msg: detail, hidden: true };
     default:
@@ -924,7 +963,16 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
   const seenIdsRef = useRef<Set<string>>(new Set());
   const [runState, setRunState] = useState<"idle" | "running" | "done" | "copied">("idle");
   const [serverAddr, setServerAddr] = useState(DEFAULT_AGENT_SERVER);
+  const [pendingApprovals, setPendingApprovals] = useState(0);
+  const [approvalFlash, setApprovalFlash] = useState<"green" | "red" | null>(null);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => { setServerAddr(getAgentServer()); }, []);
+
+  function triggerApprovalFlash(color: "green" | "red") {
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    setApprovalFlash(color);
+    flashTimerRef.current = setTimeout(() => setApprovalFlash(null), 1400);
+  }
 
   // ── Typewriter engine ─────────────────────────────────────────────────────
   const typingQueueRef = useRef<FeedLine[]>([]);
@@ -997,6 +1045,16 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
         });
         setLines(history);
       });
+  }, [userId]);
+
+  // Load pending approval count on mount
+  useEffect(() => {
+    const sb = createClient();
+    (sb as any).from("income_approvals")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("status", "pending")
+      .then(({ count }: any) => setPendingApprovals(count ?? 0));
   }, [userId]);
 
   // Poll feed every 15s — realtime may not fire if income_activity_log isn't in Supabase publication
@@ -1072,7 +1130,22 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
       })
       .subscribe();
 
-    return () => { sb.removeChannel(ch1); sb.removeChannel(ch2); };
+    const ch3 = (sb as any).channel(`lf_app_${userId}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "income_approvals", filter: `user_id=eq.${userId}` }, () => {
+        setPendingApprovals(n => n + 1);
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "income_approvals", filter: `user_id=eq.${userId}` }, (p: any) => {
+        if (p.new.status === "approved") {
+          setPendingApprovals(n => Math.max(0, n - 1));
+          triggerApprovalFlash("green");
+        } else if (p.new.status === "rejected") {
+          setPendingApprovals(n => Math.max(0, n - 1));
+          triggerApprovalFlash("red");
+        }
+      })
+      .subscribe();
+
+    return () => { sb.removeChannel(ch1); sb.removeChannel(ch2); sb.removeChannel(ch3); };
   }, [userId]);
 
   async function run() {
@@ -1105,11 +1178,23 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
     runState === "copied"  ? "border-amber-900 text-amber-400" :
     "border-zinc-700 text-white hover:border-white";
 
+  const flashColor = approvalFlash === "green" ? "#00e676" : approvalFlash === "red" ? "#ff5252" : pendingApprovals > 0 ? "#ffb800" : "#2d3f4d";
+  const flashGlow  = approvalFlash === "green" ? "0 0 8px #00e67660" : approvalFlash === "red" ? "0 0 8px #ff525260" : "none";
+  const dotCls     = approvalFlash === "green" ? "bg-[#00e676]" : approvalFlash === "red" ? "bg-[#ff5252]" : pendingApprovals > 0 ? "bg-[#ffb800] animate-pulse" : "bg-[#2d3f4d]";
+  const dotLabel   = approvalFlash === "green" ? "APPROVED" : approvalFlash === "red" ? "REJECTED" : pendingApprovals > 0 ? `${pendingApprovals} PENDING` : "CLEAR";
+
   return (
+    <>
+    <div className="flex items-center gap-2 mb-1.5 pl-0.5">
+      <div className="flex items-center gap-1.5 transition-all duration-300" style={{ color: flashColor, textShadow: flashGlow }}>
+        <span className={`inline-block w-1.5 h-1.5 rounded-full transition-colors duration-300 ${dotCls}`} />
+        <span className="text-[9px] font-mono uppercase tracking-widest font-semibold">{dotLabel}</span>
+      </div>
+    </div>
     <div
       className="tls-scroll"
       style={{
-        height: "calc(100vh - 220px)",
+        height: "calc(100vh - 236px)",
         WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 88%, transparent 100%)",
         maskImage:        "linear-gradient(to bottom, black 0%, black 88%, transparent 100%)",
       }}
@@ -1192,6 +1277,7 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
         })}
       </div>
     </div>
+    </>
   );
 }
 
