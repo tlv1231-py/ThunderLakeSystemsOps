@@ -54,7 +54,13 @@ const NON_CODE_TITLE_PATTERNS = [
   // Stellar blockchain bounty programs (pay in XLM, not USD)
   /stellar drips/i, /stellar.*bounty/i,
   // formatStellarAmount and similar Stellar-chain function names in titles
-  /stellar amount/i,
+  /stellar.{0,2}amount/i,
+  // AI-generated task runners posting fake issues (Jules AI task executor)
+  /\[jules task\b/i, /jules task from/i,
+  // Meta-intake/triage tickets (not actionable code tasks)
+  /^\[intake\]/i, /^\[question\]/i,
+  // Open bounties aggregator posts
+  /\d+\s+open bounties/i, /📋.*bounti/i,
 ];
 
 export async function GET(req: Request) {
@@ -132,7 +138,7 @@ export async function GET(req: Request) {
       if (toClean.length > 0) {
         const ids = toClean.map((i: any) => i.id);
         await db.from("income_opportunities")
-          .update({ status: "dismissed", progress_note: "Auto-dismissed: anti-fit target (web3/hardware/meta)" })
+          .update({ status: "dismissed" })
           .in("id", ids)
           .eq("user_id", userId);
         cleanedCount = toClean.length;

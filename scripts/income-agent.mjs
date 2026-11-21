@@ -95,7 +95,13 @@ const NON_CODE_TITLE_PATTERNS = [
   /\bmaths bounty\b/i,
   // Stellar blockchain bounty programs (pay in XLM, not USD)
   /stellar drips/i, /stellar.*bounty/i,
-  /stellar amount/i,
+  /stellar.{0,2}amount/i,
+  // AI-generated task runners posting fake issues (Jules AI task executor)
+  /\[jules task\b/i, /jules task from/i,
+  // Meta-intake/triage tickets (not actionable code tasks)
+  /^\[intake\]/i, /^\[question\]/i,
+  // Open bounties aggregator posts
+  /\d+\s+open bounties/i, /📋.*bounti/i,
 ];
 
 // Minimum reward in USD — below this, pipeline time per run exceeds expected return
@@ -250,7 +256,7 @@ for (const item of queuedItems) {
   if (isCryptoPayout) {
     console.log(`  🚫  Crypto payout detected in description — skipping: ${opp.title}`);
     await db.from("income_work_queue").update({ status: "failed", progress_note: "Crypto (USDC/wallet) payout in description — not USD" }).eq("id", item.id);
-    await db.from("income_opportunities").update({ status: "dismissed", progress_note: "Auto-dismissed: crypto wallet/USDC payout in body" }).eq("id", opp.id);
+    await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
     continue;
   }
 
