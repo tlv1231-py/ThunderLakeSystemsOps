@@ -18,9 +18,11 @@ export async function GET(req: Request) {
 
   const db = createAdminClient() as any;
 
-  let userId: string | null = null;
-  const { data: users } = await db.auth.admin.listUsers({ perPage: 1 });
-  userId = users?.users?.[0]?.id ?? null;
+  let userId: string | null = process.env.INCOME_AGENT_USER_ID ?? null;
+  if (!userId) {
+    const { data: users } = await db.auth.admin.listUsers({ perPage: 1 });
+    userId = users?.users?.[0]?.id ?? null;
+  }
 
   const { data: items } = await db
     .from("income_work_queue")

@@ -182,7 +182,7 @@ export async function fetchOpireBounties(): Promise<DiscoveredOpportunity[]> {
         if (iss.ok) {
           const d = await iss.json();
           issueTitle = d.title ?? issueTitle;
-          issueBody = (d.body ?? "").slice(0, 3000);
+          issueBody = (d.body ?? "").slice(0, 6000);
           issueLabels = (d.labels ?? []).map((l: any) => l.name as string);
           if (!repoLanguage && d.repository_url) {
             repoLanguage = await fetchRepoLanguage(d.repository_url, ghHeaders);
