@@ -81,8 +81,6 @@ const NON_CODE_TITLE_PATTERNS = [
   /^\[intake\]/i, /^\[question\]/i,
   // Open bounties aggregator posts
   /\d+\s+open bounties/i, /📋.*bounti/i,
-  // AI-generated spam issues posted to fake forks (uniform emoji prefix pattern)
-  /^🎯\s/,
   // Renovate bot auto-generated dependency dashboard (not a code task)
   /^dependency dashboard$/i,
   // Sponsor/ecosystem invitation spam

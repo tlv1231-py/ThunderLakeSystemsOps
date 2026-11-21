@@ -96,7 +96,8 @@ export async function fetchGitHubBounties(): Promise<DiscoveredOpportunity[]> {
         if (seen.has(extId)) continue;
         seen.add(extId);
 
-        let reward = extractReward(item.title + " " + (item.body ?? ""));
+        const labelText = (item.labels ?? []).map((l: any) => l.name as string).join(" ");
+        let reward = extractReward(item.title + " " + (item.body ?? "") + " " + labelText);
         // Fallback: check issue comments for bounty bot announcements (Opire, IssueHunt, Algora)
         // Only when body has no reward and there are comments worth checking
         if (!reward && (item.comments ?? 0) > 0 && item.comments <= 30) {
