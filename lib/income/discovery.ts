@@ -127,6 +127,7 @@ export async function fetchIssueHuntBounties(): Promise<DiscoveredOpportunity[]>
 // ── Opire — dedicated bounty platform (payment guaranteed on merge) ───────────
 // Endpoint: GET /rewards (plain array, no /v1/ prefix)
 // Price field: pendingPrice.value in USD cents → divide by 100
+// Fetches the GitHub issue body so the scorer can evaluate clarity/tech signals.
 export async function fetchOpireBounties(): Promise<DiscoveredOpportunity[]> {
   try {
     const res = await fetch(
@@ -140,32 +141,60 @@ export async function fetchOpireBounties(): Promise<DiscoveredOpportunity[]> {
     const data = await res.json();
     const items: any[] = Array.isArray(data) ? data : [];
 
-    return items
-      .filter((r: any) => r.url)
-      .map((r: any): DiscoveredOpportunity => {
-        const issueUrl: string = r.url ?? "";
-        const rewardCents: number = r.pendingPrice?.value ?? 0;
-        const amount = rewardCents > 0 ? rewardCents / 100 : null;
-        const repoUrl = r.project?.url ?? issueUrl.replace(/\/issues\/\d+$/, "") ?? null;
-        return {
-          source:          "opire",
-          external_id:     String(r.id ?? issueUrl),
-          title:           r.title ?? issueUrl,
-          description:     "",
-          url:             issueUrl,
-          repo_url:        repoUrl,
-          reward_usd:      amount,
-          reward_raw:      amount ? `$${amount}` : null,
-          currency:        "USD",
-          language:        (r.programmingLanguages as string[] | undefined)?.[0] ?? null,
-          difficulty:      null,
-          estimated_hours: null,
-          tags:            [],
-          metadata:        { opire_id: r.id, org: r.organization?.name },
-          open_prs:        (r.tryingUsers as unknown[])?.length ?? 0,
-          deadline:        null,
-        };
+    const ghToken = process.env.GITHUB_TOKEN;
+    const ghHeaders: Record<string, string> = {
+      Accept:              "application/vnd.github+json",
+      "User-Agent":        UA,
+      "X-GitHub-Api-Version": "2022-11-28",
+    };
+    if (ghToken) ghHeaders["Authorization"] = `Bearer ${ghToken}`;
+
+    const results: DiscoveredOpportunity[] = [];
+    for (const r of items.filter((r: any) => r.url)) {
+      const issueUrl: string = r.url ?? "";
+      const rewardCents: number = r.pendingPrice?.value ?? 0;
+      const amount = rewardCents > 0 ? rewardCents / 100 : null;
+      const repoUrl = r.project?.url ?? issueUrl.replace(/\/issues\/\d+$/, "") ?? null;
+
+      // Fetch GitHub issue body so the scorer has actual content
+      let issueTitle = r.title ?? issueUrl;
+      let issueBody = "";
+      let issueLabels: string[] = [];
+      let repoLanguage: string | null = (r.programmingLanguages as string[] | undefined)?.[0] ?? null;
+      try {
+        const apiUrl = issueUrl.replace("https://github.com/", "https://api.github.com/repos/");
+        const iss = await fetch(apiUrl, { headers: ghHeaders, signal: AbortSignal.timeout(6000) });
+        if (iss.ok) {
+          const d = await iss.json();
+          issueTitle = d.title ?? issueTitle;
+          issueBody = (d.body ?? "").slice(0, 3000);
+          issueLabels = (d.labels ?? []).map((l: any) => l.name as string);
+          if (!repoLanguage && d.repository_url) {
+            repoLanguage = await fetchRepoLanguage(d.repository_url, ghHeaders);
+          }
+        }
+      } catch { /* non-fatal */ }
+
+      results.push({
+        source:          "opire",
+        external_id:     String(r.id ?? issueUrl),
+        title:           issueTitle,
+        description:     issueBody,
+        url:             issueUrl,
+        repo_url:        repoUrl,
+        reward_usd:      amount,
+        reward_raw:      amount ? `$${amount}` : null,
+        currency:        "USD",
+        language:        repoLanguage,
+        difficulty:      null,
+        estimated_hours: null,
+        tags:            issueLabels,
+        metadata:        { opire_id: r.id, org: r.organization?.name },
+        open_prs:        (r.tryingUsers as unknown[])?.length ?? 0,
+        deadline:        null,
       });
+    }
+    return results;
   } catch { return []; }
 }
 
