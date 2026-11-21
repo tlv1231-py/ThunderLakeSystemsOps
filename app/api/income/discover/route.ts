@@ -391,7 +391,7 @@ export async function GET(req: Request) {
   const { error: discoveryRunErr } = await db.from("income_activity_log").insert({
     engine:  "bounty",
     action:  "discovery_run",
-    detail:  `Scan complete — ${opportunities.length} bounties checked, ${newCount} new and queued, ${skipCount} filtered out${sweepNote}  [${sourceList}]`,
+    detail:  `Scan complete — ${opportunities.length} bounties checked, ${newCount} new, ${skipCount} filtered out${sweepNote}  [${sourceList}]`,
     status:  "ok",
     metadata: { log, duration_ms: durationMs, sources: log.map(l => l.source) },
     user_id:  userId,

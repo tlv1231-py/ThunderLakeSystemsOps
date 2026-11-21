@@ -314,7 +314,7 @@ function WaitingColumn({ items, fresh, active, exiting }: {
       <div>
         <div className="flex items-baseline justify-between mb-2">
           <span className={`text-xs uppercase tracking-widest ${queued.length === 0 ? "text-zinc-700" : "text-zinc-500"}`}>
-            queue {queued.length > 0 && <span className="text-white font-bold">{queued.length}</span>}
+            {queued.length > 0 && <span className="text-white font-bold">{queued.length} </span>}queue
           </span>
           {queueUsd > 0 && <span className="text-xs text-zinc-400 tabular-nums">{usd(queueUsd)}</span>}
         </div>
@@ -350,7 +350,7 @@ function WaitingColumn({ items, fresh, active, exiting }: {
         <div>
           <div className="flex items-baseline justify-between mb-2">
             <span className="text-xs uppercase tracking-widest text-zinc-500">
-              in flight <span className="font-bold" style={{ color: IN_FLIGHT_GOLD }}>{inFlight.length}</span>
+              <span className="font-bold" style={{ color: IN_FLIGHT_GOLD }}>{inFlight.length} </span>in flight
             </span>
             {flightUsd > 0 && <span className="text-xs tabular-nums font-semibold" style={{ color: IN_FLIGHT_BLUE }}>{usd(flightUsd)}</span>}
           </div>
@@ -802,7 +802,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v62o";
+const DASH_VERSION = "v62p";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -1223,7 +1223,7 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
                   if (partial.startsWith(kw) || l.msg.startsWith(kw)) { kwLen = Math.min(kw.length, typingDisplay.pos); kwColor = c; break; }
                 }
                 return <>
-                  {kwLen > 0 && <span style={{ color: kwColor }}>{partial.slice(0, kwLen)}</span>}
+                  {kwLen > 0 && <span className="text-white">{partial.slice(0, kwLen)}</span>}
                   {l.bountyKey && partial.slice(kwLen).includes(l.bountyKey)
                     ? (() => {
                         const r = partial.slice(kwLen);
@@ -1296,7 +1296,7 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
                 <span className="text-zinc-700 shrink-0 tabular-nums font-mono text-[11px] mt-[3px]">{l.ts}</span>
                 <span className="text-zinc-700 shrink-0 font-mono text-[11px] mt-[3px] select-none">·</span>
                 <span className="break-words min-w-0">
-                  {kwLen > 0 && <span style={{ color: kwColor }}>{kwText}</span>}
+                  {kwLen > 0 && <span className="text-white">{kwText}</span>}
                   {restNode}
                 </span>
               </div>
