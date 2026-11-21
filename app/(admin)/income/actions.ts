@@ -13,7 +13,7 @@ export async function setActiveMode(on: boolean) {
   await db.from("income_activity_log").insert({
     engine: "system", action: "active_mode",
     status: on ? "on" : "off",
-    detail: on ? "Active Mode started" : "Active Mode stopped",
+    detail: on ? "Pipeline switched on — agent is now actively working the queue" : "Pipeline switched off — agent paused",
     user_id: user.id,
   });
   revalidatePath("/income");
@@ -24,10 +24,14 @@ export async function dismissOpportunity(id: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
   const db = supabase as any;
+  const { data: opp } = await db.from("income_opportunities").select("title, source, reward_usd").eq("id", id).maybeSingle();
   await db.from("income_opportunities").update({ status: "dismissed" })
     .eq("id", id).eq("user_id", user.id);
+  const title = opp?.title ?? id;
+  const src   = opp?.source ? ` (${opp.source})` : "";
   await db.from("income_activity_log").insert({
     engine: "bounty", action: "opportunity_dismissed",
+    detail: `You archived "${title}"${src} — won't appear again`,
     status: "ok", user_id: user.id,
   });
   revalidatePath("/income");
@@ -60,9 +64,11 @@ export async function queueOpportunity(id: string) {
     user_id: user.id,
   });
 
+  const rew = opp.reward_usd ? ` — $${opp.reward_usd} expected` : "";
   await db.from("income_activity_log").insert({
     engine: "bounty", action: "opportunity_queued",
-    detail: opp.title, status: "ok", user_id: user.id,
+    detail: `Manually queued: "${opp.title}"${rew}`,
+    status: "ok", user_id: user.id,
   });
 
   revalidatePath("/income");
@@ -119,6 +125,7 @@ export async function approveAction(approvalId: string) {
     .eq("id", approvalId).eq("user_id", user.id);
   await db.from("income_activity_log").insert({
     engine: null, action: "approval_approved",
+    detail: "You approved a pending action — it has been executed",
     status: "ok", user_id: user.id,
   });
   revalidatePath("/income");

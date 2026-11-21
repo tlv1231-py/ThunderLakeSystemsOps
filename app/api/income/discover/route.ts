@@ -370,16 +370,25 @@ export async function GET(req: Request) {
           progress_pct:      0,
           user_id:           userId,
         });
+        const rew = opp.reward_usd ? ` — $${opp.reward_usd}` : "";
+        const src = opp.source !== "github" ? ` via ${opp.source}` : "";
+        await db.from("income_activity_log").insert({
+          engine: "bounty", action: "opportunity_queued",
+          detail: `Auto-queued: "${opp.title}"${src}${rew} (score ${score})`,
+          status: "ok", user_id: userId,
+        });
       }
     }
   }
 
   const durationMs = Date.now() - startMs;
 
+  const sweepNote  = cleanedCount > 0 ? `, ${cleanedCount} stale items swept from queue` : "";
+  const sourceList = log.map(l => `${l.source}:${l.count}`).join("  ");
   await db.from("income_activity_log").insert({
     engine:  "bounty",
     action:  "discovery_run",
-    detail:  `Found ${opportunities.length} bounties (${newCount} new, ${skipCount} skipped${cleanedCount > 0 ? `, ${cleanedCount} swept` : ""})`,
+    detail:  `Scan complete — ${opportunities.length} bounties checked, ${newCount} new and queued, ${skipCount} filtered out${sweepNote}  [${sourceList}]`,
     status:  "ok",
     metadata: { log, duration_ms: durationMs, sources: log.map(l => l.source) },
     user_id:  userId,

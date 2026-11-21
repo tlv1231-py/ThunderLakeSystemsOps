@@ -13,30 +13,63 @@ type TermLine = {
   color: string;
 };
 
+// Human-readable labels — left-padded to 11 chars so the detail column aligns
 const ACTION_LABELS: Record<string, string> = {
-  agent_pr_opened:       "PR_OPENED ",
-  agent_error:           "AGENT_ERR ",
-  agent_no_changes:      "NO_CHANGE ",
-  agent_skip:            "SKIP______",
-  opportunity_queued:    "QUEUED____",
-  opportunity_dismissed: "DISMISSED ",
-  active_mode:           "ACTIVE_MOD",
-  approval_approved:     "APPROVED_ ",
-  earning_logged:        "EARN_LOG_ ",
-  pr_merged:             "██ MERGED ",
-  pr_closed:             "PR_CLOSED ",
-  pr_check_run:          "PR_CHECK  ",
-  // Superteam
-  submit_ok:             "ST_SUBMIT ",
-  submit_error:          "ST_ERR____",
-  // Frantic
-  frantic_signup:        "FR_SIGNUP ",
-  frantic_payout:        "FR_PAYOUT ",
-  frantic_delivered:     "██ FR_PAID",
-  frantic_delivery_error:"FR_ERR____",
-  // Scan summary (replaces all scan_start + scan_source lines)
-  discovery_run:         "SCAN_DONE ",
+  discovery_run:         "SCAN DONE  ",
+  opportunity_queued:    "QUEUED     ",
+  opportunity_dismissed: "FILTERED   ",
+  active_mode:           "PIPELINE   ",
+  agent_pr_opened:       "PR OPENED  ",
+  agent_no_changes:      "NO CHANGES ",
+  agent_skip:            "SKIPPED    ",
+  agent_error:           "AGENT ERR  ",
+  pr_merged:             "PR MERGED  ",
+  pr_closed:             "PR REJECTED",
+  pr_check_run:          "PR CHECK   ",
+  approval_approved:     "APPROVED   ",
+  earning_logged:        "INCOME     ",
+  submit_ok:             "SUBMITTED  ",
+  submit_error:          "SUB FAILED ",
+  frantic_signup:        "FR SIGNUP  ",
+  frantic_payout:        "FR PAYOUT  ",
+  frantic_delivered:     "FR PAID    ",
+  frantic_delivery_error:"FR FAILED  ",
 };
+
+// Patch older/cryptic DB messages to plain English for backward compatibility
+function humanizeDetail(action: string, raw: string): string {
+  if (!raw) return "";
+  // Already plain English (new format) — pass through
+  if (raw.startsWith("Scan complete") || raw.startsWith("Auto-queued") ||
+      raw.startsWith("Manually queued") || raw.startsWith("PR merged:") ||
+      raw.startsWith("PR rejected:") || raw.startsWith("Pipeline switched") ||
+      raw.startsWith("You archived") || raw.startsWith("PR check done")) return raw;
+  // Older discover format: "Found 847 bounties (3 new, 212 skipped)"
+  if (/^Found \d+ bounties/.test(raw)) {
+    const total = raw.match(/Found (\d+)/)?.[1] ?? "?";
+    const nw    = raw.match(/(\d+) new/)?.[1] ?? "0";
+    const skip  = raw.match(/(\d+) skipped/)?.[1] ?? "0";
+    return `Scan complete — ${total} bounties checked, ${nw} new, ${skip} filtered out`;
+  }
+  // Older pr_merged / pr_closed: just the raw title with no context
+  if (action === "pr_merged" && !raw.includes("merged")) return `PR merged: "${raw}"`;
+  if (action === "pr_closed" && !raw.includes("rejected")) return `PR rejected: "${raw}" — closed without merging`;
+  // Older check-prs summary
+  if (/^Checked \d+ PRs/.test(raw)) return raw.replace("Checked", "PR check done —").replace(" PRs —", " open PRs reviewed:");
+  // Older opportunity_dismissed with no detail → generic
+  if (action === "opportunity_dismissed" && !raw) return "Filtered: bounty did not meet criteria";
+  // Skipped reason strings (legacy)
+  if (/^Skipped —/.test(raw)) {
+    const parts = raw.replace("Skipped — ", "").split(" — ");
+    const title  = parts[0]?.replace(/[🔄⚡🏷️]/g, "").trim() ?? "";
+    const reason = parts.slice(1).join(" — ");
+    if (/saturated/i.test(reason)) return `Filtered: "${title}" — too many PRs already open, too competitive`;
+    if (/forks disabled/i.test(reason)) return `Filtered: "${title}" — this org has forks disabled`;
+    if (/dismissed/i.test(reason)) return `Filtered: "${title}" — previously dismissed`;
+    return `Filtered: "${title}"${reason ? ` — ${reason}` : ""}`;
+  }
+  return raw;
+}
 
 // Actions that are suppressed — they're collapsed into the discovery_run summary
 const SUPPRESSED_ACTIONS = new Set(["scan_start", "scan_source"]);
@@ -105,10 +138,12 @@ function toTermLine(entry: ActivityEntry): TermLine {
     else color = "text-[#78909c]"; // default: steel-blue-grey
   }
 
-  const actionLabel = ACTION_LABELS[entry.action] ?? entry.action.toUpperCase().slice(0, 10).padEnd(10);
-  const text = entry.action === "discovery_run"
+  const actionLabel = ACTION_LABELS[entry.action]
+    ?? entry.action.replace(/_/g, " ").toUpperCase().slice(0, 11).padEnd(11);
+  const rawDetail = entry.action === "discovery_run"
     ? scanSummaryDetail(entry)
     : (entry.detail ?? entry.action ?? "");
+  const text = humanizeDetail(entry.action, rawDetail);
 
   return { id: entry.id, ts, tsSortKey: new Date(entry.created_at).getTime(), prefix: `[${engine}] ${actionLabel}`, text, color };
 }

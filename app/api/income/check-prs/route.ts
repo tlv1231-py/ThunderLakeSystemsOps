@@ -95,9 +95,10 @@ export async function GET(req: Request) {
           user_id: item.user_id ?? userId,
         });
 
+        const mergedReward = item.expected_usd ? ` — $${item.expected_usd} incoming` : "";
         await db.from("income_activity_log").insert({
           engine: "bounty", action: "pr_merged",
-          detail: item.title,
+          detail: `PR merged: "${item.title}"${mergedReward} — payment should arrive via platform`,
           status: "ok", user_id: item.user_id ?? userId,
         });
 
@@ -115,7 +116,7 @@ export async function GET(req: Request) {
 
         await db.from("income_activity_log").insert({
           engine: "bounty", action: "pr_closed",
-          detail: item.title,
+          detail: `PR rejected: "${item.title}" — closed without merging, no payout`,
           status: "warning", user_id: item.user_id ?? userId,
         });
 
@@ -196,7 +197,7 @@ export async function GET(req: Request) {
 
           await db.from("income_activity_log").insert({
             engine: "bounty", action: "pr_check_run",
-            detail: `Changes requested on: ${item.title} — ${reviewNote}`,
+            detail: `Changes requested on "${item.title}" — ${reviewNote}`,
             status: "warning", user_id: item.user_id ?? userId,
           });
           flagged++;
@@ -214,7 +215,7 @@ export async function GET(req: Request) {
 
   await db.from("income_activity_log").insert({
     engine: "bounty", action: "pr_check_run",
-    detail: `Checked ${items.length} PRs — ${merged} merged, ${closed} closed, ${flagged} need changes${errors.length ? `, ${errors.length} errors` : ""}`,
+    detail: `PR check done — ${items.length} open PRs reviewed: ${merged} merged, ${closed} rejected, ${flagged} need changes${errors.length ? `, ${errors.length} errors` : ""}`,
     status: errors.length > 0 && merged === 0 ? "warning" : "ok",
     user_id: userId,
   });
