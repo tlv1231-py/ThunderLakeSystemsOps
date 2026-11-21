@@ -122,8 +122,6 @@ const NON_CODE_TITLE_PATTERNS = [
   /^\[intake\]/i, /^\[question\]/i,
   // Open bounties aggregator posts
   /\d+\s+open bounties/i, /📋.*bounti/i,
-  // AI-generated spam issues posted to fake forks (uniform emoji prefix pattern)
-  /^🎯\s/,
   // Renovate bot auto-generated dependency dashboard (not a code task)
   /^dependency dashboard$/i,
   // Sponsor/ecosystem invitation spam
@@ -154,8 +152,8 @@ const NON_CODE_TITLE_PATTERNS = [
   /paid\s+in\s+karma/i, /karma\s+points?\s+only/i,
 ];
 
-// Minimum reward in USD — below this, pipeline time per run exceeds expected return
-const MIN_REWARD_USD = 15;
+// Minimum reward in USD — $10 for Opire platform (guaranteed on merge)
+const MIN_REWARD_USD = 10;
 
 // Minimum score — below this, historical abandon rate is too high to be worth running
 const MIN_SCORE = 60;

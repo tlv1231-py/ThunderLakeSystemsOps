@@ -196,7 +196,7 @@ export async function GET(req: Request) {
 
   // ── Re-queue sweep: promote discovered→queued if eligible and no active WQ entry ──
   // Runs every scan so improvements to the scorer automatically promote good items.
-  // Dual threshold: score>=60 (quality) OR reward>=$20+score>=50 (confirmed money).
+  // Dual threshold: score>=60 (quality) OR reward>=$20+score>=50 (confirmed money) OR Opire score>=35.
   let requeueCount = 0;
   try {
     const { data: highScored } = await db
@@ -204,9 +204,9 @@ export async function GET(req: Request) {
       .select("id, title, description, score, reward_usd, estimated_hours, repo_url, open_prs, source")
       .eq("user_id", userId)
       .in("status", ["discovered", "queued"])
-      .gte("score", 50)
+      .gte("score", 35)
       .lt("open_prs", 6)
-      .limit(50);
+      .limit(80);
 
     if (highScored?.length) {
       for (const opp of highScored as any[]) {
