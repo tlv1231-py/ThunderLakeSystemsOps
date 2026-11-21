@@ -1335,7 +1335,6 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
             <HeaderStats allTimeUsd={allTimeUsd} inFlightUsd={inFlightUsd} submittedAllTime={submittedAllTime} acceptedCount={acceptedCount} rejectedCount={rejectedCount} winRate={winRate} totalScanned={summary.totalBountyCount} />
           </div>
           <div className="flex items-center gap-3 shrink-0 mt-1">
-            <ScanCountdown lastScanTs={lastScanTs} />
             <button
               onClick={toggleMute}
               className={`text-sm border px-2.5 py-1 transition-colors ${muted ? "border-zinc-800 text-zinc-700" : "border-zinc-600 text-zinc-300 hover:border-zinc-400"}`}
