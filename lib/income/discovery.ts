@@ -57,6 +57,21 @@ export async function fetchGitHubBounties(): Promise<DiscoveredOpportunity[]> {
     `language:typescript+label:bounty+is:open+is:issue+created:>${fresh30}+stars:>5`,
     `language:python+label:bounty+is:open+is:issue+created:>${fresh30}+stars:>5`,
     `language:go+label:bounty+is:open+is:issue+created:>${fresh30}+stars:>5`,
+    // ── EUR/GBP denominated bounties ─────────────────────────────────────────
+    // v57: EUR and GBP are now extracted by extractReward(); need to find them
+    "EUR+bounty+is:open+is:issue+stars:>20",
+    "GBP+bounty+is:open+is:issue+stars:>20",
+    "%22EUR%22+reward+is:open+is:issue+stars:>20",
+    "%22GBP%22+reward+is:open+is:issue+stars:>20",
+    // IssueHunt-funded issues (IH is down but funded issues remain on GitHub)
+    "issuehunt.io+in:body+is:open+is:issue+stars:>20",
+    // Gitpay funded issues
+    "gitpay.me+in:body+is:open+is:issue+stars:>10",
+    // Explicitly stated reward in various forms
+    "%22bounty+amount%22+is:open+is:issue+stars:>20",
+    "%22reward+amount%22+is:open+is:issue+stars:>20",
+    `EUR+bounty+is:open+is:issue+created:>${fresh30}+stars:>5`,
+    `GBP+bounty+is:open+is:issue+created:>${fresh30}+stars:>5`,
   ];
   const token = process.env.GITHUB_TOKEN;
   const headers: Record<string, string> = {

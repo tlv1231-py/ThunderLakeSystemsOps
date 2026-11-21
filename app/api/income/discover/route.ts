@@ -287,7 +287,7 @@ export async function GET(req: Request) {
     if (["delivered", "claimed", "paid", "completed", "accepted"].some(t => tagLower.includes(t))) { skipCount++; continue; }
     // Description-level crypto signals: wallet addresses or USDC/crypto payout mentions
     const descLower = (opp.description ?? "").toLowerCase();
-    if (/0x[0-9a-f]{40}/.test(descLower) || /\busdc payout\b/.test(descLower) || /base usdc/.test(descLower) || /\bpayout address\b/.test(descLower)) { skipCount++; continue; }
+    if (/0x[0-9a-f]{40}/.test(descLower) || /\busdc payout\b/.test(descLower) || /base usdc/.test(descLower) || /\bpayout address\b/.test(descLower) || /\b\d+\s*(usdc|usdt)\b/.test(descLower)) { skipCount++; continue; }
     if (isAntiTopic(opp)) { skipCount++; continue; }
     if (isNonCodeTask(opp)) { skipCount++; continue; }
 
