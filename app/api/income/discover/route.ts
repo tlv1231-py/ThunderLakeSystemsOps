@@ -390,10 +390,9 @@ export async function GET(req: Request) {
   const baseUrl = process.env.VERCEL_URL
     ? `https://${process.env.VERCEL_URL}`
     : "http://localhost:3000";
-  const cronSecret = process.env.CRON_SECRET ?? "";
   const submitHeaders = {
     "Content-Type": "application/json",
-    "Authorization": `Bearer ${cronSecret}`,
+    "Authorization": `Bearer ${cronSecret ?? ""}`,
   };
 
   const superteamKey = process.env.SUPERTEAM_API_KEY;
