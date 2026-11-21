@@ -41,6 +41,10 @@ const REPO_BLOCKLIST = [
   "janzeerorg",
   // Auto-generated astronomy data QA issues (not software bounties)
   "jwst-gc",
+  // Police/surveillance intel system (Chinese, non-code, $null)
+  "taichung-police-intel",
+  // CAPTCHA bypass projects (prohibited by safety rules)
+  "UdioWrapper",
 ];
 
 // Extended non-code title patterns
@@ -96,6 +100,10 @@ const NON_CODE_TITLE_PATTERNS = [
   /^community\s+set-?up\s*:/i,
   // "First-Dollar Mission" style non-code challenges (in-person or business tasks)
   /^first-dollar\s+mission/i,
+  // CAPTCHA/bot-bypass tasks (prohibited by safety rules)
+  /\bhcaptcha\b/i, /\bcaptcha.{0,10}bypass\b/i, /\bsolve.{0,10}captcha\b/i,
+  // Police/surveillance/military intelligence systems
+  /\bpolice.{0,15}(intel|data|system)\b/i, /\b(排程|公安|警察)\b/,
 ];
 
 export async function GET(req: Request) {

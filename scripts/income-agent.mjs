@@ -82,6 +82,10 @@ const REPO_BLOCKLIST = [
   "janzeerorg",
   // Auto-generated astronomy data QA issues
   "jwst-gc",
+  // Police/surveillance intel system
+  "taichung-police-intel",
+  // CAPTCHA bypass projects (prohibited)
+  "UdioWrapper",
 ];
 
 // Keywords in issue titles that signal non-code tasks (content, design, creative, admin)
@@ -137,6 +141,10 @@ const NON_CODE_TITLE_PATTERNS = [
   /^community\s+set-?up\s*:/i,
   // "First-Dollar Mission" style non-code challenges
   /^first-dollar\s+mission/i,
+  // CAPTCHA/bot-bypass tasks (prohibited)
+  /\bhcaptcha\b/i, /\bcaptcha.{0,10}bypass\b/i, /\bsolve.{0,10}captcha\b/i,
+  // Police/surveillance/military intelligence systems
+  /\bpolice.{0,15}(intel|data|system)\b/i, /\b(排程|公安|警察)\b/,
 ];
 
 // Minimum reward in USD — below this, pipeline time per run exceeds expected return
