@@ -81,7 +81,12 @@ export async function fetchGitHubBounties(): Promise<DiscoveredOpportunity[]> {
         if (seen.has(extId)) continue;
         seen.add(extId);
 
-        const reward = extractReward(item.title + " " + (item.body ?? ""));
+        let reward = extractReward(item.title + " " + (item.body ?? ""));
+        // Fallback: check issue comments for bounty bot announcements (Opire, IssueHunt, Algora)
+        // Only when body has no reward and there are comments worth checking
+        if (!reward && (item.comments ?? 0) > 0 && item.comments <= 30) {
+          reward = await fetchCommentReward(item.html_url, headers);
+        }
         const language = item.repository_url
           ? await fetchRepoLanguage(item.repository_url, headers)
           : null;
@@ -114,6 +119,36 @@ export async function fetchGitHubBounties(): Promise<DiscoveredOpportunity[]> {
   }
 
   return results;
+}
+
+// Fetch issue comments to find bounty reward from bots (Opire, IssueHunt, Algora)
+// Only called when body has no reward and comments count is 1–30 (cost-capped)
+async function fetchCommentReward(
+  htmlUrl: string,
+  headers: Record<string, string>,
+): Promise<number | null> {
+  try {
+    const apiUrl = htmlUrl
+      .replace("https://github.com/", "https://api.github.com/repos/")
+      .replace(/\/issues\/(\d+)$/, "/issues/$1");
+    const res = await fetch(`${apiUrl}/comments?per_page=25`, { headers, signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return null;
+    const comments: any[] = await res.json();
+    for (const c of comments) {
+      const body = (c.body ?? "");
+      // Opire bot: "An award of $X USD has been created" / "reward: $X"
+      const opireM = body.match(/(?:award(?:ed)?|reward|bounty)\s+(?:of\s+)?\$\s*([\d,]+(?:\.\d+)?)/i)
+        || body.match(/\$\s*([\d,]+(?:\.\d+)?)\s*(?:USD)?\s*(?:reward|bounty|award)/i);
+      if (opireM) return parseFloat(opireM[1].replace(/,/g, ""));
+      // IssueHunt: "issuehunt-app funded $X" / "has funded $X to this issue"
+      const ihM = body.match(/(?:funded|added)\s+\$\s*([\d,]+(?:\.\d+)?)/i);
+      if (ihM) return parseFloat(ihM[1].replace(/,/g, ""));
+      // Generic maintainer promise: "willing to pay $X" / "bounty: $X"
+      const genM = body.match(/(?:willing to pay|i'?ll pay|offering|bounty:?|prize:?)\s+\$\s*([\d,]+(?:\.\d+)?)/i);
+      if (genM) return parseFloat(genM[1].replace(/,/g, ""));
+    }
+  } catch { /* non-fatal */ }
+  return null;
 }
 
 async function fetchRepoLanguage(
@@ -260,9 +295,22 @@ export async function discoverAllOpportunities(opts?: {
 
 // ── Utility: extract dollar amount from free-form text ───────────────────────
 function extractReward(text: string): number | null {
+  // $XXX or $XX.XX (USD optional) — most common
   const m = text.match(/\$\s*([\d,]+(?:\.\d+)?)\s*(?:USD|usd)?/);
   if (m) return parseFloat(m[1].replace(/,/g, ""));
-  const m2 = text.match(/(?:reward|bounty|prize)[:\s]+(\d+(?:\.\d+)?)\s*(?:USD|\$|dollars)/i);
+  // "reward: 50 USD" / "bounty: 100 dollars"
+  const m2 = text.match(/(?:reward|bounty|prize)[:\s]+(\d+(?:\.\d+)?)\s*(?:USD|\$|dollars?)/i);
   if (m2) return parseFloat(m2[1]);
+  // "100 USD" / "50 USD bounty"
+  const m3 = text.match(/\b(\d+(?:\.\d+)?)\s*USD\b/i);
+  if (m3) return parseFloat(m3[1]);
+  // "€50" / "50€" (convert euros at ~1.1)
+  const m4 = text.match(/€\s*([\d,]+(?:\.\d+)?)/);
+  if (m4) return Math.round(parseFloat(m4[1].replace(/,/g, "")) * 1.1);
+  const m5 = text.match(/([\d,]+(?:\.\d+)?)\s*€\b/);
+  if (m5) return Math.round(parseFloat(m5[1].replace(/,/g, "")) * 1.1);
+  // "£50" (convert GBP at ~1.27)
+  const m6 = text.match(/£\s*([\d,]+(?:\.\d+)?)/);
+  if (m6) return Math.round(parseFloat(m6[1].replace(/,/g, "")) * 1.27);
   return null;
 }
