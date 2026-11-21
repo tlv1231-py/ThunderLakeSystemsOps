@@ -28,10 +28,17 @@ export async function fetchGitHubBounties(): Promise<DiscoveredOpportunity[]> {
     "opire+in:body+is:open+is:issue+stars:>20",
     // Algora cross-posts
     "algora+bounty+in:body+is:open+is:issue+stars:>20",
-    // Explicit dollar amount + quality repos
+    // Explicit dollar amount in title — highest-probability real bounties
     "%22%24%22+bounty+in:title+is:open+is:issue+stars:>50",
+    "%22%24+50%22+is:open+is:issue+stars:>20",
+    "%22%24+100%22+is:open+is:issue+stars:>20",
+    "%22%24+200%22+is:open+is:issue+stars:>20",
     // Good-first-issue = bounded, easy entry — high agent win rate
     "label:good-first-issue+label:bounty+is:open+is:issue+stars:>20",
+    // Funded label (Polar, IssueHunt, and other platforms use this)
+    "label:funded+is:open+is:issue+stars:>20",
+    // High-activity help-wanted + bounty combo
+    "label:help-wanted+label:bounty+is:open+is:issue+stars:>50",
     // ── FRESH (last 7 days) — highest priority: least competition ───────────
     // stars:>5 minimum to block spam forks (zero-star fake repos with 🎯 issues)
     `label:bounty+is:open+is:issue+created:>${fresh7}+stars:>5`,
