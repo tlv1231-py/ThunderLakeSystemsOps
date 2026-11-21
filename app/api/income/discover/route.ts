@@ -215,7 +215,8 @@ export async function GET(req: Request) {
         const sweepKnownRew     = (opp.reward_usd ?? 0) >= 20 && opp.score >= 50 && (opp.open_prs ?? 0) < 3;
         const sweepOpireReady   = opp.source === "opire" && opp.score >= 35 && (opp.open_prs ?? 0) < 5;
         const sweepSuperteamAgt = opp.source === "superteam" && (opp.metadata as any)?.agentAccess !== "HUMAN_ONLY";
-        if (!sweepHighScore && !sweepKnownRew && !sweepOpireReady && !sweepSuperteamAgt) continue;
+        const sweepFranticReady = opp.source === "frantic" && (opp.reward_usd ?? 0) > 0;
+        if (!sweepHighScore && !sweepKnownRew && !sweepOpireReady && !sweepSuperteamAgt && !sweepFranticReady) continue;
 
         const { data: existingWQ } = await db
           .from("income_work_queue")
@@ -252,7 +253,7 @@ export async function GET(req: Request) {
   await db.from("income_activity_log").insert({
     engine:  "bounty",
     action:  "scan_start",
-    detail:  `Discovery scan starting — querying opire, github, superteam${cleanedCount > 0 ? ` (swept ${cleanedCount} stale items)` : ""}${requeueCount > 0 ? ` (re-queued ${requeueCount})` : ""}`,
+    detail:  `Discovery scan starting — querying opire, github, superteam, frantic${cleanedCount > 0 ? ` (swept ${cleanedCount} stale items)` : ""}${requeueCount > 0 ? ` (re-queued ${requeueCount})` : ""}`,
     status:  "ok",
     user_id: userId,
   });
@@ -281,10 +282,10 @@ export async function GET(req: Request) {
     const repoLower = (opp.repo_url ?? opp.url ?? "").toLowerCase();
     if (REPO_BLOCKLIST.some(p => repoLower.includes(p))) { skipCount++; continue; }
 
-    // Superteam content bounties are explicitly designed for agents — skip code-only filters
-    const isSuperteam = opp.source === "superteam";
+    // Superteam and Frantic content bounties are for agents — skip code-only filters
+    const isAgentPlatform = opp.source === "superteam" || opp.source === "frantic";
 
-    if (!isSuperteam) {
+    if (!isAgentPlatform) {
       if (NON_CODE_TITLE_PATTERNS.some(p => p.test(opp.title ?? ""))) { skipCount++; continue; }
       // Already-claimed/delivered bounties — labels tell us the bounty is closed
       const tagLower = (opp.tags ?? []).map(t => t.toLowerCase());
@@ -351,7 +352,8 @@ export async function GET(req: Request) {
       const isOpireReady  = opp.source === "opire" && score >= 35 && (opp.open_prs ?? 0) < 5;
       const agentAccess   = (opp.metadata as any)?.agentAccess ?? "HUMAN_ONLY";
       const isSuperteamAgent = opp.source === "superteam" && agentAccess !== "HUMAN_ONLY";
-      if ((isHighScore || isKnownReward || isOpireReady || isSuperteamAgent) && inserted && userId) {
+      const isFranticReady   = opp.source === "frantic" && (opp.reward_usd ?? 0) > 0;
+      if ((isHighScore || isKnownReward || isOpireReady || isSuperteamAgent || isFranticReady) && inserted && userId) {
         await db.from("income_opportunities").update({ status: "queued" }).eq("id", inserted.id);
         await db.from("income_work_queue").insert({
           engine:            "bounty",
@@ -383,23 +385,31 @@ export async function GET(req: Request) {
     user_id:  userId,
   });
 
-  // ── Fire-and-forget: trigger Superteam submission if any new items were queued ──
-  // Uses VERCEL_URL to build the absolute URL for self-call.
-  // This is intentionally non-blocking — we don't await it.
+  // ── Fire-and-forget: trigger Superteam + Frantic submission pipelines ───────
+  // Uses VERCEL_URL to build the absolute URL for self-call. Non-blocking.
+  const baseUrl = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : "http://localhost:3000";
+  const cronSecret = process.env.CRON_SECRET ?? "";
+  const submitHeaders = {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${cronSecret}`,
+  };
+
   const superteamKey = process.env.SUPERTEAM_API_KEY;
   const superteamNew = opportunities.filter(o => o.source === "superteam").length;
   if (superteamKey && superteamNew > 0) {
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000";
-    const cronSecret = process.env.CRON_SECRET ?? "";
     fetch(`${baseUrl}/api/income/submit-superteam`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${cronSecret}`,
-      },
-    }).catch(() => {/* non-fatal fire-and-forget */});
+      method: "POST", headers: submitHeaders,
+    }).catch(() => {});
+  }
+
+  const franticToken = process.env.FRANTIC_AGENT_TOKEN;
+  const franticNew = opportunities.filter(o => o.source === "frantic").length;
+  if (franticToken && franticNew > 0) {
+    fetch(`${baseUrl}/api/income/submit-frantic`, {
+      method: "POST", headers: submitHeaders,
+    }).catch(() => {});
   }
 
   return NextResponse.json({

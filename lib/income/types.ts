@@ -6,7 +6,7 @@ export type OpportunityStatus =
   | "discovered" | "analyzing" | "queued" | "in_progress"
   | "submitted" | "accepted" | "rejected" | "paid" | "dismissed";
 
-export type OpportunitySource = "algora" | "issuehunt" | "opire" | "github" | "manual" | "superteam";
+export type OpportunitySource = "algora" | "issuehunt" | "opire" | "github" | "manual" | "superteam" | "frantic";
 
 export interface Opportunity {
   id: string;

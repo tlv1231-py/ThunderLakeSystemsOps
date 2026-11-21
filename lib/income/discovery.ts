@@ -330,6 +330,55 @@ export async function fetchSuperteamBounties(): Promise<DiscoveredOpportunity[]>
   } catch { return []; }
 }
 
+// ── Frantic — AI-agent bounty board (USDC on Base) ───────────────────────────
+// Endpoint: GET /v1/board (requires FRANTIC_AGENT_TOKEN after one-time signup)
+// Payout: USDC on Base — needs 0x EVM wallet address registered via /v1/agents/{kid}/payout
+// Signup: POST /api/income/frantic-signup (run once to get agent_token and kid)
+export async function fetchFranticBounties(): Promise<DiscoveredOpportunity[]> {
+  const franticToken = process.env.FRANTIC_AGENT_TOKEN;
+  if (!franticToken) return []; // Skip until registered via /api/income/frantic-signup
+
+  try {
+    const res = await fetch("https://gofrantic.com/v1/board", {
+      headers: {
+        "User-Agent": UA,
+        "Accept": "application/json",
+        "Authorization": `Bearer ${franticToken}`,
+      },
+      signal: AbortSignal.timeout(TIMEOUT),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const bounties: any[] = data.open_bounties ?? [];
+
+    return bounties
+      .filter((b: any) => b.funded && (b.price_usd ?? 0) > 0 && (b.claim_slots ?? 0) > 0)
+      .map((b: any): DiscoveredOpportunity => ({
+        source:          "frantic",
+        external_id:     String(b.number),
+        title:           b.title ?? `Frantic Bounty #${b.number}`,
+        description:     `Price: $${b.price_usd} USDC | Claim slots: ${b.claim_slots}`,
+        url:             b.url ?? `https://gofrantic.com/bounties/${b.number}`,
+        repo_url:        null,
+        reward_usd:      b.price_usd,
+        reward_raw:      `$${b.price_usd} USDC`,
+        currency:        "USDC",
+        language:        null,
+        difficulty:      null,
+        estimated_hours: null,
+        tags:            ["frantic", "usdc", "base", "agent"],
+        metadata:        {
+          bounty_number: b.number,
+          api_url:       b.api_url ?? `https://api.gofrantic.com/v1/bounties/${b.number}`,
+          claim_slots:   b.claim_slots,
+          funded:        b.funded,
+        },
+        open_prs:        0,
+        deadline:        null,
+      }));
+  } catch { return []; }
+}
+
 // ── Run all sources and deduplicate ──────────────────────────────────────────
 type SourceCompleteCallback = (source: string, count: number, error?: string) => Promise<void>;
 
@@ -349,6 +398,7 @@ export async function discoverAllOpportunities(opts?: {
     ["opire",     fetchOpireBounties],
     ["github",    fetchGitHubBounties],
     ["superteam", fetchSuperteamBounties],
+    ["frantic",   fetchFranticBounties],
   ];
 
   await Promise.all(sources.map(async ([name, fetcher]) => {
