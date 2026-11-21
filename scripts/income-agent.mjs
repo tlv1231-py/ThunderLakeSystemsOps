@@ -409,17 +409,31 @@ for (const item of queuedItems) {
       forkRepo = `${ghUser}/${ghRepo.split("/")[1]}`;
 
       // Check if fork already exists
-      try { run(`gh api repos/${forkRepo} --silent`); }
-      catch {
-        run(`gh api repos/${ghRepo}/forks -X POST --silent`);
-        // Wait for fork to be ready
+      let forkExists = false;
+      try { run(`gh api repos/${forkRepo} --silent`); forkExists = true; } catch {}
+      if (!forkExists) {
+        // Retry fork creation with backoff — GitHub throttles rapid fork POSTs with 403
+        let forked = false;
+        for (const delay of [0, 15000, 45000]) {
+          if (delay > 0) await sleep(delay);
+          try {
+            run(`gh api repos/${ghRepo}/forks -X POST --silent`);
+            forked = true;
+            break;
+          } catch (forkErr) {
+            const msg = String(forkErr?.message ?? forkErr);
+            if (!msg.includes("too quickly") && !msg.includes("403")) throw forkErr;
+            // "submitted too quickly" — retry after delay
+          }
+        }
+        if (!forked) throw new Error("Fork throttled after retries");
         await sleep(4000);
       }
     } catch (e) {
-      await progress(workId, 0, `Fork failed — cannot proceed without push access`);
-      await db.from("income_work_queue").update({ status: "failed", progress_note: "Fork failed — forks may be disabled for this org" }).eq("id", workId);
-      await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
-      await log(userId, "agent_skip", `${issueTitle}|||org has forks disabled`, "warning");
+      await progress(workId, 0, `Fork failed — will retry next run`);
+      // Keep status=pending so the pipeline retries on next invocation
+      await db.from("income_work_queue").update({ status: "pending", progress_note: "Fork throttled by GitHub — pending retry" }).eq("id", workId);
+      await log(userId, "agent_skip", `${issueTitle}|||fork throttled, will retry`, "warning");
       continue;
     }
 
