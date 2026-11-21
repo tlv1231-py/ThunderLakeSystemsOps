@@ -120,6 +120,10 @@ const CSS = `
 .tls-scroll::-webkit-scrollbar { display:none; }
 `;
 
+// ── design tokens ────────────────────────────────────────────────────────────
+const IN_FLIGHT_BLUE = "#4fc3f7";   // unique across the UI — in-flight dollar values
+const IN_FLIGHT_GOLD = "#fbbf24";   // in-flight count
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 function usd(n: number) {
@@ -346,21 +350,19 @@ function WaitingColumn({ items, fresh, active, exiting }: {
         <div>
           <div className="flex items-baseline justify-between mb-2">
             <span className="text-xs uppercase tracking-widest text-zinc-500">
-              in flight <span className="text-white font-bold">{inFlight.length}</span>
+              in flight <span className="font-bold" style={{ color: IN_FLIGHT_GOLD }}>{inFlight.length}</span>
             </span>
-            {flightUsd > 0 && <span className="text-xs text-zinc-400 tabular-nums">{usd(flightUsd)}</span>}
+            {flightUsd > 0 && <span className="text-xs tabular-nums font-semibold" style={{ color: IN_FLIGHT_BLUE }}>{usd(flightUsd)}</span>}
           </div>
           <div className="space-y-1">
-            {inFlight.slice(0, 12).map(item => {
-              const color = item.status === "review" ? "#fbbf24" : "#00e5ff";
-              return (
-                <div key={item.id} className="flex items-baseline gap-1.5 cursor-pointer group"
-                  onClick={() => item.url && window.open(item.url, "_blank")}>
-                  <span className="text-[11px] tabular-nums font-semibold shrink-0" style={{ color }}>{amtStr(item.usdAmt)}</span>
-                  <span className="text-[10px] text-zinc-500 truncate group-hover:text-zinc-300 transition-colors">{item.title}</span>
-                </div>
-              );
-            })}
+            {inFlight.slice(0, 12).map(item => (
+              <div key={item.id} className="flex items-baseline gap-1.5 cursor-pointer group"
+                onClick={() => item.url && window.open(item.url, "_blank")}>
+                <span className="text-[11px] tabular-nums font-semibold shrink-0" style={{ color: IN_FLIGHT_BLUE }}>{amtStr(item.usdAmt)}</span>
+                <span className="text-[10px] text-zinc-500 truncate group-hover:text-zinc-300 transition-colors">{item.title}</span>
+                {item.status === "review" && <span className="text-[8px] shrink-0" style={{ color: IN_FLIGHT_GOLD }}>↺</span>}
+              </div>
+            ))}
             {inFlight.length > 12 && (
               <span className="text-[10px] text-zinc-700">+{inFlight.length - 12} more</span>
             )}
@@ -644,15 +646,29 @@ function StatCell({ value, label, color }: { value: string; label: string; color
   );
 }
 
-function HeaderStats({ allTimeUsd, inFlightUsd, submittedAllTime, acceptedCount, rejectedCount, winRate, totalScanned }: {
-  allTimeUsd: number; inFlightUsd: number; submittedAllTime: number; acceptedCount: number; rejectedCount: number; winRate: number; totalScanned: number;
+function HeaderStats({ allTimeUsd, inFlightUsd, inFlightCount, submittedAllTime, acceptedCount, rejectedCount, winRate, totalScanned }: {
+  allTimeUsd: number; inFlightUsd: number; inFlightCount: number; submittedAllTime: number; acceptedCount: number; rejectedCount: number; winRate: number; totalScanned: number;
 }) {
   const hasRecord = acceptedCount + rejectedCount > 0;
   return (
     <div className="flex flex-wrap items-end gap-x-7 gap-y-1 mt-2">
       <StatCell value={usd(allTimeUsd)} label="total earned" color={allTimeUsd > 0 ? "text-emerald-400 green-glow" : "text-zinc-500"} />
       <Dot />
-      <StatCell value={usd(inFlightUsd)} label="submitted value" color={inFlightUsd > 0 ? "text-sky-400" : "text-zinc-500"} />
+      {/* in flight: [count gold] at [value blue] */}
+      <div className="flex flex-col">
+        <div className="flex items-baseline gap-1 leading-tight">
+          {inFlightCount > 0 ? (
+            <>
+              <span className="text-lg font-semibold tabular-nums" style={{ color: IN_FLIGHT_GOLD }}>{inFlightCount}</span>
+              <span className="text-zinc-700 text-sm select-none">at</span>
+              <span className="text-lg font-semibold tabular-nums" style={{ color: IN_FLIGHT_BLUE }}>{usd(inFlightUsd)}</span>
+            </>
+          ) : (
+            <span className="text-lg font-semibold tabular-nums text-zinc-500">—</span>
+          )}
+        </div>
+        <span className="text-[11px] text-zinc-600 leading-tight">in flight</span>
+      </div>
       <Dot />
       <StatCell value={String(submittedAllTime)} label="submitted" />
       <Dot />
@@ -786,7 +802,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v62n";
+const DASH_VERSION = "v62o";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -1395,7 +1411,9 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   const acceptedCount   = liveItems.filter(w => w.status === "done").length + allEarnings.filter(e => e.status === "collected").length;
   const rejectedCount   = liveItems.filter(w => w.status === "failed").length;
   const submittedAllTime = liveItems.filter(w => ["submitted","done","failed"].includes(w.status)).length;
-  const inFlightUsd     = liveItems.filter(w => w.status === "submitted").reduce((s, w) => s + (w.expected_usd ?? 0), 0);
+  const inFlightItems   = liveItems.filter(w => ["submitted","review"].includes(w.status));
+  const inFlightCount   = inFlightItems.length;
+  const inFlightUsd     = inFlightItems.reduce((s, w) => s + (w.expected_usd ?? 0), 0);
   const allTimeUsd      = allEarnings.filter(e => e.status === "collected").reduce((s, e) => s + e.amount_usd, 0);
   const winRate         = (acceptedCount + rejectedCount) > 0 ? Math.round((acceptedCount / (acceptedCount + rejectedCount)) * 100) : 0;
   const activeMissions  = liveItems.filter(w => !["done","failed","cancelled"].includes(w.status)).length;
@@ -1431,7 +1449,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
               Bounty Engine<span className="cursor ml-0.5 text-zinc-600">_</span>
               <span className="ml-2 text-[10px] text-white font-mono font-normal">{DASH_VERSION}</span>
             </h1>
-            <HeaderStats allTimeUsd={allTimeUsd} inFlightUsd={inFlightUsd} submittedAllTime={submittedAllTime} acceptedCount={acceptedCount} rejectedCount={rejectedCount} winRate={winRate} totalScanned={summary.totalBountyCount} />
+            <HeaderStats allTimeUsd={allTimeUsd} inFlightUsd={inFlightUsd} inFlightCount={inFlightCount} submittedAllTime={submittedAllTime} acceptedCount={acceptedCount} rejectedCount={rejectedCount} winRate={winRate} totalScanned={summary.totalBountyCount} />
           </div>
           <div className="flex items-center gap-3 shrink-0 mt-1">
             <button
