@@ -127,10 +127,14 @@ export function scoreOpportunity(opp: DiscoveredOpportunity): {
     manual:    8,
   };
   const tags = (opp.tags ?? []).map(t => t.toLowerCase());
-  const hasOpireTag  = tags.includes("opire")  || (opp.description ?? "").toLowerCase().includes("opire.dev");
-  const hasAlgoraTag = tags.includes("algora") || (opp.description ?? "").toLowerCase().includes("algora.io");
+  const descLow = (opp.description ?? "").toLowerCase();
+  const hasOpireTag  = tags.includes("opire")  || descLow.includes("opire.dev");
+  const hasAlgoraTag = tags.includes("algora") || descLow.includes("algora.io");
+  // Polar.sh funded issues — Polar links in body mean reliable payout (similar to Opire)
+  const hasPolarTag  = tags.includes("polar")  || descLow.includes("polar.sh") || descLow.includes("app.polar.sh");
   const effectiveSource = opp.source === "github" && hasOpireTag  ? "opire"
     : opp.source === "github" && hasAlgoraTag ? "algora"
+    : opp.source === "github" && hasPolarTag  ? "opire"   // treat Polar like Opire for scoring
     : opp.source;
   score += platformScores[effectiveSource] ?? 4;
 
