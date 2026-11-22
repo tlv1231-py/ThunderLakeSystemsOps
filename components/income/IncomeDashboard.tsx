@@ -21,6 +21,33 @@ interface Props {
 }
 
 const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+/* ── global 8-bit typeface ───────────────────────────────────────────────── */
+.tls-dash, .tls-dash * {
+  font-family: 'Press Start 2P', 'Courier New', monospace !important;
+  -webkit-font-smoothing: none !important;
+  font-smoothing: none !important;
+}
+/* Size scale for pixel font — values must always be visibly larger than their labels */
+.tls-dash .text-2xl          { font-size:14px !important; line-height:1.5 !important; }
+.tls-dash .text-xl           { font-size:12px !important; line-height:1.6 !important; }
+.tls-dash .text-lg           { font-size:11px !important; line-height:1.6 !important; }
+.tls-dash .text-base         { font-size:10px !important; line-height:1.8 !important; }
+.tls-dash .text-sm           { font-size:9px  !important; line-height:1.9 !important; }
+.tls-dash .text-xs           { font-size:7px  !important; line-height:2   !important; }
+.tls-dash h1                 { font-size:11px !important; line-height:1.6 !important; }
+/* Arbitrary size classes — squish label-sized text so values always win */
+.tls-dash .text-\[16px\]     { font-size:11px !important; }
+.tls-dash .text-\[11px\]     { font-size:11px !important; line-height:1.6 !important; }
+.tls-dash .text-\[10px\]     { font-size:7px  !important; line-height:2 !important; }
+.tls-dash .text-\[9px\]      { font-size:7px  !important; line-height:2 !important; }
+.tls-dash .text-\[8px\]      { font-size:7px  !important; line-height:2 !important; }
+.tls-dash .text-\[7px\]      { font-size:6px  !important; line-height:2 !important; }
+.tls-dash .text-\[6px\]      { font-size:6px  !important; }
+.tls-dash .text-\[5px\]      { font-size:5px  !important; }
+
+/* ── existing animations ──────────────────────────────────────────────────── */
 @keyframes textGlow {
   0%,100%{text-shadow:0 0 6px rgba(255,255,255,0.5)}
   50%{text-shadow:0 0 16px rgba(255,255,255,1),0 0 28px rgba(255,255,255,0.4)}
@@ -33,7 +60,6 @@ const CSS = `
   0%,100%{box-shadow:2px 0 12px rgba(255,255,255,0.15)}
   50%{box-shadow:2px 0 24px rgba(255,255,255,0.5)}
 }
-
 @keyframes fadeUp {
   from{opacity:0;transform:translateY(8px)}
   to{opacity:1;transform:translateY(0)}
@@ -94,38 +120,123 @@ const CSS = `
   20%  { transform:scale(0.98) translateX(4px); }
   100% { opacity:0; transform:scale(0.78) translateY(18px); filter:brightness(0.3) saturate(0); }
 }
+@keyframes numUp   { 0%{transform:translateY(6px);color:#22c55e} 70%{color:#4ade80} 100%{transform:translateY(0);color:#fff} }
+@keyframes numDown { 0%{transform:translateY(-6px);color:#ef4444} 70%{color:#f87171} 100%{transform:translateY(0);color:#fff} }
+@keyframes workingLine { 0%,100%{ opacity:0.55; } 50%{ opacity:1; } }
+@keyframes queueGlow { 0%,100%{ text-shadow:0 0 6px rgba(249,115,22,0.5); } 50%{ text-shadow:0 0 14px rgba(249,115,22,0.9), 0 0 4px rgba(249,115,22,0.3); } }
+@keyframes numRise { from{transform:translateY(5px);opacity:0} to{transform:translateY(0);opacity:1} }
+@keyframes numDrop { from{transform:translateY(-5px);opacity:0} to{transform:translateY(0);opacity:1} }
 
-.text-glow   { animation: textGlow 3s ease-in-out infinite }
-.green-glow  { animation: greenGlow 3s ease-in-out infinite }
-.border-live { animation: borderLive 2.5s ease-in-out infinite }
-.cursor      { animation: blink 1s step-end infinite }
-.idle-pulse  { animation: idlePulse 3s ease-in-out infinite }
-.fade-up     { animation: fadeUp .35s ease-out both }
-.slow-fade   { animation: slowFade 2.5s ease-in-out infinite }
-.scan-prog   { transform-origin:left; animation: scanProg 55s linear forwards }
-.tile-enter  { animation: tileEnter .42s cubic-bezier(0.22,1.2,0.36,1) both }
-.tile-submit { animation: tileSubmit .5s ease-out, tilePulse 1.5s ease-in-out 2 }
+.text-glow      { animation: textGlow 3s ease-in-out infinite }
+.green-glow     { animation: greenGlow 3s ease-in-out infinite }
+.border-live    { animation: borderLive 2.5s ease-in-out infinite }
+.cursor         { animation: blink 1s step-end infinite }
+.idle-pulse     { animation: idlePulse 3s ease-in-out infinite }
+.fade-up        { animation: fadeUp .35s ease-out both }
+.slow-fade      { animation: slowFade 2.5s ease-in-out infinite }
+.scan-prog      { transform-origin:left; animation: scanProg 55s linear forwards }
+.tile-enter     { animation: tileEnter .42s cubic-bezier(0.22,1.2,0.36,1) both }
+.tile-submit    { animation: tileSubmit .5s ease-out, tilePulse 1.5s ease-in-out 2 }
 .tile-active    { animation: tileActive 1.8s ease-in-out infinite }
 .tile-exit-win  { animation: tileExitWin  .58s cubic-bezier(0.4,0,1,1) forwards; pointer-events:none; }
 .tile-exit-fail { animation: tileExitFail .48s ease-in forwards; pointer-events:none; }
-.count-punch { animation: countPunch .38s cubic-bezier(0.34,1.56,0.64,1) both }
-.card-glow   { animation: cardGlow .6s ease-out both }
-@keyframes numUp   { 0%{transform:translateY(6px);color:#22c55e} 70%{color:#4ade80} 100%{transform:translateY(0);color:#fff} }
-@keyframes numDown { 0%{transform:translateY(-6px);color:#ef4444} 70%{color:#f87171} 100%{transform:translateY(0);color:#fff} }
-.num-up   { animation: numUp   .55s cubic-bezier(0.22,1,0.36,1) both }
-.num-down { animation: numDown .55s cubic-bezier(0.22,1,0.36,1) both }
+.count-punch    { animation: countPunch .38s cubic-bezier(0.34,1.56,0.64,1) both }
+.card-glow      { animation: cardGlow .6s ease-out both }
+.num-up         { animation: numUp   .55s cubic-bezier(0.22,1,0.36,1) both }
+.num-down       { animation: numDown .55s cubic-bezier(0.22,1,0.36,1) both }
+.working-line   { animation: workingLine 1.8s ease-in-out infinite; }
+.queue-urgent   { animation: queueGlow 2.2s ease-in-out infinite; }
+.num-rise       { animation: numRise .3s cubic-bezier(0.22,1,0.36,1) both }
+.num-drop       { animation: numDrop .3s cubic-bezier(0.22,1,0.36,1) both }
+.fade-down      { animation: fadeDown .2s cubic-bezier(0.16,1,0.3,1) both }
+
 .tls-feed {
-  font-family: 'Geist', 'Inter', 'Segoe UI Variable', system-ui, -apple-system, sans-serif;
-  font-size: 15px;
-  font-weight: 430;
-  letter-spacing: -0.013em;
-  -webkit-font-smoothing: antialiased;
-  font-smoothing: antialiased;
+  font-size: 9px;
+  line-height: 1.55;
 }
-.tls-msg { line-height: 1.72; }
-.fade-down { animation: fadeDown .2s cubic-bezier(0.16,1,0.3,1) both }
+.tls-msg { line-height: 1.55; }
 .tls-scroll { overflow-y:auto; scrollbar-width:none; }
 .tls-scroll::-webkit-scrollbar { display:none; }
+
+/* ── gamified feed entry animations — one per message type ───────────────── */
+@keyframes feedAccepted {
+  0%  { opacity:0; transform:scale(0.65) translateY(6px); filter:brightness(5) saturate(3); }
+  28% { opacity:1; transform:scale(1.1) translateY(-3px); filter:brightness(2.5); }
+  60% { transform:scale(0.98); filter:brightness(1.4); }
+  100%{ transform:scale(1) translateY(0); filter:brightness(1); }
+}
+@keyframes feedSubmit {
+  0%  { opacity:0; transform:translateY(18px) scale(0.88); filter:brightness(2.5); }
+  48% { opacity:1; transform:translateY(-4px) scale(1.04); filter:brightness(1.6); }
+  75% { transform:translateY(1px) scale(0.99); filter:brightness(1.1); }
+  100%{ opacity:1; transform:translateY(0) scale(1); filter:brightness(1); }
+}
+@keyframes feedRejected {
+  0%  { opacity:0.7; transform:translateX(0); }
+  8%  { opacity:1; transform:translateX(7px) skewX(2deg); filter:brightness(2) saturate(3); }
+  22% { transform:translateX(-5px) skewX(-1deg); }
+  38% { transform:translateX(4px); filter:brightness(1.3); }
+  58% { transform:translateX(-2px); }
+  78% { transform:translateX(1px); filter:brightness(1); }
+  100%{ transform:translateX(0) skewX(0deg); opacity:0.65; }
+}
+@keyframes feedQueued {
+  0%  { opacity:0; transform:translateX(-24px) scale(0.85); }
+  58% { opacity:1; transform:translateX(4px) scale(1.06); }
+  80% { transform:translateX(-2px) scale(0.99); }
+  100%{ opacity:1; transform:translateX(0) scale(1); }
+}
+@keyframes feedScan {
+  0%  { opacity:0; letter-spacing:0.35em; filter:brightness(3); }
+  38% { opacity:1; letter-spacing:0.1em; filter:brightness(1.6); }
+  70% { letter-spacing:0.03em; filter:brightness(1.2); }
+  100%{ opacity:1; letter-spacing:normal; filter:brightness(1); }
+}
+@keyframes feedWorking {
+  0%  { opacity:0; filter:brightness(0); }
+  12% { opacity:0.7; filter:brightness(3.5); }
+  30% { opacity:0.3; filter:brightness(1.5); }
+  52% { opacity:0.9; filter:brightness(2.2); }
+  72% { opacity:0.6; filter:brightness(1.3); }
+  100%{ opacity:1; filter:brightness(1); }
+}
+@keyframes feedError {
+  0%  { opacity:0; transform:translateX(0); }
+  8%  { opacity:1; transform:translateX(-8px) skewX(-4deg); filter:hue-rotate(130deg) brightness(2.5); }
+  20% { transform:translateX(7px) skewX(3deg); filter:hue-rotate(0deg); }
+  33% { transform:translateX(-5px) skewX(-2deg); }
+  48% { transform:translateX(4px) skewX(1deg); filter:brightness(1.5); }
+  65% { transform:translateX(-2px); }
+  82% { transform:translateX(2px); filter:brightness(1); }
+  100%{ transform:translateX(0) skewX(0deg); opacity:1; }
+}
+@keyframes feedPipeline {
+  0%  { opacity:0; transform:translateX(-36px); filter:brightness(4); }
+  38% { opacity:1; transform:translateX(5px); filter:brightness(2.5); }
+  65% { transform:translateX(-2px); filter:brightness(1.5); }
+  100%{ opacity:1; transform:translateX(0); filter:brightness(1); }
+}
+@keyframes feedWarn {
+  0%  { opacity:0; transform:translateY(5px); }
+  40% { opacity:1; transform:translateY(-2px); filter:brightness(2); }
+  70% { filter:brightness(1.3); }
+  100%{ opacity:1; transform:translateY(0); filter:brightness(1); }
+}
+@keyframes feedDefault {
+  0%  { opacity:0; transform:translateY(7px); }
+  100%{ opacity:1; transform:translateY(0); }
+}
+
+.feed-accepted { animation:feedAccepted 0.6s  cubic-bezier(0.22,1.4,0.36,1) both; }
+.feed-submit   { animation:feedSubmit   0.45s cubic-bezier(0.22,1.2,0.36,1) both; }
+.feed-rejected { animation:feedRejected 0.55s ease-out both; }
+.feed-queued   { animation:feedQueued   0.42s cubic-bezier(0.34,1.56,0.64,1) both; }
+.feed-scan     { animation:feedScan     0.7s  cubic-bezier(0.16,1,0.3,1) both; }
+.feed-working  { animation:feedWorking  0.5s  ease-in-out both; }
+.feed-error    { animation:feedError    0.6s  ease-out both; }
+.feed-pipeline { animation:feedPipeline 0.4s  ease-out both; }
+.feed-warn     { animation:feedWarn     0.4s  ease-out both; }
+.feed-default  { animation:feedDefault  0.3s  ease-out both; }
 `;
 
 // ── design tokens ────────────────────────────────────────────────────────────
@@ -152,6 +263,20 @@ function nextScan(now: number) {
   else { d.setUTCMinutes(next, 0, 0); }
   d.setUTCSeconds(0, 0);
   return d.getTime();
+}
+
+// Animate a number sliding up (increase) or down (decrease) when it changes.
+// Returns {cls, animKey} — spread animKey onto element's key prop to restart the animation.
+function useAnimDir(value: number) {
+  const prevRef = useRef(value);
+  const [state, setState] = useState<{ cls: string; k: number }>({ cls: "", k: 0 });
+  useEffect(() => {
+    if (value === prevRef.current) return;
+    const cls = value > prevRef.current ? "num-rise" : "num-drop";
+    prevRef.current = value;
+    setState(s => ({ cls, k: s.k + 1 }));
+  }, [value]);
+  return state;
 }
 
 function extractScore(note?: string | null): number | null {
@@ -310,70 +435,67 @@ function WaitingColumn({ items, fresh, active, exiting }: {
   const inFlight = items.filter(i => ["submitted","review"].includes(i.status));
   const queueUsd  = queued.reduce((s, i) => s + (i.usdAmt ?? 0), 0);
   const flightUsd = inFlight.reduce((s, i) => s + (i.usdAmt ?? 0), 0);
+  const qAnim  = useAnimDir(queued.length);
+  const ifAnim = useAnimDir(inFlight.length);
+  const fuAnim = useAnimDir(flightUsd);
 
   function amtStr(n: number) {
     return n >= 1000 ? `$${(n/1000).toFixed(n % 1000 === 0 ? 0 : 1)}k` : n > 0 ? `$${Math.round(n)}` : "?";
   }
 
-  return (
-    <div className="w-44 space-y-5">
-
-      {/* QUEUE */}
-      <div>
-        <div className="flex items-baseline justify-between mb-2">
-          <span className={`text-xs uppercase tracking-widest ${queued.length === 0 ? "text-zinc-700" : "text-zinc-500"}`}>
-            {queued.length > 0 && <span className="text-white font-bold">{queued.length} </span>}queue
-          </span>
-          {queueUsd > 0 && <span className="text-xs text-zinc-400 tabular-nums">{usd(queueUsd)}</span>}
-        </div>
-        <div className="space-y-1">
-          {queued.length === 0 && (exiting?.size ?? 0) === 0 && (
-            <span className="text-[10px] text-zinc-800">—</span>
-          )}
-          {queued.map(item => {
-            const accent  = bountyAccent(item.title);
-            const isActive = active?.has(item.id);
-            return (
-              <div key={item.id} className={`${fresh?.has(item.id) ? "tile-enter" : ""} flex items-baseline gap-1.5 cursor-pointer group`}
-                onClick={() => item.url && window.open(item.url, "_blank")}>
-                <span className="text-[11px] tabular-nums font-semibold shrink-0" style={{ color: accent }}>{amtStr(item.usdAmt)}</span>
-                <span className="text-[10px] text-zinc-500 truncate group-hover:text-zinc-300 transition-colors">{item.title}</span>
-                {isActive && <span className="text-[8px] text-teal-500 shrink-0 animate-pulse">●</span>}
-              </div>
-            );
-          })}
-          {exiting && [...exiting.entries()].map(([id, { type, item: ex }]) => (
-            <div key={`exit-${id}`} className={`tile-exit-${type} flex items-baseline gap-1.5`}>
-              <span className="text-[11px] tabular-nums font-semibold" style={{ color: type === "win" ? "#ffd54f" : "#ff9800" }}>
-                {amtStr(ex.expected_usd ?? 0)}
-              </span>
-              <span className="text-[10px] text-zinc-600 truncate">{ex.title}</span>
-            </div>
-          ))}
-        </div>
+  function Tile({ item, color, exitType }: { item: any; color: string; exitType?: "win"|"fail" }) {
+    const accent = bountyAccent(item.title ?? item.id);
+    const isActive = active?.has(item.id);
+    const isFresh = fresh?.has(item.id);
+    const amt = amtStr(item.usdAmt ?? item.expected_usd ?? 0);
+    return (
+      <div
+        title={item.title}
+        onClick={() => item.url && window.open(item.url, "_blank")}
+        className={`relative flex items-center justify-center rounded-sm cursor-pointer transition-opacity hover:opacity-100 ${isFresh ? "tile-enter" : ""} ${exitType ? `tile-exit-${exitType}` : ""} ${isActive ? "working-line" : "opacity-70"}`}
+        style={{ width: 52, height: 36, background: `${accent}18`, border: `1px solid ${accent}55` }}
+      >
+        <span className="text-[10px] font-semibold tabular-nums" style={{ color }}>{amt}</span>
+        {isActive && <span className="absolute top-0.5 right-0.5 text-[7px] text-teal-400 animate-pulse">●</span>}
+        {item.status === "review" && <span className="absolute bottom-0.5 right-1 text-[7px]" style={{ color: IN_FLIGHT_GOLD }}>↺</span>}
       </div>
+    );
+  }
 
-      {/* IN FLIGHT */}
+  return (
+    <div className="w-36 space-y-5">
+
+      {/* IN FLIGHT — top */}
       {inFlight.length > 0 && (
         <div>
-          <div className="flex items-baseline justify-between mb-2">
-            <span className="text-xs uppercase tracking-widest text-zinc-500">
-              <span className="font-bold" style={{ color: IN_FLIGHT_GOLD }}>{inFlight.length} </span>in flight
-            </span>
-            {flightUsd > 0 && <span className="text-xs tabular-nums font-semibold" style={{ color: IN_FLIGHT_BLUE }}>{usd(flightUsd)}</span>}
+          <div className="mb-2">
+            <div className="flex items-end gap-2">
+              <div key={ifAnim.k} className={`text-2xl font-semibold tabular-nums leading-none ${ifAnim.cls}`} style={{ color: IN_FLIGHT_GOLD }}>{inFlight.length}</div>
+              {flightUsd > 0 && <div key={fuAnim.k} className={`text-lg font-semibold tabular-nums leading-none mb-px ${fuAnim.cls}`} style={{ color: IN_FLIGHT_BLUE }}>{usd(flightUsd)}</div>}
+            </div>
+            <div className="text-[10px] tracking-widest text-zinc-500 mt-0.5">in flight</div>
           </div>
-          <div className="space-y-1">
-            {inFlight.slice(0, 12).map(item => (
-              <div key={item.id} className="flex items-baseline gap-1.5 cursor-pointer group"
-                onClick={() => item.url && window.open(item.url, "_blank")}>
-                <span className="text-[11px] tabular-nums font-semibold shrink-0" style={{ color: IN_FLIGHT_BLUE }}>{amtStr(item.usdAmt)}</span>
-                <span className="text-[10px] text-zinc-500 truncate group-hover:text-zinc-300 transition-colors">{item.title}</span>
-                {item.status === "review" && <span className="text-[8px] shrink-0" style={{ color: IN_FLIGHT_GOLD }}>↺</span>}
-              </div>
+          <div className="flex flex-wrap gap-1.5">
+            {inFlight.map(item => <Tile key={item.id} item={item} color={IN_FLIGHT_BLUE} />)}
+          </div>
+        </div>
+      )}
+
+      {/* QUEUE — below IN FLIGHT, hidden when empty */}
+      {(queued.length > 0 || (exiting?.size ?? 0) > 0) && (
+        <div>
+          <div className="flex items-end justify-between mb-2">
+            <div>
+              <div key={qAnim.k} className={`text-2xl font-semibold tabular-nums leading-none queue-urgent ${qAnim.cls}`} style={{color:"#f97316"}}>{queued.length}</div>
+              <div className="text-[10px] uppercase tracking-widest mt-0.5 queue-urgent" style={{color:"#f97316"}}>queue</div>
+            </div>
+            {queueUsd > 0 && <span className="text-xs text-zinc-400 tabular-nums mb-0.5">{usd(queueUsd)}</span>}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {queued.map(item => <Tile key={item.id} item={item} color="#f97316" />)}
+            {exiting && [...exiting.entries()].map(([id, { type, item: ex }]) => (
+              <Tile key={`exit-${id}`} item={{ ...ex, id }} color={type === "win" ? "#ffd54f" : "#ff9800"} exitType={type} />
             ))}
-            {inFlight.length > 12 && (
-              <span className="text-[10px] text-zinc-700">+{inFlight.length - 12} more</span>
-            )}
           </div>
         </div>
       )}
@@ -464,11 +586,25 @@ export function setMuted(v: boolean) {
   try { localStorage.setItem("tls_muted", v ? "1" : "0"); } catch {}
 }
 
+// Shared AudioContext — created once, resumed on first user gesture
+let _sharedCtx: AudioContext | null = null;
+function getCtx(): AudioContext | null {
+  try {
+    if (!_sharedCtx || _sharedCtx.state === "closed") {
+      _sharedCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    return _sharedCtx;
+  } catch { return null; }
+}
+export function unlockAudio() {
+  const c = getCtx();
+  if (c?.state === "suspended") c.resume().catch(() => {});
+}
+
 function playScanSound() {
   if (_muted) return;
+  const ctx = getCtx(); if (!ctx) return;
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    // 8-bit radar sweep: ascending square-wave tones
     [220, 294, 392, 523].forEach((freq, i) => {
       const osc = ctx.createOscillator(); const g = ctx.createGain();
       osc.connect(g); g.connect(ctx.destination);
@@ -491,9 +627,8 @@ async function notifyScan(detail: string) {
 
 function playBountyChime() {
   if (_muted) return;
+  const ctx = getCtx(); if (!ctx) return;
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    // 8-bit "point scored" — G C E G C ascending arpeggio
     [392, 523, 659, 784, 1047].forEach((freq, i) => {
       const osc = ctx.createOscillator(); const g = ctx.createGain();
       osc.connect(g); g.connect(ctx.destination);
@@ -508,9 +643,8 @@ function playBountyChime() {
 
 function playPipelineSound() {
   if (_muted) return;
+  const ctx = getCtx(); if (!ctx) return;
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    // Low thud + ascending sawtooth run — "engine starting"
     const sub = ctx.createOscillator(); const sg = ctx.createGain();
     sub.connect(sg); sg.connect(ctx.destination);
     sub.type = "sawtooth"; sub.frequency.value = 80;
@@ -531,8 +665,8 @@ function playPipelineSound() {
 
 function playTick() {
   if (_muted) return;
+  const ctx = getCtx(); if (!ctx) return;
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     const osc = ctx.createOscillator(); const g = ctx.createGain();
     osc.connect(g); g.connect(ctx.destination);
     osc.type = "square"; osc.frequency.value = 880;
@@ -542,19 +676,77 @@ function playTick() {
   } catch {}
 }
 
-// Soft upward chirp — fires at the moment a message starts typing
+function playScanComplete() {
+  if (_muted) return;
+  const ctx = getCtx(); if (!ctx) return;
+  try {
+    // Soft two-tone ding — polite, unobtrusive
+    [[880, 0], [1320, 0.09]].forEach(([freq, delay]) => {
+      const osc = ctx.createOscillator(); const g = ctx.createGain();
+      osc.connect(g); g.connect(ctx.destination);
+      osc.type = "sine"; osc.frequency.value = freq;
+      const t = ctx.currentTime + delay;
+      g.gain.setValueAtTime(0.06, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+      osc.start(t); osc.stop(t + 0.18);
+    });
+  } catch {}
+}
+
+function playQueuedSound() {
+  if (_muted) return;
+  const ctx = getCtx(); if (!ctx) return;
+  try {
+    // 8-bit happy: C E G — quick ascending major chord
+    [523, 659, 784].forEach((freq, i) => {
+      const osc = ctx.createOscillator(); const g = ctx.createGain();
+      osc.connect(g); g.connect(ctx.destination);
+      osc.type = "square"; osc.frequency.value = freq;
+      const t = ctx.currentTime + i * 0.045;
+      g.gain.setValueAtTime(0.06, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+      osc.start(t); osc.stop(t + 0.07);
+    });
+  } catch {}
+}
+
+function playSubmittedSound() {
+  if (_muted) return;
+  const ctx = getCtx(); if (!ctx) return;
+  try {
+    // 8-bit fanfare: C E G C — ascending arpeggio + octave top
+    [523, 659, 784, 1047].forEach((freq, i) => {
+      const osc = ctx.createOscillator(); const g = ctx.createGain();
+      osc.connect(g); g.connect(ctx.destination);
+      osc.type = "square"; osc.frequency.value = freq;
+      const t = ctx.currentTime + i * 0.065;
+      g.gain.setValueAtTime(0.08, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+      osc.start(t); osc.stop(t + 0.1);
+    });
+    // Extra shimmer on the high note
+    const sh = ctx.createOscillator(); const sg = ctx.createGain();
+    sh.connect(sg); sg.connect(ctx.destination);
+    sh.type = "sine"; sh.frequency.value = 2093;
+    const st = ctx.currentTime + 0.195;
+    sg.gain.setValueAtTime(0.04, st);
+    sg.gain.exponentialRampToValueAtTime(0.0001, st + 0.12);
+    sh.start(st); sh.stop(st + 0.12);
+  } catch {}
+}
+
 function playReceive() {
   if (_muted) return;
+  const ctx = getCtx(); if (!ctx) return;
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     const osc = ctx.createOscillator(); const g = ctx.createGain();
     osc.connect(g); g.connect(ctx.destination);
     osc.type = "sine";
     osc.frequency.setValueAtTime(1100, ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(1480, ctx.currentTime + 0.04);
-    g.gain.setValueAtTime(0.03, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.055);
-    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.055);
+    g.gain.setValueAtTime(0.08, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.065);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.065);
   } catch {}
 }
 
@@ -658,18 +850,20 @@ function HeaderStats({ allTimeUsd, inFlightUsd, inFlightCount, submittedAllTime,
   allTimeUsd: number; inFlightUsd: number; inFlightCount: number; submittedAllTime: number; acceptedCount: number; rejectedCount: number; winRate: number; totalScanned: number;
 }) {
   const hasRecord = acceptedCount + rejectedCount > 0;
+  const hifAnim = useAnimDir(inFlightCount);
+  const hifUAnim = useAnimDir(inFlightUsd);
   return (
     <div className="flex flex-wrap items-end gap-x-7 gap-y-1 mt-2">
-      <StatCell value={usd(allTimeUsd)} label="total earned" color={allTimeUsd > 0 ? "text-emerald-400 green-glow" : "text-zinc-500"} />
+      <StatCell value={usd(allTimeUsd)} label="total" color={allTimeUsd > 0 ? "text-emerald-400 green-glow" : "text-zinc-500"} />
       <Dot />
       {/* in flight: [count gold] at [value blue] */}
       <div className="flex flex-col">
         <div className="flex items-baseline gap-1 leading-tight">
           {inFlightCount > 0 ? (
             <>
-              <span className="text-lg font-semibold tabular-nums" style={{ color: IN_FLIGHT_GOLD }}>{inFlightCount}</span>
+              <span key={hifAnim.k} className={`text-lg font-semibold tabular-nums ${hifAnim.cls}`} style={{ color: IN_FLIGHT_GOLD }}>{inFlightCount}</span>
               <span className="text-zinc-700 text-sm select-none">at</span>
-              <span className="text-lg font-semibold tabular-nums" style={{ color: IN_FLIGHT_BLUE }}>{usd(inFlightUsd)}</span>
+              <span key={hifUAnim.k} className={`text-lg font-semibold tabular-nums ${hifUAnim.cls}`} style={{ color: IN_FLIGHT_BLUE }}>{usd(inFlightUsd)}</span>
             </>
           ) : (
             <span className="text-lg font-semibold tabular-nums text-zinc-500">—</span>
@@ -680,18 +874,9 @@ function HeaderStats({ allTimeUsd, inFlightUsd, inFlightCount, submittedAllTime,
       <Dot />
       <StatCell value={String(submittedAllTime)} label="submitted" />
       <Dot />
-      {/* Compact W/L + win% combined cell */}
-      <div className="flex flex-col">
-        <div className="flex items-baseline gap-1 leading-tight">
-          <span className={`text-lg font-semibold tabular-nums ${acceptedCount > 0 ? "text-emerald-400" : "text-zinc-500"}`}>{acceptedCount}W</span>
-          <span className="text-zinc-700 text-sm select-none">·</span>
-          <span className={`text-lg font-semibold tabular-nums ${rejectedCount > 0 ? "text-red-400" : "text-zinc-500"}`}>{rejectedCount}L</span>
-          <span className={`text-sm tabular-nums font-mono ml-1 ${hasRecord ? "text-zinc-400" : "text-zinc-600"}`}>{winRate}%</span>
-        </div>
-        <span className="text-[11px] text-zinc-600 leading-tight">win rate</span>
-      </div>
+      <StatCell value={`${winRate}%`} label="" color={hasRecord ? "text-zinc-300" : "text-zinc-600"} />
       <Dot />
-      <StatCell value={totalScanned > 0 ? totalScanned.toLocaleString() : "—"} label="bounties scanned" color={totalScanned > 0 ? "text-zinc-400" : "text-zinc-600"} />
+      <StatCell value={totalScanned > 0 ? totalScanned.toLocaleString() : "—"} label="scanned" color={totalScanned > 0 ? "text-zinc-400" : "text-zinc-600"} />
     </div>
   );
 }
@@ -810,14 +995,31 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v62r";
+const DASH_VERSION = "v63r";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
   return localStorage.getItem("tls_agent_server") || DEFAULT_AGENT_SERVER;
 }
 
-type FeedLine = { id: string; ts: string; epochMs: number; msg: string; accent: string; bountyKey?: string; hidden?: boolean };
+type FeedLine = { id: string; ts: string; epochMs: number; msg: string; accent: string; bountyKey?: string; hidden?: boolean; itemId?: string; };
+
+// Inline countdown for the most recent scan complete message
+function FeedScanCountdown() {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+  let nextMs = nextScan(now);
+  while (nextMs <= now) nextMs += 15 * 60 * 1000;
+  const remaining = nextMs - now;
+  if (remaining < 5000) return <span className="text-amber-400 font-mono text-[11px] tabular-nums"> · scanning…</span>;
+  const remM = Math.floor(remaining / 60000);
+  const remS = Math.floor((remaining % 60000) / 1000);
+  return (
+    <span className={`font-mono text-[11px] tabular-nums ${remaining < 120000 ? "text-amber-400" : "text-zinc-500"}`}>
+      {" · next in "}{remM}:{String(remS).padStart(2, "0")}
+    </span>
+  );
+}
 
 // Return cron slot timestamps (ms) that fall strictly between two epoch values, newest-first order
 function cronSlotsBetween(olderMs: number, newerMs: number): number[] {
@@ -868,11 +1070,19 @@ function formatFeedEntry(action: string, detail: string): { msg: string; bountyK
     case "scan_source":
     case "scan_start":
       return { msg: detail, hidden: true };
-    case "discovery_run":
-      // New: "Scan complete — X bounties checked, Y new, Z filtered  [sources]"
-      // Old: "Found X bounties (Y new, Z skipped) ..."
-      if (detail.startsWith("Scan complete")) return { msg: detail };
-      return { msg: detail };
+    case "discovery_run": {
+      if (!detail.startsWith("Scan complete")) return { msg: detail };
+      // Normalize: strip zero-count sources from any historical format
+      let msg = detail;
+      // Rewrite old "X queued" → "X new" in message text
+      msg = msg.replace(/(\d+) queued,/, "$1 new,");
+      // Strip zero-count source tokens [src:0] from bracket list
+      msg = msg.replace(/\[([^\]]+)\]/g, (_, inner) => {
+        const parts = inner.split(/\s+/).filter((p: string) => !p.match(/^\w+:0$/));
+        return parts.length > 0 ? `[${parts.join("  ")}]` : "";
+      }).replace(/\s+$/, "");
+      return { msg };
+    }
     case "pipeline_start":
     case "pipeline_end":
       return { msg: detail };
@@ -880,7 +1090,7 @@ function formatFeedEntry(action: string, detail: string): { msg: string; bountyK
       const [title, url] = detail.split(" → ");
       const prNum = url?.match(/pull\/(\d+)/)?.[1];
       const repo  = url?.match(/github\.com\/[^/]+\/([^/]+)/)?.[1];
-      const msg   = prNum && repo ? `Submitted — #${prNum} on ${repo} — ${title || ""}` : `Submitted — ${detail}`;
+      const msg   = prNum && repo ? `Submitted #${prNum} on ${repo} — ${title || ""}` : `Submitted — ${detail}`;
       return { msg, bountyKey: title };
     }
     case "pr_merged": {
@@ -914,12 +1124,19 @@ function formatFeedEntry(action: string, detail: string): { msg: string; bountyK
     case "agent_error":
       return { msg: `Error: ${detail}` };
     case "opportunity_queued": {
-      // New: `Auto-queued: "${title}" via source — $X (score N)` or `Manually queued: "${title}" — $X`
-      const m = detail.match(/"([^"]+)"/);
-      if (m) {
-        const title = m[1];
+      const isManual = detail.startsWith("Manually queued:");
+      const titleM = detail.match(/"([^"]+)"/);
+      if (titleM) {
+        const title = titleM[1];
         const reward = detail.match(/\$(\d[\d.]*)/)?.[1];
-        return { msg: reward ? `Queued — $${reward} — ${title}` : `Queued — ${title}`, bountyKey: title };
+        const srcM   = detail.match(/via (\w+)/);
+        const source = srcM ? srcM[1] : (isManual ? null : "github");
+        const scoreM = detail.match(/score (\d+)/);
+        const score  = scoreM ? scoreM[1] : null;
+        const amtPart = reward ? ` $${reward} —` : " —";
+        const srcLabel = isManual ? "Added manually." : `Identified on ${source}.`;
+        const scorePart = score ? ` Score ${score}.` : "";
+        return { msg: `Queued${amtPart} ${title}. ${srcLabel}${scorePart}`, bountyKey: title };
       }
       return { msg: `Queued — ${detail}`, bountyKey: detail };
     }
@@ -937,13 +1154,24 @@ function formatFeedEntry(action: string, detail: string): { msg: string; bountyK
       return { msg: `Earned — ${detail}`, bountyKey: detail };
     case "approval_approved":
       return { msg: `Approved — ${detail}` };
+    case "frantic_delivered": {
+      const m = detail.match(/"([^"]+)"/);
+      if (m) {
+        const title = m[1];
+        const reward = detail.match(/\$(\d[\d.]*)/)?.[1];
+        return { msg: reward ? `Submitted $${reward} — ${title}` : `Submitted — ${title}`, bountyKey: title };
+      }
+      return { msg: `Submitted — ${detail}` };
+    }
+    case "frantic_delivery_error":
+      return { msg: `Error: ${detail}` };
     case "submit_ok": {
       // New: `Submitted to Superteam: "${title}" — $X USDC ...`
       const m = detail.match(/"([^"]+)"/);
       if (m) {
         const title = m[1];
         const reward = detail.match(/\$(\d[\d.]*)/)?.[1];
-        return { msg: reward ? `Submitted — $${reward} — ${title}` : `Submitted — ${title}`, bountyKey: title };
+        return { msg: reward ? `Submitted $${reward} — ${title}` : `Submitted — ${title}`, bountyKey: title };
       }
       return { msg: `Submitted — ${detail}` };
     }
@@ -956,7 +1184,11 @@ function formatFeedEntry(action: string, detail: string): { msg: string; bountyK
   }
 }
 
-function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: string; stagedCount: number; projected: number; onScan?: (ts: string) => void; onRun?: () => Promise<void> }) {
+function LiveFeed({ userId, stagedCount, projected, onScan, onRun, getPipelineItem }: {
+  userId: string; stagedCount: number; projected: number;
+  onScan?: (ts: string) => void; onRun?: () => Promise<void>;
+  getPipelineItem?: (id: string) => any;
+}) {
   const [lines, setLines] = useState<FeedLine[]>([]);
   const seenIdsRef = useRef<Set<string>>(new Set());
   const [runState, setRunState] = useState<"idle" | "running" | "done" | "copied">("idle");
@@ -964,7 +1196,15 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
   const [pendingApprovals, setPendingApprovals] = useState(0);
   const [approvalFlash, setApprovalFlash] = useState<"green" | "red" | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastStatusRef = useRef<Map<string, string>>(new Map());
+  const [workingItemIds, setWorkingItemIds] = useState<Set<string>>(new Set());
   useEffect(() => { setServerAddr(getAgentServer()); }, []);
+  // Unlock AudioContext on first user interaction (browser autoplay policy)
+  useEffect(() => {
+    const unlock = () => unlockAudio();
+    document.addEventListener("click", unlock, { once: true });
+    return () => document.removeEventListener("click", unlock);
+  }, []);
 
   function triggerApprovalFlash(color: "green" | "red") {
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
@@ -972,71 +1212,34 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
     flashTimerRef.current = setTimeout(() => setApprovalFlash(null), 1400);
   }
 
-  // ── Typewriter engine ─────────────────────────────────────────────────────
-  const typingQueueRef = useRef<FeedLine[]>([]);
-  const typingActiveRef = useRef<{ line: FeedLine; pos: number } | null>(null);
-  const [typingDisplay, setTypingDisplay] = useState<{ line: FeedLine; pos: number } | null>(null);
-  const [cursorBlink, setCursorBlink] = useState(true);
-  const [clockStr, setClockStr] = useState(() =>
-    new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })
-  );
-  const postQueueRef = useRef<{ line: FeedLine; remainingTicks: number } | null>(null);
-  const [isHolding, setIsHolding] = useState(false);
+  // Track which line ids are "fresh" (arrived live, not from history) so we can animate them
+  const freshLineIdsRef = useRef<Set<string>>(new Set());
 
-  useEffect(() => {
-    const c = setInterval(() => setCursorBlink(b => !b), 530);
-    const k = setInterval(() => setClockStr(
-      new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })
-    ), 1000);
-    return () => { clearInterval(c); clearInterval(k); };
-  }, []);
+  function getFeedClass(msg: string): string {
+    if (msg.startsWith("Accepted") || msg.startsWith("Earned") || msg.startsWith("Approved")) return "feed-accepted";
+    if (msg.startsWith("Submitted")) return "feed-submit";
+    if (msg.startsWith("Rejected") || msg.startsWith("Failed")) return "feed-rejected";
+    if (msg.startsWith("Queued")) return "feed-queued";
+    if (msg.startsWith("Scan complete")) return "feed-scan";
+    if (msg.startsWith("Working on")) return "feed-working";
+    if (msg.startsWith("Error")) return "feed-error";
+    if (msg.startsWith("Pipeline")) return "feed-pipeline";
+    if (msg.startsWith("In review") || msg.startsWith("Abandoned") || msg.startsWith("Skipped") || msg.startsWith("Dismissed")) return "feed-warn";
+    return "feed-default";
+  }
 
-  useEffect(() => {
-    const t = setInterval(() => {
-      // ── Drain post-hold countdown ────────────────────────────────────
-      if (postQueueRef.current) {
-        postQueueRef.current.remainingTicks--;
-        if (postQueueRef.current.remainingTicks <= 0) {
-          const { line } = postQueueRef.current;
-          postQueueRef.current = null;
-          typingActiveRef.current = null;
-          setIsHolding(false);
-          setTypingDisplay(null);
-          setLines(prev => [...prev.slice(-99), line]);
-        }
-        return;
-      }
-      // ── Dequeue next line ────────────────────────────────────────────
-      if (!typingActiveRef.current) {
-        const next = typingQueueRef.current.shift();
-        if (!next) return;
-        typingActiveRef.current = { line: next, pos: 0 };
-        playReceive();
-      }
-      // ── Advance typing ───────────────────────────────────────────────
-      const active = typingActiveRef.current;
-      const newPos = Math.min(active.pos + 3, active.line.msg.length);
-      active.pos = newPos;
-      setTypingDisplay({ line: active.line, pos: newPos });
-      // ── When complete, enter hold phase ──────────────────────────────
-      if (newPos >= active.line.msg.length) {
-        postQueueRef.current = { line: active.line, remainingTicks: 10 }; // ~160ms
-        setIsHolding(true);
-      }
-    }, 16);
-    return () => clearInterval(t);
-  }, []);
-
-  function add(msg: string, accent: string, bountyKey?: string, hidden?: boolean, id?: string) {
+  function add(msg: string, accent: string, bountyKey?: string, hidden?: boolean, id?: string, itemId?: string) {
     if (hidden) return;
     const lineId = id ?? `${Date.now()}-${Math.random()}`;
     if (id) {
       if (seenIdsRef.current.has(id)) return;
       seenIdsRef.current.add(id);
     }
+    playReceive();
     const now = new Date();
     const ts = now.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    typingQueueRef.current.push({ id: lineId, ts, epochMs: now.getTime(), msg, accent, bountyKey });
+    freshLineIdsRef.current.add(lineId);
+    setLines(prev => [...prev.slice(-99), { id: lineId, ts, epochMs: now.getTime(), msg, accent, bountyKey, itemId }]);
   }
 
   // Load history from activity log on mount
@@ -1111,21 +1314,36 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "income_work_queue", filter: `user_id=eq.${userId}` }, (p: any) => {
         const title = (p.new.title || "").slice(0, 60);
         const st = p.new.status;
-        const msg =
-          st === "in_progress" ? `Working on — ${title}` :
-          st === "submitted"   ? `Submitted — ${title}` :
-          st === "done"        ? `Accepted — ${title}` :
-          st === "failed"      ? `Rejected — ${title}` :
-          st === "review"      ? `In review — ${title}` :
-          st === "pending"     ? `Staged — ${title}` :
+        // Skip if status hasn't changed — prevents duplicate "Working on" on every column update
+        const prevStatus = lastStatusRef.current.get(p.new.id);
+        if (st === prevStatus) return;
+        lastStatusRef.current.set(p.new.id, st);
+
+        if (st === "in_progress") {
+          const liveItem = getPipelineItem?.(p.new.id);
+          const src = liveItem?.income_opportunities?.source ?? "";
+          const amt = p.new.expected_usd ?? 0;
+          const srcPart = src ? ` from ${src}` : "";
+          const amtPart = amt > 0 ? ` It's worth ${usd(amt)}.` : "";
+          add(`Working on ${title}${srcPart}.${amtPart}`, bountyAccent(title), title, false, undefined, p.new.id);
+          setWorkingItemIds(prev => new Set([...prev, p.new.id]));
+        } else {
+          if (["submitted","done","failed","cancelled"].includes(st)) {
+            setWorkingItemIds(prev => { const n = new Set(prev); n.delete(p.new.id); return n; });
+          }
+          if (st === "submitted") playSubmittedSound();
+          const msg =
+            st === "submitted" ? `Submitted — ${title}` :
+            st === "done"      ? `Accepted — ${title}` :
+            st === "failed"    ? `Rejected — ${title}` :
+            st === "review"    ? `In review — ${title}` :
+            st === "pending"   ? `Queued — ${title}` :
                                  `${st} — ${title}`;
-        add(msg, bountyAccent(title), title);
+          add(msg, bountyAccent(title), title);
+        }
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "income_work_queue", filter: `user_id=eq.${userId}` }, (p: any) => {
-        const t = p.new.title || "";
-        const amt = p.new.expected_usd ?? 0;
-        const amtStr = amt > 0 ? ` ${usd(amt)} —` : "";
-        add(`Staged —${amtStr} ${t}`, bountyAccent(t), t);
+        // activity_log handles terminal message for opportunity_queued — just play the chime
         playBountyChime();
       })
       .subscribe();
@@ -1138,11 +1356,18 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
         add(msg, accent, bountyKey, hidden, p.new.id);
         if (p.new.action === "discovery_run") {
           playScanSound();
+          playScanComplete();
           notifyScan(p.new.detail || "");
           onScan?.(p.new.created_at || new Date().toISOString());
         }
+        if (p.new.action === "opportunity_queued") {
+          playQueuedSound();
+        }
         if (p.new.action === "pipeline_start") {
           playPipelineSound();
+        }
+        if (p.new.action === "agent_pr_opened" || p.new.action === "submit_ok") {
+          playSubmittedSound();
         }
       })
       .subscribe();
@@ -1198,89 +1423,35 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
   const flashColor = approvalFlash === "green" ? "#00e676" : approvalFlash === "red" ? "#ff5252" : pendingApprovals > 0 ? "#ffb800" : "#2d3f4d";
   const flashGlow  = approvalFlash === "green" ? "0 0 8px #00e67660" : approvalFlash === "red" ? "0 0 8px #ff525260" : "none";
   const dotCls     = approvalFlash === "green" ? "bg-[#00e676]" : approvalFlash === "red" ? "bg-[#ff5252]" : pendingApprovals > 0 ? "bg-[#ffb800] animate-pulse" : "bg-[#2d3f4d]";
-  const dotLabel   = approvalFlash === "green" ? "APPROVED" : approvalFlash === "red" ? "REJECTED" : pendingApprovals > 0 ? `${pendingApprovals} PENDING` : "CLEAR";
+  const dotLabel   = approvalFlash === "green" ? "APPROVED" : approvalFlash === "red" ? "REJECTED" : pendingApprovals > 0 ? `${pendingApprovals} PENDING` : "";
 
   return (
-    <>
-    <div className="flex items-center gap-2 mb-1.5 pl-0.5">
+    <div className="flex flex-col flex-1 min-h-0">
+    <div className="flex items-center gap-2 mb-1.5 pl-0.5 shrink-0">
       <div className="flex items-center gap-1.5 transition-all duration-300" style={{ color: flashColor, textShadow: flashGlow }}>
         <span className={`inline-block w-1.5 h-1.5 rounded-full transition-colors duration-300 ${dotCls}`} />
         <span className="text-[9px] font-mono uppercase tracking-widest font-semibold">{dotLabel}</span>
       </div>
     </div>
     <div
-      className="tls-scroll"
+      className="tls-scroll flex-1 min-h-0"
       style={{
-        height: "calc(100vh - 236px)",
-        WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 88%, transparent 100%)",
-        maskImage:        "linear-gradient(to bottom, black 0%, black 88%, transparent 100%)",
+        WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 92%, transparent 100%)",
+        maskImage:        "linear-gradient(to bottom, black 0%, black 92%, transparent 100%)",
       }}
     >
-      {/* ── Cursor row — always pinned at top ─────────────────────────── */}
-      <div className="flex gap-3 tls-feed tls-msg mb-2 sticky top-0 bg-black pb-1">
-        <span className="text-zinc-600 shrink-0 tabular-nums font-mono text-[10px] mt-[4px]">{clockStr}</span>
-        <span className="text-zinc-800 shrink-0 font-mono text-[11px] mt-[3px] select-none">›</span>
-        <span className="break-words min-w-0">
-          {typingDisplay ? (
-            <>
-              {(() => {
-                const l = typingDisplay.line;
-                const partial = l.msg.slice(0, typingDisplay.pos);
-                let kwLen = 0, kwColor = "";
-                for (const [kw, c] of ACTION_COLORS) {
-                  if (partial.startsWith(kw) || l.msg.startsWith(kw)) { kwLen = Math.min(kw.length, typingDisplay.pos); kwColor = c; break; }
-                }
-                return <>
-                  {kwLen > 0 && <span className="text-white">{partial.slice(0, kwLen)}</span>}
-                  {l.bountyKey && partial.slice(kwLen).includes(l.bountyKey)
-                    ? (() => {
-                        const r = partial.slice(kwLen);
-                        const bi = r.indexOf(l.bountyKey);
-                        return <>
-                          <span className="text-white">{r.slice(0, bi)}</span>
-                          <span style={{ color: l.accent }}>{l.bountyKey}</span>
-                          <span className="text-white">{r.slice(bi + l.bountyKey.length)}</span>
-                        </>;
-                      })()
-                    : <span className="text-white">{partial.slice(kwLen)}</span>
-                  }
-                  <span className={isHolding ? "text-zinc-500" : "text-white"}>█</span>
-                </>;
-              })()}
-            </>
-          ) : (
-            <span className={`text-zinc-500 transition-opacity duration-75 ${cursorBlink ? "opacity-100" : "opacity-0"}`}>█</span>
-          )}
-        </span>
-      </div>
-
       {/* ── History — newest at top ────────────────────────────────────── */}
-      <div className="space-y-2.5 pr-2">
-        {lines.length === 0 && !typingDisplay && (
-          <p className="tls-feed text-zinc-800 py-1 select-none pl-[52px]">— waiting for activity —</p>
+      <div className="space-y-3 pr-2">
+        {lines.length === 0 && (
+          <p className="tls-feed text-zinc-700 py-1 select-none">waiting for activity</p>
         )}
         {(() => {
           const reversed = [...lines].reverse();
           const nodes: React.ReactNode[] = [];
           reversed.forEach((l, idx) => {
-            // Insert cron-slot markers between this line and the next (older) one
-            if (idx < reversed.length - 1) {
-              const older = reversed[idx + 1];
-              const slots = cronSlotsBetween(older.epochMs, l.epochMs);
-              for (const slotMs of slots) {
-                const slotLabel = new Date(slotMs).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
-                nodes.push(
-                  <div key={`slot-${slotMs}`} className="flex items-center gap-2 my-1 select-none" aria-hidden>
-                    <span className="text-zinc-800 tabular-nums font-mono text-[10px] shrink-0">{slotLabel}</span>
-                    <span className="flex-1 border-t border-zinc-900" />
-                  </div>
-                );
-              }
-            }
-
-            let kwLen = 0, kwColor = "";
-            for (const [kw, c] of ACTION_COLORS) {
-              if (l.msg.startsWith(kw)) { kwLen = kw.length; kwColor = c; break; }
+            let kwLen = 0;
+            for (const [kw] of ACTION_COLORS) {
+              if (l.msg.startsWith(kw)) { kwLen = kw.length; break; }
             }
             const kwText = l.msg.slice(0, kwLen);
             const rest   = l.msg.slice(kwLen);
@@ -1291,19 +1462,24 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
               const before = rest.slice(0, bkIdx);
               const after  = rest.slice(bkIdx + l.bountyKey.length);
               restNode = <>
-                {before && <span className="text-white">{before}</span>}
+                {before && <span className="text-zinc-400">{before}</span>}
                 <span style={{ color: l.accent }}>{l.bountyKey}</span>
-                {after && <span className="text-white">{after}</span>}
+                {after && <span className="text-zinc-400">{after}</span>}
               </>;
             } else {
-              restNode = <span className="text-white">{rest}</span>;
+              restNode = <span className="text-zinc-400">{rest}</span>;
             }
 
+            const isWorking = !!(l.itemId && workingItemIds.has(l.itemId));
+            const kwColor = kwText.startsWith("Submitted") ? IN_FLIGHT_BLUE : "white";
+            const isFresh = freshLineIdsRef.current.has(l.id);
+            const animCls = isFresh ? getFeedClass(l.msg) : "";
+
             nodes.push(
-              <div key={l.id} className={`flex gap-3 tls-feed tls-msg ${idx === 0 ? "fade-down" : ""}`}>
-                <span className="text-zinc-700 shrink-0 tabular-nums font-mono text-[10px] mt-[5px]">{l.ts}</span>
-                <span className="break-words min-w-0">
-                  {kwLen > 0 && <span className="text-white">{kwText}</span>}
+              <div key={l.id} className={`flex gap-3 tls-feed tls-msg ${animCls} ${isWorking ? "working-line" : ""}`}>
+                <span className={`shrink-0 tabular-nums ${idx === 0 ? "text-white" : "text-zinc-700"}`} style={{ fontSize: 8 }}>{l.ts}</span>
+                <span className="break-words min-w-0 leading-relaxed">
+                  {kwLen > 0 && <span style={{ color: kwColor }}>{kwText}</span>}
                   {restNode}
                 </span>
               </div>
@@ -1313,7 +1489,7 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun }: { userId: s
         })()}
       </div>
     </div>
-    </>
+    </div>
   );
 }
 
@@ -1376,7 +1552,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
         event: "*", schema: "public", table: "income_work_queue", filter: `user_id=eq.${userId}`,
       }, (p: any) => {
         if (p.eventType === "INSERT") {
-          setLiveItems(prev => [p.new, ...prev]);
+          setLiveItems(prev => prev.some(i => i.id === p.new.id) ? prev : [p.new, ...prev]);
           setFresh(prev => new Set([...prev, p.new.id]));
           setTimeout(() => setFresh(prev => { const n = new Set(prev); n.delete(p.new.id); return n; }), 800);
         } else if (p.eventType === "UPDATE") {
@@ -1415,9 +1591,9 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   const pendingQueue    = liveItems.filter(w => w.status === "pending");
   const activeItems     = liveItems.filter(w => w.status === "in_progress");
   const activeSet       = new Set(activeItems.map(i => i.id));
-  const acceptedCount   = liveItems.filter(w => w.status === "done").length + allEarnings.filter(e => e.status === "collected").length;
+  const acceptedCount   = liveItems.filter(w => w.status === "done").length;
   const rejectedCount   = liveItems.filter(w => w.status === "failed").length;
-  const submittedAllTime = liveItems.filter(w => ["submitted","done","failed"].includes(w.status)).length;
+  const submittedAllTime = liveItems.filter(w => ["submitted","review","done","failed"].includes(w.status)).length;
   const inFlightItems   = liveItems.filter(w => ["submitted","review"].includes(w.status));
   const inFlightCount   = inFlightItems.length;
   const inFlightUsd     = inFlightItems.reduce((s, w) => s + (w.expected_usd ?? 0), 0);
@@ -1443,20 +1619,22 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
 
 
   return (
-    <div className="bg-black text-white font-mono -mx-4 -mt-6 -mb-6 min-h-screen relative">
+    <div className="bg-black text-white tls-dash -mx-4 -mt-6 -mb-6 h-screen overflow-hidden flex flex-col relative">
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
 
-      <div className="max-w-[960px] mx-auto px-6 py-6 relative z-10">
+      <div className="max-w-[960px] w-full mx-auto px-6 py-6 relative z-10 flex flex-col flex-1 min-h-0">
 
 
         {/* ── header ──────────────────────────────────────────────────── */}
-        <div className="flex items-start justify-between gap-4 mb-6">
+        <div className="flex items-start justify-between gap-4 mb-6 shrink-0">
           <div>
             <h1 className="text-base font-semibold text-white tracking-wide">
               Bounty Engine<span className="cursor ml-0.5 text-zinc-600">_</span>
               <span className="ml-2 text-[10px] text-white font-mono font-normal">{DASH_VERSION}</span>
             </h1>
-            <HeaderStats allTimeUsd={allTimeUsd} inFlightUsd={inFlightUsd} inFlightCount={inFlightCount} submittedAllTime={submittedAllTime} acceptedCount={acceptedCount} rejectedCount={rejectedCount} winRate={winRate} totalScanned={summary.totalBountyCount} />
+            <div className="mt-3">
+              <HeaderStats allTimeUsd={allTimeUsd} inFlightUsd={inFlightUsd} inFlightCount={inFlightCount} submittedAllTime={submittedAllTime} acceptedCount={acceptedCount} rejectedCount={rejectedCount} winRate={winRate} totalScanned={summary.totalBountyCount} />
+            </div>
           </div>
           <div className="flex items-center gap-3 shrink-0 mt-1">
             <button
@@ -1475,13 +1653,13 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
         </div>
 
         {/* ── terminal + side columns ─────────────────────────────────── */}
-        <div className="flex gap-8 items-start mb-8">
+        <div className="flex gap-8 flex-1 min-h-0">
           {/* Terminal — no frame, left edge flush */}
-          <div className="flex-1 min-w-0">
-            <LiveFeed userId={userId} stagedCount={pendingQueue.length} projected={summary.queueProjectedUsd} onScan={ts => setLastScanTs(ts)} onRun={syncQueue} />
+          <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+            <LiveFeed userId={userId} stagedCount={pendingQueue.length} projected={summary.queueProjectedUsd} onScan={ts => setLastScanTs(ts)} onRun={syncQueue} getPipelineItem={id => liveItemsRef.current.find((i: any) => i.id === id)} />
           </div>
           {/* WAITING */}
-          <div className="shrink-0 pt-[67px]">
+          <div className="shrink-0">
             <WaitingColumn
               items={liveItems
                 .filter(i => ["pending","in_progress","review","submitted"].includes(i.status))

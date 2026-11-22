@@ -110,6 +110,22 @@ const NON_CODE_TITLE_PATTERNS = [
   /\bdata\s+broker.{0,20}confirm\b/i, /\bconfirm.{0,20}opt.?out\b/i,
   // Karma-only bounties (no USD payout)
   /paid\s+in\s+karma/i, /karma\s+points?\s+only/i,
+  // Job listing bounties — NOT code fix tasks (referral/hiring bounties)
+  /\bnew\s+grad\b/i, /\bentry.?level\s+(engineer|developer|position)\b/i,
+  /\bfounding\s+\d+/i, /\bhiring\s+(for\s+)?\d+/i,
+  /\b(software|frontend|backend|full.?stack)\s+engineer\s+\d{4}\b/i,
+  /\b(software|frontend|backend|full.?stack)\s+engineer\s+job\b/i,
+  // Server deployment / hosting tasks (require server access, can't do)
+  /\bdeploy\s+(dank|woo|wp|wordpress|woocommerce|cpanel|plesk)\b/i,
+  /\bwoocommerce\b.*\b(deploy|migrate|install|setup)\b/i,
+  /\b(deploy|install|migrate)\b.*\bwoocommerce\b/i,
+  // Competitive programming / puzzle solving (AoC, leetcode — not real bugs)
+  /\baoc\s+20\d\d\b/i, /\badvent\s+of\s+code\b/i, /\bleetcode\b/i, /\bhackerrank\b/i,
+  // Hebrew/non-Latin script titles (can't work in these codebases effectively)
+  /[֐-׿]{3,}/,
+  // "Bot status" / trading simulation trackers — not code bugs
+  /מצב\s*ה?בוט/,
+  /\btrading\s+sim\b/i, /\bpaper\s+trading\b/i, /\btrading\s+bot\s+status\b/i,
 ];
 
 export async function GET(req: Request) {
@@ -213,10 +229,11 @@ export async function GET(req: Request) {
         // Apply same dual threshold as auto-queue (reward_usd > 0 required for high-score path)
         const sweepHighScore    = opp.score >= 60 && (opp.open_prs ?? 0) < 3 && (opp.reward_usd ?? 0) > 0;
         const sweepKnownRew     = (opp.reward_usd ?? 0) >= 20 && opp.score >= 50 && (opp.open_prs ?? 0) < 3;
-        const sweepOpireReady   = opp.source === "opire" && opp.score >= 35 && (opp.open_prs ?? 0) < 5;
+        const sweepMedRew       = (opp.reward_usd ?? 0) >= 50 && opp.score >= 40 && (opp.open_prs ?? 0) < 2;
+        const sweepOpireReady   = opp.source === "opire" && opp.score >= 30 && (opp.open_prs ?? 0) < 5;
         const sweepSuperteamAgt = opp.source === "superteam" && (opp.metadata as any)?.agentAccess !== "HUMAN_ONLY";
         const sweepFranticReady = opp.source === "frantic" && (opp.reward_usd ?? 0) > 0;
-        if (!sweepHighScore && !sweepKnownRew && !sweepOpireReady && !sweepSuperteamAgt && !sweepFranticReady) continue;
+        if (!sweepHighScore && !sweepKnownRew && !sweepMedRew && !sweepOpireReady && !sweepSuperteamAgt && !sweepFranticReady) continue;
 
         const { data: existingWQ } = await db
           .from("income_work_queue")
@@ -352,11 +369,12 @@ export async function GET(req: Request) {
       // Superteam AGENT_ALLOWED: auto-queue stablecoin bounties >$50 (content work, not code)
       const isHighScore   = score >= 60 && (opp.open_prs ?? 0) < 3 && (opp.reward_usd ?? 0) > 0;
       const isKnownReward = (opp.reward_usd ?? 0) >= 20 && score >= 50 && (opp.open_prs ?? 0) < 3;
-      const isOpireReady  = opp.source === "opire" && score >= 35 && (opp.open_prs ?? 0) < 5;
+      const isMedReward   = (opp.reward_usd ?? 0) >= 50 && score >= 40 && (opp.open_prs ?? 0) < 2;
+      const isOpireReady  = opp.source === "opire" && score >= 30 && (opp.open_prs ?? 0) < 5;
       const agentAccess   = (opp.metadata as any)?.agentAccess ?? "HUMAN_ONLY";
       const isSuperteamAgent = opp.source === "superteam" && agentAccess !== "HUMAN_ONLY";
       const isFranticReady   = opp.source === "frantic" && (opp.reward_usd ?? 0) > 0;
-      if ((isHighScore || isKnownReward || isOpireReady || isSuperteamAgent || isFranticReady) && inserted && userId) {
+      if ((isHighScore || isKnownReward || isMedReward || isOpireReady || isSuperteamAgent || isFranticReady) && inserted && userId) {
         await db.from("income_opportunities").update({ status: "queued" }).eq("id", inserted.id);
         await db.from("income_work_queue").insert({
           engine:            "bounty",
@@ -387,11 +405,12 @@ export async function GET(req: Request) {
   const durationMs = Date.now() - startMs;
 
   const sweepNote  = cleanedCount > 0 ? `, ${cleanedCount} stale items swept from queue` : "";
-  const sourceList = log.map(l => `${l.source}:${l.count}`).join("  ");
+  const activeSources = log.filter(l => l.count > 0).map(l => `${l.source}:${l.count}`).join("  ");
+  const sourcePart = activeSources ? `  [${activeSources}]` : "";
   const { error: discoveryRunErr } = await db.from("income_activity_log").insert({
     engine:  "bounty",
     action:  "discovery_run",
-    detail:  `Scan complete — ${newCount} queued, ${skipCount} rejected  [${sourceList}]`,
+    detail:  `Scan complete — ${newCount} new, ${skipCount} filtered${sourcePart}`,
     status:  "ok",
     metadata: { log, duration_ms: durationMs, sources: log.map(l => l.source) },
     user_id:  userId,
@@ -417,12 +436,17 @@ export async function GET(req: Request) {
   }
 
   const franticToken = process.env.FRANTIC_AGENT_TOKEN;
-  const franticNew = opportunities.filter(o => o.source === "frantic").length;
-  if (franticToken && franticNew > 0) {
+  if (franticToken) {
+    // Always fire — covers re-queued items from previous scans too, not just new ones
     fetch(`${baseUrl}/api/income/submit-frantic`, {
       method: "POST", headers: submitHeaders,
     }).catch(() => {});
   }
+
+  // Fire-and-forget: check open PR statuses every scan so merges/closures are caught within 15 min.
+  fetch(`${baseUrl}/api/income/check-prs`, {
+    method: "GET", headers: submitHeaders,
+  }).catch(() => {});
 
   return NextResponse.json({
     ok:       true,
