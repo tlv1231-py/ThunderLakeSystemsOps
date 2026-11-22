@@ -227,10 +227,14 @@ export async function GET(req: Request) {
     if (highScored?.length) {
       for (const opp of highScored as any[]) {
         // Apply same dual threshold as auto-queue (reward_usd > 0 required for high-score path)
-        const sweepHighScore    = opp.score >= 60 && (opp.open_prs ?? 0) < 3 && (opp.reward_usd ?? 0) > 0;
-        const sweepKnownRew     = (opp.reward_usd ?? 0) >= 20 && opp.score >= 50 && (opp.open_prs ?? 0) < 3;
-        const sweepMedRew       = (opp.reward_usd ?? 0) >= 50 && opp.score >= 40 && (opp.open_prs ?? 0) < 2;
-        const sweepOpireReady   = opp.source === "opire" && opp.score >= 30 && (opp.open_prs ?? 0) < 5 && (opp.reward_usd ?? 0) > 0;
+        const sweepHasBountyLabel = opp.source !== "github" || (opp.tags ?? []).some((t: string) =>
+          /bounty|opire|algora|funded|reward|issuehunt|gitpay|polar/i.test(t)
+        );
+        const sweepReward       = (opp.reward_usd ?? 0) > 500 && !sweepHasBountyLabel ? 0 : (opp.reward_usd ?? 0);
+        const sweepHighScore    = opp.score >= 60 && (opp.open_prs ?? 0) < 3 && sweepReward > 0;
+        const sweepKnownRew     = sweepReward >= 20 && opp.score >= 50 && (opp.open_prs ?? 0) < 3;
+        const sweepMedRew       = sweepReward >= 50 && opp.score >= 40 && (opp.open_prs ?? 0) < 2;
+        const sweepOpireReady   = opp.source === "opire" && opp.score >= 30 && (opp.open_prs ?? 0) < 5 && sweepReward > 0;
         const sweepSuperteamAgt = opp.source === "superteam" && (opp.metadata as any)?.agentAccess !== "HUMAN_ONLY";
         const sweepFranticReady = opp.source === "frantic" && (opp.reward_usd ?? 0) > 0;
         if (!sweepHighScore && !sweepKnownRew && !sweepMedRew && !sweepOpireReady && !sweepSuperteamAgt && !sweepFranticReady) continue;
@@ -367,9 +371,14 @@ export async function GET(req: Request) {
       // Require reward_usd > 0 for GitHub — prevents $0 issues from clogging the queue
       // Opire/Algora: allow up to 5 open PRs (merge-based payment reliable even with competition)
       // Superteam AGENT_ALLOWED: auto-queue stablecoin bounties >$50 (content work, not code)
-      const isHighScore   = score >= 60 && (opp.open_prs ?? 0) < 3 && (opp.reward_usd ?? 0) > 0;
-      const isKnownReward = (opp.reward_usd ?? 0) >= 20 && score >= 50 && (opp.open_prs ?? 0) < 3;
-      const isMedReward   = (opp.reward_usd ?? 0) >= 50 && score >= 40 && (opp.open_prs ?? 0) < 2;
+      // High reward (>$500) on GitHub issues with no bounty-type labels is usually a false extraction
+      const hasBountyLabel = opp.source !== "github" || (opp.tags ?? []).some(t =>
+        /bounty|opire|algora|funded|reward|issuehunt|gitpay|polar/i.test(t)
+      );
+      const reward = (opp.reward_usd ?? 0) > 500 && !hasBountyLabel ? 0 : (opp.reward_usd ?? 0);
+      const isHighScore   = score >= 60 && (opp.open_prs ?? 0) < 3 && reward > 0;
+      const isKnownReward = reward >= 20 && score >= 50 && (opp.open_prs ?? 0) < 3;
+      const isMedReward   = reward >= 50 && score >= 40 && (opp.open_prs ?? 0) < 2;
       const isOpireReady  = opp.source === "opire" && score >= 30 && (opp.open_prs ?? 0) < 5 && (opp.reward_usd ?? 0) > 0;
       const agentAccess   = (opp.metadata as any)?.agentAccess ?? "HUMAN_ONLY";
       const isSuperteamAgent = opp.source === "superteam" && agentAccess !== "HUMAN_ONLY";
