@@ -218,8 +218,16 @@ export async function fetchOpireBounties(): Promise<DiscoveredOpportunity[]> {
     const results: DiscoveredOpportunity[] = [];
     for (const r of items.filter((r: any) => r.url)) {
       const issueUrl: string = r.url ?? "";
-      const rewardCents: number = r.pendingPrice?.value ?? 0;
-      const amount = rewardCents > 0 ? rewardCents / 100 : null;
+      const rewardCents: number = r.pendingPrice?.value ?? r.price?.value ?? r.amount ?? 0;
+      let amount: number | null = rewardCents > 0 ? rewardCents / 100 : null;
+      // Fallback: parse reward from Opire labels when API returns no amount (e.g. "10$" or "$10")
+      if (!amount) {
+        const allLabels = [...(Array.isArray(r.labels) ? r.labels as string[] : [])];
+        for (const lbl of allLabels) {
+          const m = lbl.match(/^\$(\d+(?:\.\d+)?)$/) || lbl.match(/^(\d+(?:\.\d+)?)\$$/);
+          if (m) { amount = parseFloat(m[1]); break; }
+        }
+      }
       const repoUrl = r.project?.url ?? issueUrl.replace(/\/issues\/\d+$/, "") ?? null;
 
       // Fetch GitHub issue body so the scorer has actual content
@@ -240,6 +248,14 @@ export async function fetchOpireBounties(): Promise<DiscoveredOpportunity[]> {
           }
         }
       } catch { /* non-fatal */ }
+
+      // Also try issue labels for reward (Opire bot applies "10$" labels to GitHub issues)
+      if (!amount) {
+        for (const lbl of issueLabels) {
+          const m = lbl.match(/^\$(\d+(?:\.\d+)?)$/) || lbl.match(/^(\d+(?:\.\d+)?)\$$/);
+          if (m) { amount = parseFloat(m[1]); break; }
+        }
+      }
 
       results.push({
         source:          "opire",

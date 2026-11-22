@@ -229,46 +229,48 @@ export async function GET(req: Request) {
 
     if (highScored?.length) {
       for (const opp of highScored as any[]) {
-        // Apply same dual threshold as auto-queue (reward_usd > 0 required for high-score path)
-        const sweepHasBountyLabel = opp.source !== "github" || (opp.tags ?? []).some((t: string) =>
-          /bounty|opire|algora|funded|reward|issuehunt|gitpay|polar/i.test(t)
-        );
-        const sweepReward       = (opp.reward_usd ?? 0) > 500 && !sweepHasBountyLabel ? 0 : (opp.reward_usd ?? 0);
-        const sweepHighScore    = opp.score >= 60 && (opp.open_prs ?? 0) < 3 && sweepReward >= 5;
-        const sweepKnownRew     = sweepReward >= 20 && opp.score >= 50 && (opp.open_prs ?? 0) < 3;
-        const sweepMedRew       = sweepReward >= 50 && opp.score >= 40 && (opp.open_prs ?? 0) < 2;
-        const sweepOpireReady   = opp.source === "opire" && opp.score >= 30 && (opp.open_prs ?? 0) < 5 && sweepReward >= 5;
-        const sweepSuperteamAgt = opp.source === "superteam" && (opp.metadata as any)?.agentAccess !== "HUMAN_ONLY";
-        const sweepFranticReady = opp.source === "frantic" && (opp.reward_usd ?? 0) > 0;
-        if (!sweepHighScore && !sweepKnownRew && !sweepMedRew && !sweepOpireReady && !sweepSuperteamAgt && !sweepFranticReady) continue;
+        try {
+          // Apply same dual threshold as auto-queue (reward_usd > 0 required for high-score path)
+          const sweepHasBountyLabel = opp.source !== "github" || (opp.tags ?? []).some((t: string) =>
+            /bounty|opire|algora|funded|reward|issuehunt|gitpay|polar/i.test(t)
+          );
+          const sweepReward       = (opp.reward_usd ?? 0) > 500 && !sweepHasBountyLabel ? 0 : (opp.reward_usd ?? 0);
+          const sweepHighScore    = opp.score >= 60 && (opp.open_prs ?? 0) < 3 && sweepReward >= 5;
+          const sweepKnownRew     = sweepReward >= 20 && opp.score >= 50 && (opp.open_prs ?? 0) < 3;
+          const sweepMedRew       = sweepReward >= 50 && opp.score >= 40 && (opp.open_prs ?? 0) < 2;
+          const sweepOpireReady   = opp.source === "opire" && opp.score >= 30 && (opp.open_prs ?? 0) < 5 && sweepReward >= 5;
+          const sweepSuperteamAgt = opp.source === "superteam" && (opp.metadata as any)?.agentAccess !== "HUMAN_ONLY";
+          const sweepFranticReady = opp.source === "frantic" && (opp.reward_usd ?? 0) > 0;
+          if (!sweepHighScore && !sweepKnownRew && !sweepMedRew && !sweepOpireReady && !sweepSuperteamAgt && !sweepFranticReady) continue;
 
-        const { data: existingWQ } = await db
-          .from("income_work_queue")
-          .select("id")
-          .eq("opportunity_id", opp.id)
-          .eq("user_id", userId)
-          .in("status", ["pending", "in_progress"])
-          .maybeSingle();
+          const { data: existingWQ } = await db
+            .from("income_work_queue")
+            .select("id")
+            .eq("opportunity_id", opp.id)
+            .eq("user_id", userId)
+            .in("status", ["pending", "in_progress"])
+            .maybeSingle();
 
-        if (!existingWQ) {
-          await db.from("income_opportunities").update({ status: "queued" }).eq("id", opp.id).eq("user_id", userId);
-          await db.from("income_work_queue").insert({
-            engine:            "bounty",
-            title:             opp.title,
-            description:       opp.description,
-            status:            "pending",
-            priority:          opp.score >= 85 ? 1 : opp.score >= 70 ? 2 : 3,
-            expected_usd:      opp.reward_usd,
-            estimated_hours:   opp.estimated_hours,
-            opportunity_id:    opp.id,
-            repo_url:          opp.repo_url,
-            requires_approval: false,
-            progress_note:     `Re-queued from sweep (score ${opp.score}, $${opp.reward_usd ?? 0})`,
-            progress_pct:      0,
-            user_id:           userId,
-          });
-          requeueCount++;
-        }
+          if (!existingWQ) {
+            await db.from("income_opportunities").update({ status: "queued" }).eq("id", opp.id).eq("user_id", userId);
+            await db.from("income_work_queue").insert({
+              engine:            "bounty",
+              title:             opp.title,
+              description:       opp.description,
+              status:            "pending",
+              priority:          opp.score >= 85 ? 1 : opp.score >= 70 ? 2 : 3,
+              expected_usd:      opp.reward_usd,
+              estimated_hours:   opp.estimated_hours,
+              opportunity_id:    opp.id,
+              repo_url:          opp.repo_url,
+              requires_approval: false,
+              progress_note:     `Re-queued from sweep (score ${opp.score}, $${opp.reward_usd ?? 0})`,
+              progress_pct:      0,
+              user_id:           userId,
+            });
+            requeueCount++;
+          }
+        } catch {}
       }
     }
   } catch {}
