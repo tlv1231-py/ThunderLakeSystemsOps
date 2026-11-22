@@ -46,7 +46,7 @@ const wouldQueue = (disc ?? []).filter(d => {
   const isHighScore = (d.score ?? 0) >= 60 && (d.open_prs ?? 99) < 3 && (d.reward_usd ?? 0) > 0;
   const isKnownRew  = (d.reward_usd ?? 0) >= 20 && (d.score ?? 0) >= 50 && (d.open_prs ?? 99) < 3;
   const isMedRew    = (d.reward_usd ?? 0) >= 50 && (d.score ?? 0) >= 40 && (d.open_prs ?? 99) < 2;
-  const isOpire     = d.source === "opire" && (d.score ?? 0) >= 30 && (d.open_prs ?? 99) < 5;
+  const isOpire     = d.source === "opire" && (d.score ?? 0) >= 30 && (d.open_prs ?? 99) < 5 && (d.reward_usd ?? 0) > 0;
   const isFrantic   = d.source === "frantic" && (d.reward_usd ?? 0) > 0;
   return isHighScore || isKnownRew || isMedRew || isOpire || isFrantic;
 });

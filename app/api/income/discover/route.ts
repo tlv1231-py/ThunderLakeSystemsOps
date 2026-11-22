@@ -230,7 +230,7 @@ export async function GET(req: Request) {
         const sweepHighScore    = opp.score >= 60 && (opp.open_prs ?? 0) < 3 && (opp.reward_usd ?? 0) > 0;
         const sweepKnownRew     = (opp.reward_usd ?? 0) >= 20 && opp.score >= 50 && (opp.open_prs ?? 0) < 3;
         const sweepMedRew       = (opp.reward_usd ?? 0) >= 50 && opp.score >= 40 && (opp.open_prs ?? 0) < 2;
-        const sweepOpireReady   = opp.source === "opire" && opp.score >= 30 && (opp.open_prs ?? 0) < 5;
+        const sweepOpireReady   = opp.source === "opire" && opp.score >= 30 && (opp.open_prs ?? 0) < 5 && (opp.reward_usd ?? 0) > 0;
         const sweepSuperteamAgt = opp.source === "superteam" && (opp.metadata as any)?.agentAccess !== "HUMAN_ONLY";
         const sweepFranticReady = opp.source === "frantic" && (opp.reward_usd ?? 0) > 0;
         if (!sweepHighScore && !sweepKnownRew && !sweepMedRew && !sweepOpireReady && !sweepSuperteamAgt && !sweepFranticReady) continue;
@@ -370,7 +370,7 @@ export async function GET(req: Request) {
       const isHighScore   = score >= 60 && (opp.open_prs ?? 0) < 3 && (opp.reward_usd ?? 0) > 0;
       const isKnownReward = (opp.reward_usd ?? 0) >= 20 && score >= 50 && (opp.open_prs ?? 0) < 3;
       const isMedReward   = (opp.reward_usd ?? 0) >= 50 && score >= 40 && (opp.open_prs ?? 0) < 2;
-      const isOpireReady  = opp.source === "opire" && score >= 30 && (opp.open_prs ?? 0) < 5;
+      const isOpireReady  = opp.source === "opire" && score >= 30 && (opp.open_prs ?? 0) < 5 && (opp.reward_usd ?? 0) > 0;
       const agentAccess   = (opp.metadata as any)?.agentAccess ?? "HUMAN_ONLY";
       const isSuperteamAgent = opp.source === "superteam" && agentAccess !== "HUMAN_ONLY";
       const isFranticReady   = opp.source === "frantic" && (opp.reward_usd ?? 0) > 0;
