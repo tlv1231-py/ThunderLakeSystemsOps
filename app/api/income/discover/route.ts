@@ -220,7 +220,7 @@ export async function GET(req: Request) {
       .select("id, title, description, score, reward_usd, estimated_hours, repo_url, open_prs, source")
       .eq("user_id", userId)
       .in("status", ["discovered", "queued"])
-      .gte("score", 35)
+      .gte("score", 30)
       .lt("open_prs", 6)
       .limit(80);
 
