@@ -215,14 +215,17 @@ export async function GET(req: Request) {
   // Dual threshold: score>=60 (quality) OR reward>=$20+score>=50 (confirmed money) OR Opire score>=35.
   let requeueCount = 0;
   try {
+    // Prioritize by score DESC so high-value items don't get cut off at the limit.
+    // Use or() to include items where open_prs is NULL (not yet fetched) in addition to <6.
     const { data: highScored } = await db
       .from("income_opportunities")
-      .select("id, title, description, score, reward_usd, estimated_hours, repo_url, open_prs, source")
+      .select("id, title, description, score, reward_usd, estimated_hours, repo_url, open_prs, source, tags")
       .eq("user_id", userId)
       .in("status", ["discovered", "queued"])
       .gte("score", 30)
-      .lt("open_prs", 6)
-      .limit(80);
+      .or("open_prs.lt.6,open_prs.is.null")
+      .order("score", { ascending: false })
+      .limit(300);
 
     if (highScored?.length) {
       for (const opp of highScored as any[]) {
