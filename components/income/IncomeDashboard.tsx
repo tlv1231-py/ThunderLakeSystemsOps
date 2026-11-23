@@ -426,10 +426,11 @@ function BoardColumn({ label, colorLabel, items, fresh, submitted, active }: {
   );
 }
 
-function WaitingColumn({ items, fresh, active, exiting }: {
+function WaitingColumn({ items, fresh, active, exiting, submitted }: {
   items: { id: string; title: string; usdAmt: number; url?: string | null; score?: number | null; status: string }[];
   fresh?: Set<string>; active?: Set<string>;
   exiting?: Map<string, { type: "win" | "fail"; item: any }>;
+  submitted?: Set<string>;
 }) {
   const queued   = items.filter(i => ["pending","in_progress"].includes(i.status));
   const inFlight = items.filter(i => ["submitted","review"].includes(i.status));
@@ -447,12 +448,14 @@ function WaitingColumn({ items, fresh, active, exiting }: {
     const accent = bountyAccent(item.title ?? item.id);
     const isActive = active?.has(item.id);
     const isFresh = fresh?.has(item.id);
+    const isSubmitted = submitted?.has(item.id);
     const amt = amtStr(item.usdAmt ?? item.expected_usd ?? 0);
+    const enterCls = isSubmitted ? "tile-submit" : isFresh ? "tile-enter" : "";
     return (
       <div
         title={item.title}
         onClick={() => item.url && window.open(item.url, "_blank")}
-        className={`relative flex items-center justify-center rounded-sm cursor-pointer transition-opacity hover:opacity-100 ${isFresh ? "tile-enter" : ""} ${exitType ? `tile-exit-${exitType}` : ""} ${isActive ? "working-line" : "opacity-70"}`}
+        className={`relative flex items-center justify-center rounded-sm cursor-pointer transition-opacity hover:opacity-100 ${enterCls} ${exitType ? `tile-exit-${exitType}` : ""} ${isActive ? "working-line" : "opacity-70"}`}
         style={{ width: 52, height: 36, background: `${accent}18`, border: `1px solid ${accent}55` }}
       >
         <span className="text-[10px] font-semibold tabular-nums" style={{ color }}>{amt}</span>
@@ -735,6 +738,23 @@ function playSubmittedSound() {
   } catch {}
 }
 
+function playScoreSound() {
+  if (_muted) return;
+  const ctx = getCtx(); if (!ctx) return;
+  try {
+    // Score: quick triple blip E5→B5→E6 — arcade points-scored
+    [[659, 0], [987, 0.055], [1319, 0.1]].forEach(([freq, delay]) => {
+      const osc = ctx.createOscillator(); const g = ctx.createGain();
+      osc.connect(g); g.connect(ctx.destination);
+      osc.type = "square"; osc.frequency.value = freq as number;
+      const t = ctx.currentTime + (delay as number);
+      g.gain.setValueAtTime(0.07, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.065);
+      osc.start(t); osc.stop(t + 0.065);
+    });
+  } catch {}
+}
+
 function playReceive() {
   if (_muted) return;
   const ctx = getCtx(); if (!ctx) return;
@@ -995,7 +1015,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v63v";
+const DASH_VERSION = "v63x";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -1239,7 +1259,7 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun, getPipelineIt
     const now = new Date();
     const ts = now.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
     freshLineIdsRef.current.add(lineId);
-    setLines(prev => [...prev.slice(-99), { id: lineId, ts, epochMs: now.getTime(), msg, accent, bountyKey, itemId }]);
+    setLines(prev => [...prev.slice(-300), { id: lineId, ts, epochMs: now.getTime(), msg, accent, bountyKey, itemId }]);
   }
 
   // Load history from activity log on mount
@@ -1249,7 +1269,7 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun, getPipelineIt
       .select("id,action,detail,created_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
-      .limit(60)
+      .limit(300)
       .then(({ data }: any) => {
         if (!data?.length) return;
         const history: FeedLine[] = data.reverse().flatMap((e: any) => {
@@ -1301,7 +1321,7 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun, getPipelineIt
         return [{ id: e.id, ts, epochMs: d.getTime(), msg, accent, bountyKey }];
       });
       if (!freshLines.length) return;
-      setLines(prev => [...prev, ...freshLines].slice(-100));
+      setLines(prev => [...prev, ...freshLines].slice(-300));
     }
     const t = setInterval(poll, 15_000);
     return () => clearInterval(t);
@@ -1565,10 +1585,11 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
             setTimeout(() => setExitingTiles(prev => { const n = new Map(prev); n.delete(p.new.id); return n; }), 700);
             setFresh(prev => new Set([...prev, p.new.id]));
             setSubmitted(prev => new Set([...prev, p.new.id]));
+            playScoreSound();
             setTimeout(() => {
               setFresh(prev => { const n = new Set(prev); n.delete(p.new.id); return n; });
               setSubmitted(prev => { const n = new Set(prev); n.delete(p.new.id); return n; });
-            }, 1200);
+            }, 1800);
           } else if (wasQueued && ["failed","cancelled"].includes(p.new.status)) {
             // Fail exit: shake red, crumple down
             setExitingTiles(prev => { const n = new Map(prev); n.set(p.new.id, { type: "fail", item: { ...prevItem, ...p.new } }); return n; });
@@ -1576,10 +1597,11 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
           } else if (!wasQueued && p.new.status === "submitted") {
             setFresh(prev => new Set([...prev, p.new.id]));
             setSubmitted(prev => new Set([...prev, p.new.id]));
+            playScoreSound();
             setTimeout(() => {
               setFresh(prev => { const n = new Set(prev); n.delete(p.new.id); return n; });
               setSubmitted(prev => { const n = new Set(prev); n.delete(p.new.id); return n; });
-            }, 1200);
+            }, 1800);
           }
         } else if (p.eventType === "DELETE") {
           setLiveItems(prev => prev.filter(i => i.id !== p.old.id));
@@ -1674,6 +1696,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
               fresh={fresh}
               active={activeSet}
               exiting={exitingTiles}
+              submitted={submitted}
             />
           </div>
         </div>

@@ -385,11 +385,13 @@ for (const item of queuedItems) {
       }
     } catch {}
 
-    // ── 1b. Verify repo has content ───────────────────────────────────────────
-    await progress(workId, 8, "Checking repo has commits…");
+    // ── 1b. Verify repo has content + stub guard ─────────────────────────────
+    await progress(workId, 8, "Checking repo quality…");
     let defaultBranch = "main";
     try {
-      const repoMeta = JSON.parse(run(`gh api repos/${ghRepo} --jq '{size:.size,default_branch:.default_branch}'`));
+      const repoMeta = JSON.parse(run(
+        `gh api repos/${ghRepo} --jq '{size:.size,default_branch:.default_branch,stars:.stargazers_count,created_at:.created_at,open_issues:.open_issues_count,forks:.forks_count}'`
+      ));
       if (!repoMeta.size || repoMeta.size === 0) {
         await progress(workId, 0, "Repo is empty — no code to fix");
         await db.from("income_work_queue").update({ status: "failed" }).eq("id", workId);
@@ -398,6 +400,20 @@ for (const item of queuedItems) {
         continue;
       }
       defaultBranch = repoMeta.default_branch || "main";
+
+      // Stub repo guard: skip if low-signal AND recently created
+      // Real bounty repos have traction (stars, forks, activity). Same-day created = auto-generated.
+      const ageMs = Date.now() - new Date(repoMeta.created_at ?? 0).getTime();
+      const ageDays = ageMs / 86_400_000;
+      const isStub = (repoMeta.stars < 3 && ageDays < 180 && repoMeta.forks < 2 && repoMeta.size < 50);
+      if (isStub) {
+        const reason = `Stub repo guard: ${repoMeta.stars} stars, ${Math.round(ageDays)}d old, ${repoMeta.forks} forks, ${repoMeta.size}KB`;
+        await progress(workId, 0, `Skipped — ${reason}`);
+        await db.from("income_work_queue").update({ status: "failed", progress_note: reason }).eq("id", workId);
+        await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
+        await log(userId, "agent_skip", `${issueTitle}|||${reason}`, "warning");
+        continue;
+      }
     } catch {}
 
     // ── 2. Fork repo ──────────────────────────────────────────────────────────
@@ -455,9 +471,13 @@ for (const item of queuedItems) {
       : `https://github.com/${forkRepo}.git`;
     run(`git remote set-url origin ${forkRemote}`, { cwd: cloneDir });
 
-    // Suppress LF→CRLF warnings on Windows — prevents git add failures
+    // On Windows, gh clone checks out files with CRLF (global autocrlf=true).
+    // Re-normalize immediately: set LF-only config then re-checkout all files.
+    // This prevents git add -A from staging every file as "modified" (CRLF vs LF diff).
     try { run("git config core.autocrlf false", { cwd: cloneDir }); } catch {}
     try { run("git config core.safecrlf false", { cwd: cloneDir }); } catch {}
+    try { run("git config core.eol lf", { cwd: cloneDir }); } catch {}
+    try { run("git checkout -- .", { cwd: cloneDir }); } catch {} // re-normalizes working tree to LF
 
     // Add upstream remote for reference
     try { run(`git remote add upstream https://github.com/${ghRepo}.git`, { cwd: cloneDir }); } catch {}
@@ -613,11 +633,25 @@ A clean UNCERTAIN is better than a bad PR.
     try {
       run("git add -A", { cwd: cloneDir });
     } catch (e) {
-      // LF→CRLF warnings can cause exit 1 on Windows — reconfigure and retry once
       run("git config core.autocrlf false", { cwd: cloneDir });
       run("git config core.safecrlf false", { cwd: cloneDir });
       run("git add -A", { cwd: cloneDir });
     }
+
+    // Guard: if the staged diff touches >20 files this is almost certainly a mass
+    // CRLF contamination (Windows line-ending bleed). Abort rather than push noise.
+    const stagedFiles = run("git diff --cached --name-only", { cwd: cloneDir })
+      .split("\n").filter(l => l.trim() && !PIPELINE_FILES.some(f => l.includes(f)));
+    if (stagedFiles.length > 20) {
+      const abandonReason = `Mass CRLF diff — ${stagedFiles.length} files staged (line-ending contamination)`;
+      await progress(workId, 0, `Abandoned — ${abandonReason}`);
+      await db.from("income_work_queue").update({ status: "failed" }).eq("id", workId);
+      await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
+      await log(userId, "agent_no_changes", `${issueTitle}|||${abandonReason}`, "warning");
+      try { rmSync(cloneDir, { recursive: true, force: true }); } catch {}
+      continue;
+    }
+
     run(`git commit -m "fix: ${issueTitle.slice(0, 72).replace(/"/g, "'")}"`, { cwd: cloneDir });
 
     // ── 9. Push ───────────────────────────────────────────────────────────────
