@@ -625,6 +625,7 @@ A clean UNCERTAIN is better than a bad PR.
       const abandonReason = uncertainMatch
         ? uncertainMatch[1].split("\n")[0].slice(0, 100)
         : "Claude produced no code changes";
+      pipelineEvents.push({ title: issueTitle, usd: item.expected_usd, action: "abandoned", detail: abandonReason });
       await progress(workId, 0, `Abandoned — ${abandonReason}`);
       await db.from("income_work_queue").update({ status: "failed" }).eq("id", workId);
       await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);

@@ -1029,7 +1029,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v64";
+const DASH_VERSION = "v64b";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -1525,7 +1525,8 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun, getPipelineIt
             }
 
             const isWorking = !!(l.itemId && workingItemIds.has(l.itemId));
-            const kwColor = kwText.startsWith("Opened") || kwText.startsWith("Submitted") ? IN_FLIGHT_BLUE : "white";
+            const matchedKwColor = ACTION_COLORS.find(([kw]) => l.msg.startsWith(kw))?.[1];
+            const kwColor = matchedKwColor ?? "white";
             const isFresh = freshLineIdsRef.current.has(l.id);
             const animCls = isFresh ? getFeedClass(l.msg) : "";
 

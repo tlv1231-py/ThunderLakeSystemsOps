@@ -119,6 +119,10 @@ const NON_CODE_TITLE_PATTERNS = [
   /\bdeploy\s+(dank|woo|wp|wordpress|woocommerce|cpanel|plesk)\b/i,
   /\bwoocommerce\b.*\b(deploy|migrate|install|setup)\b/i,
   /\b(deploy|install|migrate)\b.*\bwoocommerce\b/i,
+  // Root-cause / investigation / analysis reports — research tasks, not code fixes
+  /\(root.cause\s+report\)/i, /root.cause\s+report/i, /\bframe\s+divergence\b/i,
+  /\binvestigat(e|ion)\s+(why|how|the)\b/i, /\bdebug(ging)?\s+report\b/i,
+  /\banalysis\s+report\b/i, /\bperformance\s+analysis\b/i, /\bcompatibility\s+report\b/i,
   // Competitive programming / puzzle solving (AoC, leetcode — not real bugs)
   /\baoc\s+20\d\d\b/i, /\badvent\s+of\s+code\b/i, /\bleetcode\b/i, /\bhackerrank\b/i,
   // Hebrew/non-Latin script titles (can't work in these codebases effectively)

@@ -58,6 +58,9 @@ const NON_CODE_SIGNALS = [
   "tutorial", "availability inquiry", "payment inquiry", "open bounties right now",
   "bounty discovery", "research into ", "explain how to", "list of ", "list 20 ",
   "write documentation for", "create a guide for", "collect feedback",
+  // Debugging reports / root-cause analysis — research tasks, not code fixes
+  "root-cause report", "root cause report", "(root-cause", "frame divergence",
+  "debugging report", "analysis report", "compatibility report",
 ];
 
 // ── Code clarity signals — the single best predictor of winnability ────────────
