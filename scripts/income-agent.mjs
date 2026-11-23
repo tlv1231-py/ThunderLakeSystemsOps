@@ -18,6 +18,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "fs";
 import { join, resolve } from "path";
 import { tmpdir } from "os";
 import { createClient } from "@supabase/supabase-js";
+import Anthropic from "@anthropic-ai/sdk";
 
 // ── Load env ──────────────────────────────────────────────────────────────────
 const ROOT = resolve(import.meta.dirname, "..");
@@ -251,6 +252,9 @@ console.log(`\n🎯  TLS Income Agent — ${queuedItems.length} bounties queued\
 const pipelineUserId = queuedItems[0].user_id;
 await log(pipelineUserId, "pipeline_start", `Pipeline started — ${queuedItems.length} bounties queued`);
 
+// Track per-item outcomes for AI summary at pipeline_end
+const pipelineEvents = [];
+
 // ── Work through each item ────────────────────────────────────────────────────
 for (const item of queuedItems) {
   const opp = item.income_opportunities;
@@ -411,6 +415,7 @@ for (const item of queuedItems) {
         await progress(workId, 0, `Skipped — ${reason}`);
         await db.from("income_work_queue").update({ status: "failed", progress_note: reason }).eq("id", workId);
         await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
+        pipelineEvents.push({ title: issueTitle, usd: item.expected_usd, action: "stub_skipped", detail: reason });
         await log(userId, "agent_skip", `${issueTitle}|||${reason}`, "warning");
         continue;
       }
@@ -449,6 +454,7 @@ for (const item of queuedItems) {
       await progress(workId, 0, `Fork failed — will retry next run`);
       // Keep status=pending so the pipeline retries on next invocation
       await db.from("income_work_queue").update({ status: "pending", progress_note: "Fork throttled by GitHub — pending retry" }).eq("id", workId);
+      pipelineEvents.push({ title: issueTitle, usd: item.expected_usd, action: "fork_throttled" });
       await log(userId, "agent_skip", `${issueTitle}|||fork throttled, will retry`, "warning");
       continue;
     }
@@ -737,7 +743,10 @@ A clean UNCERTAIN is better than a bad PR.
       status: prUrl ? "submitted" : "in_progress",
     }).eq("id", opp.id);
 
-    if (prUrl) prSubmitted = true;
+    if (prUrl) {
+      prSubmitted = true;
+      pipelineEvents.push({ title: issueTitle, usd: item.expected_usd, action: "pr_opened", detail: prUrl });
+    }
 
     // No approval record — pipeline is fully autonomous. Monitor the board directly.
 
@@ -760,12 +769,52 @@ A clean UNCERTAIN is better than a bad PR.
         agent_log: String(err),
       }).eq("id", workId);
     }
+    if (!prSubmitted) pipelineEvents.push({ title: issueTitle, usd: item.expected_usd, action: "failed", detail: err.message.slice(0, 100) });
     await log(userId, "agent_error", String(err).slice(0, 200), "error");
   }
 }
 
 console.log(`\n${"─".repeat(60)}\n✅  Agent run complete — check the Pipeline tab in TLS Ops\n`);
-await log(pipelineUserId, "pipeline_end", `Pipeline complete — ${queuedItems.length} processed`);
+
+// ── AI Pipeline Summary ──────────────────────────────────────────────────────
+let aiSummary = "";
+try {
+  const apiKey = env.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY;
+  if (pipelineEvents.length > 0 && apiKey) {
+    // Fetch latest overall strategy snapshot from DB
+    const { data: stratRow } = await db
+      .from("income_activity_log")
+      .select("detail")
+      .eq("engine", "bounty")
+      .eq("action", "strategy_report")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    const runLines = pipelineEvents.map(e =>
+      `- ${e.title}${e.usd ? ` ($${e.usd})` : ""}: ${e.action}${e.detail ? ` — ${e.detail}` : ""}`
+    ).join("\n");
+
+    const prompt = `You are summarizing an automated bounty pipeline run for a solo developer. Write exactly 2 concise sentences. No preamble or labels.
+Sentence 1: what this specific run did (what was processed, what succeeded/failed/skipped, total $ value of PRs opened).
+Sentence 2: one sharp, actionable insight to increase profitability based on patterns in this run and the overall record below.
+
+This run:
+${runLines}
+
+Overall pipeline record (wins/losses/platforms): ${stratRow?.detail ?? "unavailable"}`;
+
+    const anthropic = new Anthropic({ apiKey });
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 180,
+      messages: [{ role: "user", content: prompt }],
+    });
+    aiSummary = " " + (msg.content[0]?.text ?? "").replace(/\n+/g, " ").trim();
+  }
+} catch { /* non-fatal — plain message fallback */ }
+
+await log(pipelineUserId, "pipeline_end", `Pipeline complete — ${queuedItems.length} processed.${aiSummary}`);
 process.exit(0);
 
 // ── Utilities ─────────────────────────────────────────────────────────────────

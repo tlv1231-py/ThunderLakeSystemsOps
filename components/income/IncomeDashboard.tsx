@@ -487,6 +487,7 @@ function WaitingColumn({ items, fresh, active, exiting, submitted }: {
           <div className="mb-2">
             <div className="flex items-end gap-2">
               <div key={ifAnim.k} className={`text-2xl font-semibold tabular-nums leading-none ${ifAnim.cls}`} style={{ color: IN_FLIGHT_GOLD }}>{inFlight.length}</div>
+              {flightUsd > 0 && <span className="text-[10px] text-zinc-500 mb-1">at</span>}
               {flightUsd > 0 && <div key={fuAnim.k} className={`text-lg font-semibold tabular-nums leading-none mb-px ${fuAnim.cls}`} style={{ color: IN_FLIGHT_BLUE }}>{usd(flightUsd)}</div>}
             </div>
             <div className="text-[10px] tracking-widest text-zinc-500 mt-0.5">in flight</div>
@@ -1028,7 +1029,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v63y";
+const DASH_VERSION = "v63z";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -1084,10 +1085,10 @@ const ACTION_COLORS: [string, string][] = [
   ["Queued",         "#00e5ff"],  // cyan
   ["Working on",     "#80cbc4"],  // teal
   ["In review",      "#fbbf24"],  // amber
-  ["Abandoned",      "#ff9800"],  // orange
+  ["Abandoned",      "#ef5350"],  // soft red
   ["Error:",         "#f48fb1"],  // pink
   ["Failed",         "#ff9800"],
-  ["Rejected",       "#ff9800"],
+  ["Rejected",       "#e53935"],  // red
   ["Server offline", "#ff9800"],
   ["Skipped",        "#ff9800"],
   ["Dismissed",      "#ff9800"],
