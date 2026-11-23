@@ -18,6 +18,7 @@ interface Props {
   allAssets: Asset[];
   userId: string;
   pipelineItems: any[];
+  attemptedCount: number;
 }
 
 const CSS = `
@@ -880,8 +881,8 @@ function StatCell({ value, label, color }: { value: string; label: string; color
   );
 }
 
-function HeaderStats({ allTimeUsd, inFlightUsd, inFlightCount, submittedAllTime, acceptedCount, rejectedCount, winRate, totalScanned }: {
-  allTimeUsd: number; inFlightUsd: number; inFlightCount: number; submittedAllTime: number; acceptedCount: number; rejectedCount: number; winRate: number; totalScanned: number;
+function HeaderStats({ allTimeUsd, inFlightUsd, inFlightCount, attemptedCount, acceptedCount, rejectedCount, winRate, totalScanned }: {
+  allTimeUsd: number; inFlightUsd: number; inFlightCount: number; attemptedCount: number; acceptedCount: number; rejectedCount: number; winRate: number; totalScanned: number;
 }) {
   const hasRecord = acceptedCount + rejectedCount > 0;
   const hifAnim = useAnimDir(inFlightCount);
@@ -906,7 +907,7 @@ function HeaderStats({ allTimeUsd, inFlightUsd, inFlightCount, submittedAllTime,
         <span className="text-[11px] text-zinc-600 leading-tight">in flight</span>
       </div>
       <Dot />
-      <StatCell value={String(submittedAllTime)} label="submitted" />
+      <StatCell value={String(attemptedCount)} label="attempted" />
       <Dot />
       <StatCell value={`${winRate}%`} label="" color={hasRecord ? "text-zinc-300" : "text-zinc-600"} />
       <Dot />
@@ -1029,7 +1030,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v64b";
+const DASH_VERSION = "v64c";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -1563,7 +1564,7 @@ function SectionHeader({ label, count }: { label: string; count?: number }) {
 
 // ── main ──────────────────────────────────────────────────────────────────────
 
-export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipelineItems }: Props) {
+export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipelineItems, attemptedCount }: Props) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("scan");
 
@@ -1656,7 +1657,6 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
   const activeSet       = new Set(activeItems.map(i => i.id));
   const acceptedCount   = deduped.filter(w => w.status === "done").length;
   const rejectedCount   = deduped.filter(w => w.status === "failed").length;
-  const submittedAllTime = deduped.filter(w => ["submitted","review","done","failed"].includes(w.status)).length;
   const inFlightItems   = deduped.filter(w => ["submitted","review"].includes(w.status));
   const inFlightCount   = inFlightItems.length;
   const inFlightUsd     = inFlightItems.reduce((s, w) => s + (w.expected_usd ?? 0), 0);
@@ -1696,7 +1696,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
               <span className="ml-2 text-[10px] text-white font-mono font-normal">{DASH_VERSION}</span>
             </h1>
             <div className="mt-3">
-              <HeaderStats allTimeUsd={allTimeUsd} inFlightUsd={inFlightUsd} inFlightCount={inFlightCount} submittedAllTime={submittedAllTime} acceptedCount={acceptedCount} rejectedCount={rejectedCount} winRate={winRate} totalScanned={summary.totalBountyCount} />
+              <HeaderStats allTimeUsd={allTimeUsd} inFlightUsd={inFlightUsd} inFlightCount={inFlightCount} attemptedCount={attemptedCount} acceptedCount={acceptedCount} rejectedCount={rejectedCount} winRate={winRate} totalScanned={summary.totalBountyCount} />
             </div>
           </div>
           <div className="flex items-center gap-3 shrink-0 mt-1">

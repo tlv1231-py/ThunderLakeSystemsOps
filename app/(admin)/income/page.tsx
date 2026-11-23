@@ -36,6 +36,7 @@ export default async function IncomePage() {
     { data: outcomeOpps },
     { count: totalScanned },
     { data: lastDiscoveryRow },
+    { count: attemptedCount },
   ] = await Promise.all([
     db.from("income_earnings").select("*").eq("user_id", user.id)
       .order("earned_date", { ascending: false }).limit(200),
@@ -61,6 +62,9 @@ export default async function IncomePage() {
     // Dedicated last-scan query — not mixed with activity feed, never pushed out by pipeline volume
     db.from("income_activity_log").select("created_at").eq("user_id", user.id)
       .eq("action", "discovery_run").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    // All work queue items Claude ever picked up (not pending = agent ran on them)
+    db.from("income_work_queue").select("*", { count: "exact", head: true }).eq("user_id", user.id)
+      .not("status", "eq", "pending"),
   ]);
 
   const earningsList  = earnings ?? [];
@@ -147,6 +151,7 @@ export default async function IncomePage() {
       allAssets={assets ?? []}
       userId={user.id}
       pipelineItems={pipelineItems ?? []}
+      attemptedCount={attemptedCount ?? 0}
     />
   );
 }
