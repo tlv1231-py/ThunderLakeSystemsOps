@@ -14,7 +14,7 @@
  */
 
 import { execSync, spawn } from "child_process";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, rmSync } from "fs";
 import { join, resolve } from "path";
 import { tmpdir } from "os";
 import { createClient } from "@supabase/supabase-js";
@@ -193,11 +193,19 @@ function run(cmd, opts = {}) {
 
 async function progress(id, pct, note) {
   process.stdout.write(`  [${String(pct).padStart(3)}%] ${note}\n`);
-  await db.from("income_work_queue").update({
+  // NO updated_at: income_work_queue has no such column, and PostgREST
+  // rejects the WHOLE update when one column is unknown. That made every
+  // progress() call a silent no-op -- progress_pct stuck at 0 and every
+  // failure reason discarded, so rows that had actually run and failed still
+  // read "waiting for agent". Use started_at / completed_at instead.
+  const { error } = await db.from("income_work_queue").update({
     progress_pct: pct,
     progress_note: note,
-    updated_at: new Date().toISOString(),
   }).eq("id", id);
+  if (error) {
+    // Never silent again: losing progress writes is how the queue lied.
+    console.warn(`  [warn] progress write failed: ${error.message}`);
+  }
 }
 
 async function log(userId, action, detail, status = "ok") {
@@ -495,6 +503,24 @@ for (const item of queuedItems) {
 
     run(`git checkout -b ${branchName}`, { cwd: cloneDir });
 
+    // Remember where the branch started. The task brief tells Claude to commit
+    // its own work, which leaves the worktree clean — so a dirty-tree check
+    // alone cannot tell "did nothing" from "finished and committed".
+    let baseSha = "";
+    try { baseSha = run("git rev-parse HEAD", { cwd: cloneDir }).trim(); } catch {}
+
+    // Keep the pipeline's own scratch files out of the index entirely.
+    // They were excluded from the *counts* but not from `git add -A`, so every
+    // PR shipped BOUNTY_TASK.md (and sometimes AGENT_SUMMARY.md) — a reviewer
+    // on #6928 flagged exactly that. .git/info/exclude is per-clone and is
+    // never committed, so Claude can still read and write them normally.
+    try {
+      appendFileSync(
+        join(cloneDir, ".git", "info", "exclude"),
+        `\n# added by income-agent: pipeline scratch files\nBOUNTY_TASK.md\nAGENT_SUMMARY.md\n`,
+      );
+    } catch {}
+
     await db.from("income_work_queue").update({ branch_name: branchName }).eq("id", workId);
 
     // ── 4b. Claim the bounty on the platform (Opire, Algora, etc.) ───────────
@@ -610,7 +636,22 @@ A clean UNCERTAIN is better than a bad PR.
     const realChanges = diffStat.split("\n")
       .filter(l => l.trim() && !PIPELINE_FILES.some(f => l.includes(f)))
       .join("\n");
-    const hasChanges = realChanges.trim().length > 0;
+
+    // Step 5 of the brief asks Claude to commit. When it does, the worktree is
+    // clean and `git status --porcelain` says nothing happened — so finished
+    // work was being abandoned and the clone deleted. Count commits on the
+    // branch as changes too.
+    let committedCount = 0;
+    if (baseSha) {
+      try {
+        committedCount = parseInt(
+          run(`git rev-list --count ${baseSha}..HEAD`, { cwd: cloneDir }).trim(),
+          10,
+        ) || 0;
+      } catch { committedCount = 0; }
+    }
+    const alreadyCommitted = committedCount > 0;
+    const hasChanges = realChanges.trim().length > 0 || alreadyCommitted;
 
     // Check for summary
     const summaryPath = join(cloneDir, "AGENT_SUMMARY.md");
@@ -644,12 +685,26 @@ A clean UNCERTAIN is better than a bad PR.
       run("git add -A", { cwd: cloneDir });
     }
 
-    // Guard: if the staged diff touches >20 files this is almost certainly a mass
+    // Guard: if the change touches >20 files this is almost certainly a mass
     // CRLF contamination (Windows line-ending bleed). Abort rather than push noise.
     const stagedFiles = run("git diff --cached --name-only", { cwd: cloneDir })
       .split("\n").filter(l => l.trim() && !PIPELINE_FILES.some(f => l.includes(f)));
-    if (stagedFiles.length > 20) {
-      const abandonReason = `Mass CRLF diff — ${stagedFiles.length} files staged (line-ending contamination)`;
+
+    // Claude now commits its own work, which left this guard inspecting an
+    // empty index while a 41-file commit sailed past it (see pootle#6928).
+    // Count what the branch actually changed, not just what is staged.
+    let committedFiles = [];
+    if (baseSha && committedCount > 0) {
+      try {
+        committedFiles = run(`git diff --name-only ${baseSha}..HEAD`, { cwd: cloneDir })
+          .split("\n")
+          .filter(l => l.trim() && !PIPELINE_FILES.some(f => l.includes(f)));
+      } catch { committedFiles = []; }
+    }
+    const touchedFiles = [...new Set([...stagedFiles, ...committedFiles])];
+
+    if (touchedFiles.length > 20) {
+      const abandonReason = `Mass CRLF diff — ${touchedFiles.length} files changed (line-ending contamination)`;
       await progress(workId, 0, `Abandoned — ${abandonReason}`);
       await db.from("income_work_queue").update({ status: "failed" }).eq("id", workId);
       await db.from("income_opportunities").update({ status: "dismissed" }).eq("id", opp.id);
@@ -658,7 +713,14 @@ A clean UNCERTAIN is better than a bad PR.
       continue;
     }
 
-    run(`git commit -m "fix: ${issueTitle.slice(0, 72).replace(/"/g, "'")}"`, { cwd: cloneDir });
+    // Only commit when something is actually staged. If Claude already
+    // committed (the usual case now), `git commit` would fail with
+    // "nothing to commit" and throw the whole item into the error path.
+    if (stagedFiles.length > 0) {
+      run(`git commit -m "fix: ${issueTitle.slice(0, 72).replace(/"/g, "'")}"`, { cwd: cloneDir });
+    } else {
+      console.log(`  ✓  Claude already committed ${committedCount} commit(s) on ${branchName}`);
+    }
 
     // ── 9. Push ───────────────────────────────────────────────────────────────
     await progress(workId, 85, "Pushing branch…");
