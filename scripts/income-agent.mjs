@@ -239,7 +239,7 @@ const { data: queuedItems, error: qErr } = await db
   .select("*, income_opportunities(*)")
   .eq("status", "pending")
   .order("priority")
-  .limit(5);
+  .limit(10);
 
 if (qErr) { console.error("❌  DB error:", qErr.message); process.exit(1); }
 if (!queuedItems?.length) {

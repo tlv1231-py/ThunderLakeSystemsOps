@@ -16,6 +16,10 @@ const PREFERRED_TECH = [
   "node", "python", "css", "tailwind", "supabase", "postgres", "sql",
   "html", "svelte", "vue", "prisma", "graphql", "rest", "api",
   "go", "golang", "ruby", "rails", "php", "java", "kotlin", "swift",
+  // C# / .NET — huge bounty ecosystem, missing before v63z
+  "c#", "csharp", "dotnet", ".net", "asp.net", "blazor", "maui",
+  // Rust — Claude can now win Rust bounties effectively
+  "rust",
 ];
 
 // ── Things that look like bounties but require expertise Claude can't win ──────
@@ -39,9 +43,11 @@ const ANTI_FIT_TOPICS = [
   "binary patch", "disassembler",
 ];
 
-// ── Languages where Claude's win rate will be very low — penalise heavily ──────
+// ── Languages where Claude's win rate is very low — penalise heavily ───────────
+// Exact match only — "c" must not match "c#", "clojure", "crystal" etc.
+// Rust removed: Claude now wins Rust bounties effectively enough to compete.
 const ANTI_FIT_LANGS = [
-  "rust", "c", "c++", "cpp", "assembly", "asm", "haskell",
+  "c", "c++", "cpp", "assembly", "asm", "haskell",
   "erlang", "ocaml", "fortran", "cobol", "ada",
 ];
 
@@ -57,10 +63,11 @@ const NON_CODE_SIGNALS = [
 // ── Code clarity signals — the single best predictor of winnability ────────────
 const CLARITY_SIGNALS = {
   codeBlock:    (d: string) => d.includes("```"),
-  errorMessage: (d: string) => /exception|stacktrace|stack trace|panic:|error message|TypeError|AttributeError|NullPointerException|ENOENT|EACCES/i.test(d),
-  reproSteps:   (d: string) => /steps to reproduce|reproduction|repro steps|to reproduce|expected behavior|actual behavior|error:/i.test(d),
-  failingTest:  (d: string) => /failing test|test fails|unit test|test case|assertion|assert\(|expect\(/i.test(d),
-  specificLine: (d: string) => /line \d+|column \d+|at function|\.ts:\d+|\.js:\d+|\.py:\d+/i.test(d),
+  errorMessage: (d: string) => /exception|stacktrace|stack trace|panic:|error message|TypeError|AttributeError|NullPointerException|ENOENT|EACCES|ValueError|KeyError|IndexError|RuntimeError/i.test(d),
+  reproSteps:   (d: string) => /steps to reproduce|reproduction|repro steps|to reproduce|expected behavior|actual behavior|error:|## bug|## problem|## description/i.test(d),
+  failingTest:  (d: string) => /failing test|test fails|unit test|test case|assertion|assert\(|expect\(|cargo test|pytest|jest|vitest/i.test(d),
+  specificLine: (d: string) => /line \d+|column \d+|at function|\.ts:\d+|\.js:\d+|\.py:\d+|\.rs:\d+|\.cs:\d+/i.test(d),
+  linkOrRef:    (d: string) => /https?:\/\/|issue #\d|PR #\d|commit [0-9a-f]{7}/i.test(d),
 };
 
 // ── Quick-win: tiny verifiable fixes Claude wins near-100% ────────────────────
@@ -185,7 +192,7 @@ export function scoreOpportunity(opp: DiscoveredOpportunity): {
 
   // ── Classify anti-fit / non-code for final penalty ────────────────────────
   const lang = (opp.language ?? "").toLowerCase();
-  const isAntiFitLang  = ANTI_FIT_LANGS.some(l => lang === l || lang.startsWith(l));
+  const isAntiFitLang  = ANTI_FIT_LANGS.some(l => lang === l);
   const isAntiFitTopic = isAntiTopic(opp);
   const isNonCode      = isNonCodeTask(opp);
 

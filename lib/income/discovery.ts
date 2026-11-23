@@ -24,6 +24,12 @@ export async function fetchGitHubBounties(): Promise<DiscoveredOpportunity[]> {
     "language:python+label:bounty+is:open+is:issue+stars:>30",
     // Go — solid win rate, less crowded than TS
     "language:go+label:bounty+is:open+is:issue+stars:>20",
+    // C# / .NET — large ecosystem, was wrongly penalized before v63z
+    "language:csharp+label:bounty+is:open+is:issue+stars:>20",
+    "language:csharp+label:opire+is:open+is:issue+stars:>10",
+    // Rust — now in PREFERRED_TECH, removed from anti-fit penalty
+    "language:rust+label:bounty+is:open+is:issue+stars:>20",
+    "language:rust+label:opire+is:open+is:issue+stars:>10",
     // Opire-funded (Opire pays on merge — most reliable payout)
     "opire+in:body+is:open+is:issue+stars:>20",
     // Algora cross-posts
@@ -57,6 +63,8 @@ export async function fetchGitHubBounties(): Promise<DiscoveredOpportunity[]> {
     `language:typescript+label:bounty+is:open+is:issue+created:>${fresh30}+stars:>5`,
     `language:python+label:bounty+is:open+is:issue+created:>${fresh30}+stars:>5`,
     `language:go+label:bounty+is:open+is:issue+created:>${fresh30}+stars:>5`,
+    `language:csharp+label:bounty+is:open+is:issue+created:>${fresh30}+stars:>5`,
+    `language:rust+label:bounty+is:open+is:issue+created:>${fresh30}+stars:>5`,
     // ── EUR/GBP denominated bounties ─────────────────────────────────────────
     // v57: EUR and GBP are now extracted by extractReward(); need to find them
     "EUR+bounty+is:open+is:issue+stars:>20",
