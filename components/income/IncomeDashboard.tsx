@@ -1030,7 +1030,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v64c";
+const DASH_VERSION = "v64d";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -1082,6 +1082,7 @@ const ACTION_COLORS: [string, string][] = [
   ["Scan complete",  "#ce93d8"],  // purple
   ["Found ",         "#4fc3f7"],
   ["Discovery scan", "#4fc3f7"],  // backward compat
+  ["Strategy snapshot", "#4db6ac"],  // teal — audit/self-report
   ["Pipeline",       "#b39ddb"],  // lavender
   ["Queued",         "#00e5ff"],  // cyan
   ["Working on",     "#80cbc4"],  // teal
@@ -1121,6 +1122,7 @@ function formatFeedEntry(action: string, detail: string): { msg: string; bountyK
     }
     case "pipeline_start":
     case "pipeline_end":
+    case "pipeline_audit":
       return { msg: detail };
     case "agent_pr_opened": {
       const parts  = detail.split(" → ");

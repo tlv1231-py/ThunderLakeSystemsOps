@@ -243,13 +243,12 @@ const { data: queuedItems, error: qErr } = await db
 
 if (qErr) { console.error("❌  DB error:", qErr.message); process.exit(1); }
 if (!queuedItems?.length) {
-  console.log("📭  Queue empty — run a discovery scan or wait for the hourly cron.");
-  process.exit(0);
+  console.log("📭  Queue empty — skipping work loop, running audit & summary.");
 }
 
-console.log(`\n🎯  TLS Income Agent — ${queuedItems.length} bounties queued\n${"─".repeat(60)}`);
+console.log(`\n🎯  TLS Income Agent — ${queuedItems?.length ?? 0} bounties queued\n${"─".repeat(60)}`);
 
-const pipelineUserId = queuedItems[0].user_id;
+const pipelineUserId = queuedItems?.[0]?.user_id ?? env.INCOME_AGENT_USER_ID;
 await log(pipelineUserId, "pipeline_start", `Pipeline started — ${queuedItems.length} bounties queued`);
 
 // Track per-item outcomes for AI summary at pipeline_end
@@ -777,12 +776,12 @@ A clean UNCERTAIN is better than a bad PR.
 
 console.log(`\n${"─".repeat(60)}\n✅  Agent run complete — check the Pipeline tab in TLS Ops\n`);
 
-// ── AI Pipeline Summary ──────────────────────────────────────────────────────
+// ── AI Pipeline Summary + Self-Audit ─────────────────────────────────────────
 let aiSummary = "";
 try {
   const apiKey = env.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY;
-  if (pipelineEvents.length > 0 && apiKey) {
-    // Fetch latest overall strategy snapshot from DB
+  if (apiKey) {
+    // Fetch latest strategy snapshot (written by check-prs cron)
     const { data: stratRow } = await db
       .from("income_activity_log")
       .select("detail")
@@ -792,13 +791,28 @@ try {
       .limit(1)
       .single();
 
-    const runLines = pipelineEvents.map(e =>
+    // If this run had no items, pull recent pipeline events from DB for context
+    let runLines = pipelineEvents.map(e =>
       `- ${e.title}${e.usd ? ` ($${e.usd})` : ""}: ${e.action}${e.detail ? ` — ${e.detail}` : ""}`
     ).join("\n");
 
+    if (!runLines) {
+      const { data: recentLogs } = await db
+        .from("income_activity_log")
+        .select("action, detail, created_at")
+        .eq("engine", "bounty")
+        .eq("user_id", pipelineUserId)
+        .in("action", ["agent_pr_opened", "agent_abandoned", "agent_error", "pipeline_end"])
+        .order("created_at", { ascending: false })
+        .limit(10);
+      runLines = recentLogs?.length
+        ? recentLogs.map(r => `- [${r.action}] ${r.detail?.slice(0, 120) ?? ""}`).join("\n")
+        : "No items processed this run; no recent pipeline activity found.";
+    }
+
     const prompt = `You are summarizing an automated bounty pipeline run for a solo developer. Write exactly 2 concise sentences. No preamble or labels.
-Sentence 1: what this specific run did (what was processed, what succeeded/failed/skipped, total $ value of PRs opened).
-Sentence 2: one sharp, actionable insight to increase profitability based on patterns in this run and the overall record below.
+Sentence 1: what this run did (items processed, PRs opened, $ value, or note it was idle).
+Sentence 2: one sharp, actionable insight to increase profitability based on the overall record below — focus on what to change, not what to monitor.
 
 This run:
 ${runLines}
@@ -815,7 +829,22 @@ Overall pipeline record (wins/losses/platforms): ${stratRow?.detail ?? "unavaila
   }
 } catch { /* non-fatal — plain message fallback */ }
 
-await log(pipelineUserId, "pipeline_end", `Pipeline complete — ${queuedItems.length} processed.${aiSummary}`);
+// Also post the latest strategy snapshot as its own terminal entry so it's always visible
+try {
+  const { data: stratRow } = await db
+    .from("income_activity_log")
+    .select("detail, created_at")
+    .eq("engine", "bounty")
+    .eq("action", "strategy_report")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+  if (stratRow?.detail) {
+    await log(pipelineUserId, "pipeline_audit", stratRow.detail);
+  }
+} catch { /* non-fatal */ }
+
+await log(pipelineUserId, "pipeline_end", `Pipeline complete — ${queuedItems?.length ?? 0} processed.${aiSummary}`);
 process.exit(0);
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
