@@ -11,22 +11,30 @@ const env = Object.fromEntries(
 const db = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 const TYLER = "9133c4a3-2734-4390-b9b8-19ddd4eecb8e";
 
-// All submitted/in_progress WQ items for Tyler
-const { data: wq } = await db.from("income_work_queue")
-  .select("id, status, expected_usd, pr_url, progress_note, created_at")
+// All Tyler's submitted/review WQ items
+const { data: submitted } = await db.from("income_work_queue")
+  .select("id, status, expected_usd, pr_url, progress_note, title")
   .eq("user_id", TYLER)
-  .in("status", ["submitted", "in_progress", "pending"])
-  .order("created_at", { ascending: false })
-  .limit(20);
-console.log("Tyler's WQ items:");
-wq?.forEach(w => console.log(`  [${w.status}] $${w.expected_usd ?? "?"} ${w.pr_url ?? w.progress_note?.slice(0, 60)}`));
+  .in("status", ["submitted", "review", "done"])
+  .order("expected_usd", { ascending: false });
 
-// All Tyler submitted income_opportunities
-const { data: submitted } = await db.from("income_opportunities")
-  .select("title, reward_usd, pr_url, status, created_at")
-  .eq("user_id", TYLER)
-  .in("status", ["submitted", "accepted", "paid"])
-  .order("created_at", { ascending: false });
-console.log("\nTyler submitted opps:", submitted?.length ?? 0);
-submitted?.forEach(o => console.log(`  [${o.status}] $${o.reward_usd ?? "?"} ${o.title?.slice(0, 60)}`));
-console.log("  PR URLs:", submitted?.map(o => o.pr_url).filter(Boolean));
+console.log("Tyler submitted/review/done WQ items:");
+submitted?.forEach(w => {
+  const shortPR = w.pr_url?.replace("https://github.com/", "") ?? "no PR";
+  console.log(`  [${w.status}] $${w.expected_usd ?? "?"} ${shortPR}`);
+  console.log(`    ${w.title?.slice(0, 70)}`);
+  console.log(`    ${w.progress_note?.slice(0, 80)}`);
+});
+
+// Also check all users' submitted items
+const { data: allSub } = await db.from("income_work_queue")
+  .select("id, status, expected_usd, pr_url, user_id")
+  .in("status", ["submitted", "review"])
+  .not("pr_url", "is", null);
+
+console.log(`\nAll users submitted/review (${allSub?.length ?? 0}):`);
+allSub?.forEach(w => {
+  const uid = (w.user_id ?? "null").slice(0, 8);
+  const shortPR = w.pr_url?.replace("https://github.com/", "") ?? "";
+  console.log(`  [${w.status}] $${w.expected_usd ?? "?"} uid=${uid} ${shortPR}`);
+});

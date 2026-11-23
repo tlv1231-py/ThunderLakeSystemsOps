@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition, useRef } from "react";
+import { useState, useEffect, useTransition, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -281,6 +281,19 @@ function useAnimDir(value: number) {
 
 function extractScore(note?: string | null): number | null {
   const m = note?.match(/score (\d+)/); return m ? +m[1] : null;
+}
+
+function LiveClock() {
+  const [time, setTime] = useState(() =>
+    new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })
+  );
+  useEffect(() => {
+    const id = setInterval(() => {
+      setTime(new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+  return <span className="font-mono tabular-nums text-white select-none" style={{ fontSize: 9 }}>{time}</span>;
 }
 
 function ElapsedTimer({ since }: { since: string | null }) {
@@ -1015,7 +1028,7 @@ function ApprovalsContent({ approvals, onApprove, onReject }: {
 // ── agent CTA ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_SERVER = "http://localhost:3002";
-const DASH_VERSION = "v63x";
+const DASH_VERSION = "v63y";
 
 function getAgentServer() {
   if (typeof window === "undefined") return DEFAULT_AGENT_SERVER;
@@ -1062,7 +1075,8 @@ const ACTION_COLORS: [string, string][] = [
   ["Accepted",       "#ffd54f"],  // gold
   ["Earned",         "#ffd54f"],
   ["Approved",       "#ffd54f"],
-  ["Submitted",      "#4fc3f7"],  // sky blue
+  ["Opened PR on",   "#4fc3f7"],  // sky blue — new format
+  ["Submitted",      "#4fc3f7"],  // sky blue — legacy format
   ["Scan complete",  "#ce93d8"],  // purple
   ["Found ",         "#4fc3f7"],
   ["Discovery scan", "#4fc3f7"],  // backward compat
@@ -1107,10 +1121,15 @@ function formatFeedEntry(action: string, detail: string): { msg: string; bountyK
     case "pipeline_end":
       return { msg: detail };
     case "agent_pr_opened": {
-      const [title, url] = detail.split(" → ");
-      const prNum = url?.match(/pull\/(\d+)/)?.[1];
-      const repo  = url?.match(/github\.com\/[^/]+\/([^/]+)/)?.[1];
-      const msg   = prNum && repo ? `Submitted #${prNum} on ${repo} — ${title || ""}` : `Submitted — ${detail}`;
+      const parts  = detail.split(" → ");
+      const title  = parts[0];
+      const url    = parts[1];
+      const reward = parts[2]?.match(/^\$[\d.]+/)?.[0];
+      const ownerRepo = url?.match(/github\.com\/([^/]+\/[^/]+)\/pull/)?.[1];
+      const payPart   = reward ? ` — Bounty pays ${reward}` : "";
+      const msg = ownerRepo
+        ? `Opened PR on ${ownerRepo}${payPart} — ${title || ""}`
+        : `Submitted — ${detail}`;
       return { msg, bountyKey: title };
     }
     case "pr_merged": {
@@ -1237,7 +1256,7 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun, getPipelineIt
 
   function getFeedClass(msg: string): string {
     if (msg.startsWith("Accepted") || msg.startsWith("Earned") || msg.startsWith("Approved")) return "feed-accepted";
-    if (msg.startsWith("Submitted")) return "feed-submit";
+    if (msg.startsWith("Submitted") || msg.startsWith("Opened PR")) return "feed-submit";
     if (msg.startsWith("Rejected") || msg.startsWith("Failed")) return "feed-rejected";
     if (msg.startsWith("Queued")) return "feed-queued";
     if (msg.startsWith("Scan complete")) return "feed-scan";
@@ -1447,11 +1466,11 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun, getPipelineIt
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-    <div className="flex items-center gap-2 mb-1.5 pl-0.5 shrink-0">
-      <div className="flex items-center gap-1.5 transition-all duration-300" style={{ color: flashColor, textShadow: flashGlow }}>
-        <span className={`inline-block w-1.5 h-1.5 rounded-full transition-colors duration-300 ${dotCls}`} />
-        <span className="text-[9px] font-mono uppercase tracking-widest font-semibold">{dotLabel}</span>
-      </div>
+    <div className="flex items-center gap-3 mb-1.5 pl-0.5 shrink-0">
+      <LiveClock />
+      {dotLabel && (
+        <span className="text-[9px] font-mono uppercase tracking-widest font-semibold transition-all duration-300" style={{ color: flashColor, textShadow: flashGlow }}>{dotLabel}</span>
+      )}
     </div>
     <div
       className="tls-scroll flex-1 min-h-0"
@@ -1466,6 +1485,17 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun, getPipelineIt
           <p className="tls-feed text-zinc-700 py-1 select-none">waiting for activity</p>
         )}
         {(() => {
+          // Split text at $X.XX patterns, coloring potential pay blue and accepted pay green
+          function colorDollars(text: string, dollarColor: string): React.ReactNode {
+            const segs = text.split(/(\$\d[\d.,]*)/);
+            if (segs.length === 1) return <span className="text-zinc-400">{text}</span>;
+            return <>{segs.map((s, i) =>
+              s.match(/^\$\d/)
+                ? <span key={i} style={{ color: dollarColor }} className="font-semibold">{s}</span>
+                : <span key={i} className="text-zinc-400">{s}</span>
+            )}</>;
+          }
+
           const reversed = [...lines].reverse();
           const nodes: React.ReactNode[] = [];
           reversed.forEach((l, idx) => {
@@ -1476,28 +1506,31 @@ function LiveFeed({ userId, stagedCount, projected, onScan, onRun, getPipelineIt
             const kwText = l.msg.slice(0, kwLen);
             const rest   = l.msg.slice(kwLen);
 
+            const isAccepted = l.msg.startsWith("Accepted") || l.msg.startsWith("Earned");
+            const dollarColor = isAccepted ? "#4ade80" : IN_FLIGHT_BLUE;
+
             let restNode: React.ReactNode;
             if (l.bountyKey && rest.includes(l.bountyKey)) {
               const bkIdx  = rest.indexOf(l.bountyKey);
               const before = rest.slice(0, bkIdx);
               const after  = rest.slice(bkIdx + l.bountyKey.length);
               restNode = <>
-                {before && <span className="text-zinc-400">{before}</span>}
+                {before && colorDollars(before, dollarColor)}
                 <span style={{ color: l.accent }}>{l.bountyKey}</span>
-                {after && <span className="text-zinc-400">{after}</span>}
+                {after && colorDollars(after, dollarColor)}
               </>;
             } else {
-              restNode = <span className="text-zinc-400">{rest}</span>;
+              restNode = colorDollars(rest, dollarColor);
             }
 
             const isWorking = !!(l.itemId && workingItemIds.has(l.itemId));
-            const kwColor = kwText.startsWith("Submitted") ? IN_FLIGHT_BLUE : "white";
+            const kwColor = kwText.startsWith("Opened") || kwText.startsWith("Submitted") ? IN_FLIGHT_BLUE : "white";
             const isFresh = freshLineIdsRef.current.has(l.id);
             const animCls = isFresh ? getFeedClass(l.msg) : "";
 
             nodes.push(
               <div key={l.id} className={`flex gap-3 tls-feed tls-msg ${animCls} ${isWorking ? "working-line" : ""}`}>
-                <span className={`shrink-0 tabular-nums ${idx === 0 ? "text-white" : "text-zinc-700"}`} style={{ fontSize: 8 }}>{l.ts}</span>
+                <span className="shrink-0 tabular-nums text-zinc-500" style={{ fontSize: 8 }}>{l.ts}</span>
                 <span className="break-words min-w-0 leading-relaxed">
                   {kwLen > 0 && <span style={{ color: kwColor }}>{kwText}</span>}
                   {restNode}
@@ -1610,18 +1643,24 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
     return () => { sb.removeChannel(ch); };
   }, [userId]);
 
-  const pendingQueue    = liveItems.filter(w => w.status === "pending");
-  const activeItems     = liveItems.filter(w => w.status === "in_progress");
+  // Deduplicate by ID — guards against race between server refresh and subscription updates
+  const deduped = useMemo(() => {
+    const seen = new Set<string>();
+    return liveItems.filter(i => !seen.has(i.id) && seen.add(i.id) as unknown as boolean);
+  }, [liveItems]);
+
+  const pendingQueue    = deduped.filter(w => w.status === "pending");
+  const activeItems     = deduped.filter(w => w.status === "in_progress");
   const activeSet       = new Set(activeItems.map(i => i.id));
-  const acceptedCount   = liveItems.filter(w => w.status === "done").length;
-  const rejectedCount   = liveItems.filter(w => w.status === "failed").length;
-  const submittedAllTime = liveItems.filter(w => ["submitted","review","done","failed"].includes(w.status)).length;
-  const inFlightItems   = liveItems.filter(w => ["submitted","review"].includes(w.status));
+  const acceptedCount   = deduped.filter(w => w.status === "done").length;
+  const rejectedCount   = deduped.filter(w => w.status === "failed").length;
+  const submittedAllTime = deduped.filter(w => ["submitted","review","done","failed"].includes(w.status)).length;
+  const inFlightItems   = deduped.filter(w => ["submitted","review"].includes(w.status));
   const inFlightCount   = inFlightItems.length;
   const inFlightUsd     = inFlightItems.reduce((s, w) => s + (w.expected_usd ?? 0), 0);
   const allTimeUsd      = allEarnings.filter(e => e.status === "collected").reduce((s, e) => s + e.amount_usd, 0);
   const winRate         = (acceptedCount + rejectedCount) > 0 ? Math.round((acceptedCount / (acceptedCount + rejectedCount)) * 100) : 0;
-  const activeMissions  = liveItems.filter(w => !["done","failed","cancelled"].includes(w.status)).length;
+  const activeMissions  = deduped.filter(w => !["done","failed","cancelled"].includes(w.status)).length;
 
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
@@ -1683,7 +1722,7 @@ export function IncomeDashboard({ summary, allEarnings, allAssets, userId, pipel
           {/* WAITING */}
           <div className="shrink-0">
             <WaitingColumn
-              items={liveItems
+              items={deduped
                 .filter(i => ["pending","in_progress","review","submitted"].includes(i.status))
                 .map(i => ({
                   id: i.id,

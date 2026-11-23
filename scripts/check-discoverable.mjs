@@ -9,26 +9,37 @@ const env = Object.fromEntries(
     .map(l => { const i = l.indexOf("="); return [l.slice(0, i).trim(), l.slice(i + 1).trim().replace(/^["']|["']$/g, "")]; })
 );
 const db = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+const TYLER = "9133c4a3-2734-4390-b9b8-19ddd4eecb8e";
 
-// Items with reward > 0 not dismissed/paid/submitted that aren't in Tyler's queue
-const { data: items } = await db.from("income_opportunities")
-  .select("id, title, score, reward_usd, source, user_id, status, open_prs")
-  .gt("reward_usd", 0)
-  .in("status", ["discovered", "queued"])
+// All Tyler's discovered opportunities with any reward
+const { data: opps } = await db.from("income_opportunities")
+  .select("id, title, score, reward_usd, source, status, open_prs, language, description, created_at")
+  .eq("user_id", TYLER)
+  .eq("status", "discovered")
   .order("score", { ascending: false })
   .limit(30);
 
-console.log("All reward>0 discovered/queued items:");
-items?.forEach(o => {
-  const uid = (o.user_id || "null").slice(0, 8);
-  const eligible = (o.score >= 60 && (o.open_prs ?? 0) < 3 && o.reward_usd > 0) ||
-                   (o.reward_usd >= 20 && o.score >= 50 && (o.open_prs ?? 0) < 3) ||
-                   (o.source === "opire" && o.score >= 50 && (o.open_prs ?? 0) < 5);
-  console.log(`  [${o.status} score=${o.score} $${o.reward_usd} uid=${uid} prs=${o.open_prs ?? 0}${eligible ? " ✓ELIGIBLE" : ""}] ${o.title?.slice(0, 55)}`);
+console.log(`Tyler discovered (top 30 by score):`);
+opps?.forEach(o => {
+  const prs = o.open_prs ?? "?";
+  const lang = o.language ?? "?";
+  const desc50 = (o.description ?? "").slice(0, 80).replace(/\n/g, " ");
+  const hasPolar = (o.description ?? "").includes("polar.sh") || (o.description ?? "").includes("app.polar.sh");
+  const hasOpire = (o.description ?? "").includes("opire.dev");
+  console.log(`  score=${o.score} $${o.reward_usd ?? "?"} prs=${prs} lang=${lang} src=${o.source}${hasPolar?" [POLAR]":""}${hasOpire?" [OPIRE]":""}`);
+  console.log(`    ${o.title?.slice(0, 70)}`);
 });
-console.log("\nTotal:", items?.length ?? 0);
-console.log("Eligible for Tyler queue:", items?.filter(o =>
-  ((o.score >= 60 && (o.open_prs ?? 0) < 3 && o.reward_usd > 0) ||
-   (o.reward_usd >= 20 && o.score >= 50 && (o.open_prs ?? 0) < 3) ||
-   (o.source === "opire" && o.score >= 50 && (o.open_prs ?? 0) < 5))
-).length ?? 0);
+
+console.log(`\nTotal: ${opps?.length ?? 0}`);
+console.log("\nQualification breakdown (need score>=60 AND reward>0 AND prs<3, OR reward>=$20 AND score>=50 AND prs<3):");
+opps?.forEach(o => {
+  const r = o.reward_usd ?? 0;
+  const s = o.score ?? 0;
+  const p = o.open_prs ?? 99;
+  const highScore = s >= 60 && p < 3 && r > 0;
+  const medReward = r >= 20 && s >= 50 && p < 3;
+  const opire = o.source === "opire" && s >= 50 && p < 5;
+  if (highScore || medReward || opire) {
+    console.log(`  QUALIFIES: ${o.title?.slice(0,60)} score=${s} $${r} prs=${p}`);
+  }
+});

@@ -1,6 +1,7 @@
 {
   "crons": [
     { "path": "/api/cron/send-reminders",    "schedule": "0 9 * * *" },
-    { "path": "/api/cron/generate-invoices", "schedule": "0 6 * * *" }
+    { "path": "/api/cron/generate-invoices", "schedule": "0 6 * * *" },
+    { "path": "/api/income/check-prs",       "schedule": "0 12 * * *" }
   ]
 }

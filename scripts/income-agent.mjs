@@ -741,7 +741,8 @@ A clean UNCERTAIN is better than a bad PR.
 
     // No approval record — pipeline is fully autonomous. Monitor the board directly.
 
-    await log(userId, "agent_pr_opened", `${issueTitle} → ${prUrl || "no PR"}`, prUrl ? "ok" : "warning");
+    const rewardStr = item.expected_usd ? ` → $${item.expected_usd}` : "";
+    await log(userId, "agent_pr_opened", `${issueTitle} → ${prUrl || "no PR"}${rewardStr}`, prUrl ? "ok" : "warning");
 
     console.log(`  ✓  PR: ${prUrl || "failed"}`);
     console.log(`  📝  ${summary.slice(0, 100)}`);
