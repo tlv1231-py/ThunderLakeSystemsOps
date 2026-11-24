@@ -188,7 +188,17 @@ try {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function run(cmd, opts = {}) {
-  return execSync(cmd, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], ...opts }).trim();
+  return execSync(cmd, {
+    encoding: "utf8",
+    stdio: ["pipe", "pipe", "pipe"],
+    // Every git/gh/claude step in this pipeline goes through here, and on
+    // Windows Node defaults windowsHide to FALSE -- so each call popped a
+    // console window on the desktop and closed it again. One run makes dozens
+    // of calls, which reads as the screen being spammed with flashing command
+    // prompts. stdio is piped anyway, so those windows never showed anything.
+    windowsHide: true,
+    ...opts,
+  }).trim();
 }
 
 async function progress(id, pct, note) {
